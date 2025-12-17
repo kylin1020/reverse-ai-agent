@@ -1,0 +1,6 @@
+/**
+ * @license
+ * Copyright 2025 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+import{isUtf8 as t}from"node:buffer";import{getConfig as e}from"../utils/config.js";export function getShortDescriptionForRequest(t,e,r=!1){return`reqid=${e} ${t.method()} ${t.url()} ${getStatusFromRequest(t)}${r?" [selected in the DevTools Network panel]":""}`}export function getStatusFromRequest(t){const e=t.response(),r=t.failure();let o;if(e){const t=e.status();o=t>=200&&t<=299?`[success - ${t}]`:`[failed - ${t}]`}else o=r?`[failed - ${r.errorText}]`:"[pending]";return o}export function getFormattedHeaderValue(t){const e=[];for(const[r,o]of Object.entries(t))e.push(`- ${r}:${o}`);return e}export async function getFormattedResponseBody(o,n=e().maxBodySize){try{const e=await o.buffer();if(t(e)){const t=e.toString("utf-8");return 0===t.length?"<empty response>":`${r(t,n)}`}return"<binary data>"}catch{return"<not available anymore>"}}export async function getFormattedRequestBody(t,o=e().maxBodySize){if(t.hasPostData()){const e=t.postData();if(e)return`${r(e,o)}`;try{const e=await t.fetchPostData();if(e)return`${r(e,o)}`}catch{return"<not available anymore>"}}}function r(t,e){return t.length>e?""+(t.substring(0,e)+"... <truncated>"):`${t}`}

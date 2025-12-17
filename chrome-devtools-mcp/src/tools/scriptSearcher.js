@@ -1,0 +1,6 @@
+/**
+ * @license
+ * Copyright 2025 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+import{paginate as t}from"../utils/pagination.js";export function searchInScripts(t,e,r=!1){const n=[];if(!e)return{pattern:e,isRegex:r,totalMatches:0,matches:[]};let a=null;if(r)try{a=new RegExp(e,"g")}catch{return{pattern:e,isRegex:r,totalMatches:0,matches:[]}}for(const[s,c]of t){const{url:t,source:i}=c,o=i.split("\n");for(let c=0;c<o.length;c++){const i=o[c],l=c+1;if(r&&a){let e;for(a.lastIndex=0;null!==(e=a.exec(i));)n.push({scriptId:s,scriptUrl:t,lineNumber:l,columnNumber:e.index,matchText:e[0],context:i}),0===e[0].length&&a.lastIndex++}else{let r=0;for(;;){const a=i.indexOf(e,r);if(-1===a)break;n.push({scriptId:s,scriptUrl:t,lineNumber:l,columnNumber:a,matchText:e,context:i}),r=a+1}}}}return{pattern:e,isRegex:r,totalMatches:n.length,matches:n}}export function searchInScriptsWithPagination(e,r,n=!1,a){const s=searchInScripts(e,r,n),c=t(s.matches,a);return{pattern:s.pattern,isRegex:s.isRegex,totalMatches:s.totalMatches,matches:[...c.items],pagination:{currentPage:c.currentPage,totalPages:c.totalPages,hasNextPage:c.hasNextPage,hasPreviousPage:c.hasPreviousPage}}}export function isValidRegex(t){try{return new RegExp(t),!0}catch{return!1}}
