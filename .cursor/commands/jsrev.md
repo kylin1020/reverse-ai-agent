@@ -48,7 +48,7 @@ Is it JSVMP?
 | Scenario | Action |
 |----------|--------|
 | CAPTCHA, login, manual click needed | Describe what's needed → **END TURN** → wait for user |
-| Breakpoint set for user trigger | Say "请触发操作" → **END TURN** |
+| Need user to trigger initial action | Say "请触发xxx操作" → **END TURN** |
 
 **NEVER** continue calling tools after asking for user help.
 
@@ -64,9 +64,26 @@ Is it JSVMP?
 |----------|------|------------------|
 | Execute JS with pausing breakpoint | ⚠️ High | `clear_all_breakpoints()` first |
 | Log without pause | ✅ Safe | Use `condition='console.log(...), false'` |
-| Pause debugging | ⚠️ Careful | Set BP → **END TURN** → user triggers → `get_debugger_status()` |
+| Initial trigger needed | ⚠️ Careful | Set BP → **END TURN** → user triggers → `get_debugger_status()` |
 
 **Recovery**: If stuck, user must click Resume (F8) in DevTools.
+
+### 🔄 Chained Breakpoint Workflow (While Paused)
+
+**When already paused at a breakpoint and need to trace further:**
+
+```
+1. Analyze current state: get_debugger_status() / get_scope_variables()
+2. Set next breakpoint: set_breakpoint(breakpointId="next_bp", ...)
+3. Resume execution: resume_execution()
+4. Check new state: get_debugger_status()  // Now paused at next_bp
+5. Repeat as needed
+```
+
+**DO NOT**: Set breakpoint → ask user to trigger → wait  
+**DO**: Set breakpoint → `resume_execution()` → `get_debugger_status()` → continue analysis
+
+This allows autonomous multi-step debugging without user intervention.
 
 ### Breakpoint Types
 
@@ -114,7 +131,10 @@ get_scope_variables(frameIndex=0, searchTerm="user", pageSize=10,
                     scopeType="local", maxDepth=3, saveToFile="vars.txt")  // Filter/paginate variables
 evaluate_on_call_frame(expression="x", frameIndex=0)  // Evaluate in specific frame
 step_over() | step_into() | step_out()                // Navigate code
-resume_execution()                                    // Continue running
+resume_execution()                                    // Continue to next breakpoint or end
+
+// Chained debugging (while paused, set next BP then resume)
+set_breakpoint(...) → resume_execution() → get_debugger_status()  // Auto-stops at next BP
 
 // Save scope variables to file
 save_scope_variables(filePath="scope.json", frameIndex=0, maxDepth=5, includeGlobal=false)
