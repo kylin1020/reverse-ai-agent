@@ -4,6 +4,22 @@ JS Reverse Engineering: browser request → JS code → algorithm → Python rep
 
 ---
 
+# ⛔ RULE ZERO: READABILITY GATE (HIGHEST PRIORITY)
+
+> **PRIMARY SKILL**: #[[file:skills/js_deobfuscation.md]] — Load this FIRST when obfuscation detected!
+
+```
+❶ P-1: Minification? → Beautify FIRST(read js_deobfuscation.md)
+❷ P0:  Obfuscation?  → Deobfuscate FIRST (use browser debug to capture runtime values)
+❸ ONLY THEN: Search / Debug / Analyze
+```
+
+**Browser debugging serves deobfuscation** — capture string arrays, decoder outputs, then apply AST transforms.
+
+**VIOLATION = SESSION FAILURE. NO EXCEPTIONS. NO EXCUSES.**
+
+---
+
 ## 🚨 P-1: Minification Gate (MANDATORY BEFORE ANY SEARCH)
 
 **BEFORE using rg/grep/search on ANY JS file, check if it's minified:**
