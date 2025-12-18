@@ -6,7 +6,7 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import * as fc from 'fast-check';
-import { findNearestBreakpointLocation, } from '../../src/tools/smartBreakpointUtils.js';
+import { findNearestBreakpointLocation, } from '../../src/utils/smartBreakpointUtils.js';
 describe('smartBreakpointUtils', () => {
     describe('findNearestBreakpointLocation', () => {
         it('should return null for empty list', () => {

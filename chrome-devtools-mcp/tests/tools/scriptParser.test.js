@@ -5,7 +5,7 @@
  */
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { parseScript } from '../../src/tools/scriptParser.js';
+import { parseScript } from '../../src/utils/scriptParser.js';
 describe('scriptParser', () => {
     describe('parseScript - function declarations', () => {
         it('should parse basic function declaration', () => {

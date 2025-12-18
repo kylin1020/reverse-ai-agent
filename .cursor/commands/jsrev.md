@@ -18,6 +18,7 @@ JS Reverse Engineering: browser request → JS code → algorithm → Python rep
 |---------|--------|
 | `_0x` prefixed vars, hex strings | Load deobfuscation skill → apply AST transforms |
 | Large array + decoder function | Decode strings first via AST or breakpoint |
+| **`ReferenceError: window/document`** | **Load env patching skill → Proxy detect → Patch** |
 | Anti-debugging (debugger loops) | Load deobfuscation skill §1 → bypass first |
 | `while(true) { switch(...) }` + stack | JSVMP → load `#[[file:skills/jsvmp_analysis.md]]` |
 
@@ -306,3 +307,4 @@ saveDir/
 
 - **`#[[file:skills/js_deobfuscation.md]]`**: AST deobfuscation, anti-debug bypass, string decoding
 - **`#[[file:skills/jsvmp_analysis.md]]`**: VM analysis, breakpoint instrumentation, opcode mapping
+- **`#[[file:skills/js_env_patching.md]]`**: Environment patching (Happy-DOM, Proxy sniffing, anti-detection)

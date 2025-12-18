@@ -1,0 +1,6 @@
+/**
+ * @license
+ * Copyright 2025 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+import{logger as e}from"../logger.js";import{ScriptCacheManager as a}from"./scriptCacheManager.js";export const ScriptCacheRegistry=new class{sessionToManager=new WeakMap;activeManagers=new Set;getOrCreate(e){let t=this.sessionToManager.get(e);return t||(t=new a,this.sessionToManager.set(e,t),this.activeManagers.add(t)),t}get(e){return this.sessionToManager.get(e)}async remove(a){const t=this.sessionToManager.get(a);if(t){try{await t.cleanup()}catch(a){e(`[ScriptCacheRegistry] Failed to cleanup manager: ${a}`)}this.sessionToManager.delete(a),this.activeManagers.delete(t)}}async cleanupAll(){const a=[];for(const t of this.activeManagers)a.push(t.cleanup().catch(a=>{e(`[ScriptCacheRegistry] Failed to cleanup manager: ${a}`)}));await Promise.all(a),this.activeManagers.clear()}getActiveManagerCount(){return this.activeManagers.size}};let t=!1;async function s(){t||(t=!0,await ScriptCacheRegistry.cleanupAll())}process.on("SIGINT",async()=>{await s(),process.exit(0)}),process.on("SIGTERM",async()=>{await s(),process.exit(0)}),process.on("beforeExit",async()=>{await s()}),process.on("exit",()=>{const a=ScriptCacheRegistry.getActiveManagerCount();a>0&&!t&&e(`[ScriptCacheRegistry] Warning: ${a} manager(s) not cleaned up on exit`)});

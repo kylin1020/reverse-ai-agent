@@ -5,7 +5,7 @@
  */
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { analyzeFunction, buildCallGraph, findSimilarFunctions, getDownstreamTrace, getUpstreamTrace, } from '../../src/tools/callGraphAnalyzer.js';
+import { analyzeFunction, buildCallGraph, findSimilarFunctions, getDownstreamTrace, getUpstreamTrace, } from '../../src/utils/callGraphAnalyzer.js';
 // Helper to create a FunctionInfo
 function createFunctionInfo(name) {
     return {
@@ -21,6 +21,7 @@ function createFunctionInfo(name) {
 // Helper to create a ParseResult
 function createParseResult(functions, calls) {
     return {
+        ast: null,
         functions: functions.map(createFunctionInfo),
         calls: calls.map(c => ({
             caller: c.caller,
