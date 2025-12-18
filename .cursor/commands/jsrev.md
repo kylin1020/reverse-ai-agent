@@ -225,6 +225,7 @@ inject_console_log(ruleId="log1", urlPattern="app.js", targetCode="function foo(
    - D) **Search scripts**: `search_script_content(pattern="sign", urlPattern=".*core\\.js.*")` for code patterns
    - E) Grep: max 3 rounds, `head_limit=50`
    - F) **Obfuscated?** → deobfuscate first → then debug
+   - G) **Search/Grep**: Use `rg` for keyword definitions (load `#[[file:skills/js_extraction.md]]` if file is large/minified). **Usage**: `rg -n "keyword" source/` to find line numbers. **Preview**: `rg -o ".{0,50}keyword.{0,50}"` to see context in minified files. **Slice**: `sed -n 'start,endp' file > new.js` for rough cuts. **Refine**: Use AST script or manual brace counting to get executable code.
 5. **Verify**: Browser value → Python same inputs → compare → live test
 
 ## Inputs
@@ -308,3 +309,4 @@ saveDir/
 - **`#[[file:skills/js_deobfuscation.md]]`**: AST deobfuscation, anti-debug bypass, string decoding
 - **`#[[file:skills/jsvmp_analysis.md]]`**: VM analysis, breakpoint instrumentation, opcode mapping
 - **`#[[file:skills/js_env_patching.md]]`**: Environment patching (Happy-DOM, Proxy sniffing, anti-detection)
+- **`#[[file:skills/js_extraction.md]]`**: **Locate & Extract** (rg/sed usage, Webpack slicing, handling minified code)
