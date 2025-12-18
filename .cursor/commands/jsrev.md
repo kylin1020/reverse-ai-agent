@@ -171,6 +171,21 @@ list_console_messages(types=["log", "error"], pageSize=50)
 get_console_message(msgid=42)
 ```
 
+### Script Content Search (Browser-Side)
+
+```javascript
+// Search for patterns in loaded JS files (useful when JS not saved locally)
+search_script_content(pattern="sign|encrypt", pageSize=3, contextLength=300)
+
+// Regex search
+search_script_content(pattern="function\\s+\\w*[Ss]ign", isRegex=true, pageSize=5)
+
+// Filter by URL
+search_script_content(pattern="token", urlPattern=".*main\\.js.*", pageSize=5)
+```
+
+**When to use**: Quick search in browser-loaded scripts before saving locally. For heavy searching, prefer `save_static_resource` → local `rg`/`grepSearch`.
+
 ### evaluate_script (globals only)
 
 ```javascript
