@@ -44,6 +44,41 @@ Is it JSVMP?
 7. **Test first**: Unclear param? Remove & replay. Works? Skip it.
 8. **Pagination**: Always use `pageSize` and search params to limit output
 
+## ⚠️ Output Limits (CRITICAL)
+
+**Context overflow = session death. ALWAYS limit command output.**
+
+| Tool/Command | Limit Method | Example |
+|--------------|--------------|---------|
+| `rg` (ripgrep) | `--max-count=N` or pipe `head` | `rg -n "keyword" file \| head -50` |
+| `rg` context | `-C2` max, avoid `-C5+` | `rg -n -C2 "func" file` |
+| `rg` preview | `-o` with char limit | `rg -o ".{0,30}keyword.{0,30}" file` |
+| `grep` | `-m N` or pipe `head` | `grep -n "x" file \| head -30` |
+| `cat` | ❌ NEVER on large files | Use `head -100` or `sed -n '1,100p'` |
+| `search_script_content` | `pageSize=10-20` | Never omit pageSize |
+| `search_functions` | `pageSize=10-20` | Never omit pageSize |
+| `list_network_requests` | `pageSize=30-50` | Never omit pageSize |
+| `get_scope_variables` | `pageSize=20`, `maxDepth=3` | Use `searchTerm` to filter |
+
+**Safe rg patterns:**
+```bash
+# ✅ Find definition with limited output
+rg -n --max-count=5 "function\s+targetFunc" source/
+
+# ✅ Preview in minified file (char-limited context)
+rg -o ".{0,50}keyword.{0,50}" source/bundle.js | head -20
+
+# ✅ Get line numbers only, then slice
+rg -n "keyword" file | head -10  # Get line numbers
+sed -n '100,150p' file           # Read specific range
+
+# ❌ NEVER: unlimited output
+rg "keyword" source/             # Could dump entire file
+rg -C10 "keyword" source/        # 10 lines context × many matches = overflow
+```
+
+**Recovery if output too long**: Stop, use more specific pattern or smaller `pageSize`.
+
 ## 🛑 Human Interaction = STOP
 
 | Scenario | Action |
