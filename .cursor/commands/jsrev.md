@@ -4,12 +4,81 @@ JS Reverse Engineering: browser request → JS code → algorithm → Python rep
 
 ---
 
+## 🚨 P-1: Minification Gate (MANDATORY BEFORE ANY SEARCH)
+
+**BEFORE using rg/grep/search on ANY JS file, check if it's minified:**
+
+```bash
+# Check line count and file size
+wc -l source/*.js 2>/dev/null | head -20
+# If any file shows: "1 filename.js" or "2 filename.js" with size > 50KB → MINIFIED
+
+# Quick minification detection (lines < 10 AND size > 50KB = minified)
+for f in source/*.js; do
+  [ -f "$f" ] && lines=$(wc -l < "$f") && size=$(wc -c < "$f") && \
+  [ "$lines" -lt 10 ] && [ "$size" -gt 50000 ] && echo "MINIFIED: $f ($lines lines, $size bytes)"
+done
+```
+
+| Result | Action |
+|--------|--------|
+| MINIFIED detected | **MANDATORY**: Beautify FIRST before any search/analysis |
+| Normal multi-line | Proceed to P0 |
+
+### P-1 Beautification Protocol (EXECUTE THIS)
+
+**For minified files, beautify BEFORE any search operations:**
+
+```bash
+# Option 1: js-beautify (recommended)
+npx js-beautify -f source/minified.js -o source/minified_formatted.js
+
+# Option 2: prettier
+npx prettier --write source/minified.js --parser babel
+
+# Option 3: Quick inline (if tools unavailable)
+# Use browser DevTools → Sources → Pretty Print → Copy
+```
+
+**After beautification:**
+- All subsequent analysis uses `*_formatted.js` or the beautified version
+- Original minified file kept for reference only
+- Now safe to proceed to P0 Obfuscation Gate
+
+### ⛔ FORBIDDEN (Context Overflow = Session Death)
+
+```bash
+# ❌ NEVER run these on minified files:
+rg "keyword" minified.js           # 1 match = 500KB output!
+rg -C2 "keyword" minified.js       # Context lines = 1.5MB!
+grepSearch on minified files       # Same problem
+search_script_content without beautifying first
+
+# ❌ NEVER use line limits on minified files (USELESS):
+rg "keyword" minified.js | head -5  # Still 500KB per line!
+```
+
+### ✅ SAFE Operations on Minified Files (If Beautification Not Possible)
+
+```bash
+# Character-limited extraction only:
+rg -o ".{0,60}keyword.{0,60}" file.js | head -20
+rg -n --column "keyword" file.js | cut -d: -f1-3 | head -20
+sed -n '1p' file.min.js | cut -c1000-2000
+
+# MCP tools with strict limits:
+search_script_content(pattern="...", pageSize=3, maxTotalChars=300)
+search_functions(namePattern="...", pageSize=5, maxCodeLines=10)
+```
+
+---
+
 ## 🚨 P0: Obfuscation Gate (MANDATORY - NO EXCEPTIONS)
 
 **BEFORE any JS analysis, run this check:**
 
 ```bash
-# Quick detection
+# Quick detection (run on beautified files if P-1 was triggered)
 rg -c "_0x[a-f0-9]|\\\\x[0-9a-f]{2}" source/*.js 2>/dev/null || echo "0"
 ```
 
@@ -137,23 +206,25 @@ rg -C2 "keyword" bundle.min.js    # 3 lines = 1.5MB!
 
 ## Execution Flow
 
-**Loop**: Capture → Obfuscation Check → Identify → Locate → Verify → Reproduce
+**Loop**: Capture → Minification Check → Obfuscation Check → Identify → Locate → Verify → Reproduce
 
 1. **Capture**: `list_network_requests(resourceTypes=["xhr","fetch"])` → `save_static_resource` to `source/`
 
-2. **🚨 Obfuscation Gate**: Run P0 check. If obfuscated → deobfuscate → continue with clean code.
+2. **🚨 Minification Gate (P-1)**: Check line count. If minified → beautify → continue with formatted code.
 
-3. **Identify Params**: Find `sign|token|nonce|ts|enc|deviceId` in request
+3. **🚨 Obfuscation Gate (P0)**: Run obfuscation check. If obfuscated → deobfuscate → continue with clean code.
+
+4. **Identify Params**: Find `sign|token|nonce|ts|enc|deviceId` in request
    - Test necessity: remove param → replay → works? skip it
    - Trace chains: `init→deviceId→token→sign`
 
-4. **Locate JS** (on clean code only):
+5. **Locate JS** (on clean/formatted code only):
    - A) `get_network_request(reqid)` → stack trace → file:line
    - B) `search_functions(namePattern="sign", pageSize=10)` → `analyze_call_graph()`
    - C) `set_breakpoint` → `step_over/into` → `get_scope_variables`
    - D) `search_script_content(pattern="encrypt", pageSize=10, maxTotalChars=500)`
 
-5. **Verify**: Browser value == Python output → live test
+6. **Verify**: Browser value == Python output → live test
 
 ---
 
@@ -198,6 +269,7 @@ resume_execution()
 
 | Pattern | Action |
 |---------|--------|
+| Single-line 50KB+ files | **P-1 MANDATORY**: Beautify first (NO EXCEPTIONS) |
 | `_0x` vars, hex strings, decoder arrays | **P0 MANDATORY**: Deobfuscate first (NO EXCEPTIONS) |
 | `while(true){switch}` + stack ops | JSVMP → `#[[file:skills/jsvmp_analysis.md]]` (still deobfuscate surrounding code) |
 | `ReferenceError: window/document` | Env patch → `#[[file:skills/js_env_patching.md]]` |
@@ -292,14 +364,15 @@ CallExpression(path) {
 
 ## Core Rules
 
-1. **P0 Gate**: Always check obfuscation before analysis - NO EXCEPTIONS
-2. **Hybrid First**: For any non-trivial obfuscation, use browser+AST approach
-3. **No Excuses**: "Complex", "SDK", "hard" are not valid reasons to skip deobfuscation
-4. **Log findings**: Update `analysis_notes.md` immediately
-5. **Evidence markers**: `[UNVERIFIED]` / `[VERIFIED]` / `[REPRODUCED]`
-6. **Truncate blobs**: Base64/hex → first 20 chars + `...` + last 10
-7. **Chinese output**: Comments in Python, notes in Chinese
-8. **No meta talk**: Execute directly, don't announce
+1. **P-1 Gate**: Always check minification before any search - beautify first
+2. **P0 Gate**: Always check obfuscation before analysis - NO EXCEPTIONS
+3. **Hybrid First**: For any non-trivial obfuscation, use browser+AST approach
+4. **No Excuses**: "Complex", "SDK", "hard" are not valid reasons to skip deobfuscation
+5. **Log findings**: Update `analysis_notes.md` immediately
+6. **Evidence markers**: `[UNVERIFIED]` / `[VERIFIED]` / `[REPRODUCED]`
+7. **Truncate blobs**: Base64/hex → first 20 chars + `...` + last 10
+8. **Chinese output**: Comments in Python, notes in Chinese
+9. **No meta talk**: Execute directly, don't announce
 
 ---
 
@@ -341,7 +414,8 @@ saveDir/
 ├── analysis_notes.md     # Findings log
 ├── source/               # Saved/deobfuscated JS
 │   ├── original.js
-│   └── original_clean.js # After deobfuscation
+│   ├── original_formatted.js  # After beautification (P-1)
+│   └── original_clean.js      # After deobfuscation (P0)
 ├── raw/                  # HTTP captures
 ├── lib/
 │   └── crypto_utils.py   # Core algorithms
