@@ -39,7 +39,7 @@ rg "keyword" minified.js      # 1 match = 500KB!
 rg -o ".{0,60}keyword.{0,60}" file.js | head -20
 ```
 
-MCP limits: `search_script_content(pageSize=3, maxTotalChars=300)`
+**Code Search Strategy**: Save JS to local file first → use `rg`/`grepSearch` for searching
 
 ---
 
@@ -88,9 +88,10 @@ list_console_messages(types=["log"])
 
 | MCP Tool | Limits |
 |----------|--------|
-| `search_script_content` | `pageSize≤10`, `maxTotalChars≤500` |
 | `search_functions` | `pageSize≤10`, `maxCodeLines≤15` |
 | `get_scope_variables` | `pageSize≤15`, `maxDepth≤3` |
+
+**Code Search**: Save JS via `save_static_resource` → search locally with `rg` or `grepSearch`
 
 ---
 
@@ -266,8 +267,12 @@ get_network_request(reqid=123)  // Check initiator/stack trace
 // - "encrypt", "encode", "token"
 // - Parameter names from the actual request
 
-// MCP:
-search_script_content(pattern="sign\\s*[:=]", pageSize=10, maxTotalChars=500)
+// MCP: Save JS first, then search locally
+save_static_resource(reqid=XX, filePath="source/target.js")
+// Then use rg or grepSearch:
+// rg -o ".{0,60}sign.{0,60}" source/target.js | head -20
+// grepSearch(query="sign\\s*[:=]", includePattern="source/**/*.js")
+
 search_functions(namePattern="sign|encrypt|token", pageSize=10)
 ```
 
@@ -278,8 +283,9 @@ search_functions(namePattern="sign|encrypt|token", pageSize=10)
 // 1. Right-click element → "Break on" → "attribute modifications"
 // 2. Or: Elements panel → Event Listeners → find click handler
 
-// MCP: Find event handlers
-search_script_content(pattern="addEventListener.*click|onclick", pageSize=5)
+// MCP: Save JS first, then search locally
+// rg "addEventListener.*click|onclick" source/*.js
+// grepSearch(query="addEventListener.*click|onclick", includePattern="source/**/*.js")
 ```
 
 ## 5. Hook Techniques (Intercept at Source)
@@ -395,15 +401,16 @@ encrypted = rsa_encrypt(data, public_key)
 ## Extracting Webpack Modules
 
 ```javascript
-// Step 1: Find the loader function (usually at file start)
-search_script_content(pattern="__webpack_require__|webpackJsonp", pageSize=3)
+// Step 1: Save bundle, then find loader function
+save_static_resource(reqid=XX, filePath="source/bundle.js")
+// rg "__webpack_require__|webpackJsonp" source/bundle.js | head -5
+// grepSearch(query="__webpack_require__|webpackJsonp", includePattern="source/**/*.js")
 
-// Step 2: Locate target module by ID
-// If code calls n(123), search for module 123's definition:
-search_script_content(pattern="123\\s*:\\s*function", pageSize=3)
+// Step 2: Locate target module by ID (if code calls n(123)):
+// rg "123\\s*:\\s*function" source/bundle.js
+// grepSearch(query="123\\s*:\\s*function", includePattern="source/**/*.js")
 
 // Step 3: Export to global for debugging
-// In console: window.myModule = __webpack_require__(123)
 evaluate_script(function="() => window.myModule = __webpack_require__(123)")
 ```
 
@@ -542,103 +549,13 @@ if (func.toString().indexOf('[native code]') === -1) { /* hooked */ }
 
 ---
 
-# 🔄 Simulation & Porting Strategies
+# 🔄 Porting Strategy
 
-## Strategy Selection
-
-```
-Complexity Assessment:
-├─ Simple (MD5/SHA/Base64 only)?
-│     └─ Python direct implementation
-│
-├─ Medium (standard AES/RSA with clear params)?
-│     └─ Python with pycryptodome
-│
-├─ Complex (custom algo, many dependencies)?
-│     └─ Node.js: Extract and run original JS
-│
-└─ Extreme (heavy env checks, fingerprinting)?
-      └─ RPC or Browser Automation (Playwright/Puppeteer)
-```
-
-## Python Implementation Template
-
-```python
-import hashlib
-import hmac
-import base64
-import json
-import time
-from Crypto.Cipher import AES
-from Crypto.Util.Padding import pad, unpad
-
-def generate_sign(params: dict, secret: str) -> str:
-    """
-    Reproduce JS sign generation
-    Verified against browser output: [VERIFIED]
-    """
-    # Sort params (if required by JS logic)
-    sorted_params = '&'.join(f'{k}={v}' for k, v in sorted(params.items()))
-    
-    # Add timestamp
-    ts = str(int(time.time() * 1000))
-    
-    # Concatenate and hash
-    raw = f"{sorted_params}&ts={ts}&key={secret}"
-    sign = hashlib.md5(raw.encode()).hexdigest()
-    
-    return sign
-```
-
-## Node.js Extraction Template
-
-```javascript
-// env_setup.js - Run before target code
-const { Window } = require('happy-dom');
-const win = new Window({ url: 'https://target.com' });
-
-global.window = win;
-global.document = win.document;
-global.navigator = win.navigator;
-global.location = win.location;
-
-// Load extracted encryption module
-const encrypt = require('./extracted_encrypt.js');
-
-// Export for Python via child_process or HTTP
-module.exports = { encrypt };
-```
-
-## RPC Approach (Last Resort)
-
-```python
-# When environment is too complex to replicate
-# Use browser as encryption service
-
-import websocket
-import json
-
-class BrowserRPC:
-    def __init__(self, ws_url):
-        self.ws = websocket.create_connection(ws_url)
-    
-    def call_encrypt(self, data):
-        self.ws.send(json.dumps({
-            'action': 'encrypt',
-            'data': data
-        }))
-        return json.loads(self.ws.recv())['result']
-
-# Browser side (injected via Tampermonkey):
-# const ws = new WebSocket('ws://localhost:8765');
-# ws.onmessage = (e) => {
-#     const req = JSON.parse(e.data);
-#     if (req.action === 'encrypt') {
-#         const result = window.encryptFunc(req.data);
-#         ws.send(JSON.stringify({ result }));
-#     }
-# };
-```
+| Complexity | Approach |
+|------------|----------|
+| Simple (MD5/SHA/Base64) | Python direct |
+| Medium (AES/RSA) | Python + pycryptodome |
+| Complex (env checks) | → `#[[file:skills/js_env_patching.md]]` |
 
 ---
 
@@ -656,18 +573,14 @@ class BrowserRPC:
 ## Quick Commands
 
 ```bash
-# Install AST tools
+# AST tools
 npm i @babel/parser @babel/traverse @babel/types @babel/generator
-
-# Install env simulation
-npm i happy-dom jsdom
 
 # Python crypto
 pip install pycryptodome requests
 
-# Beautify minified JS
+# Beautify
 npx js-beautify -f input.js -o output.js
-npx prettier --write input.js --parser babel
 ```
 
 ---
