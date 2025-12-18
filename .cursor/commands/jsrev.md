@@ -68,11 +68,11 @@ rg -c "_0x[a-f0-9]|\\\\x[0-9a-f]{2}" source/*.js 2>/dev/null || echo "0"
 
 ```javascript
 // 1. Capture string array AFTER init
-set_breakpoint(breakpointId="strings", urlRegex=".*target\\.js.*", lineNumber=XX,
+set_breakpoint(urlRegex=".*target\\.js.*", lineNumber=XX,
     condition='console.log("STRINGS:", JSON.stringify(_0xabc)), false')
 
 // 2. Sample decoder outputs
-set_breakpoint(breakpointId="decoder", urlRegex=".*target\\.js.*", lineNumber=YY,
+set_breakpoint(urlRegex=".*target\\.js.*", lineNumber=YY,
     condition='console.log("DECODE:", JSON.stringify({idx: arguments[0], result: _0xdef(arguments[0])})), false')
 
 // 3. Collect logs
@@ -114,11 +114,11 @@ list_console_messages(types=["log"])
 
 ```javascript
 // Log breakpoint (no pause)
-set_breakpoint(breakpointId="log1", urlRegex=".*target\\.js.*", lineNumber=123,
+set_breakpoint(urlRegex=".*target\\.js.*", lineNumber=123,
     condition='console.log("VAR:", someVar), false')
 
 // Pausing breakpoint
-set_breakpoint(breakpointId="bp1", urlRegex=".*target\\.js.*", lineNumber=123)
+set_breakpoint(urlRegex=".*target\\.js.*", lineNumber=123)
 ```
 
 ### ⚠️ MANDATORY: Breakpoint Cleanup
