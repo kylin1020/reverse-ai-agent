@@ -44,40 +44,79 @@ Is it JSVMP?
 7. **Test first**: Unclear param? Remove & replay. Works? Skip it.
 8. **Pagination**: Always use `pageSize` and search params to limit output
 
-## ⚠️ Output Limits (CRITICAL)
+## 🚨 Output Limits (CRITICAL - READ CAREFULLY)
 
-**Context overflow = session death. ALWAYS limit command output.**
+**Context overflow = session death. Minified JS = 1 line can be 500KB+!**
 
-| Tool/Command | Limit Method | Example |
-|--------------|--------------|---------|
-| `rg` (ripgrep) | `--max-count=N` or pipe `head` | `rg -n "keyword" file \| head -50` |
-| `rg` context | `-C2` max, avoid `-C5+` | `rg -n -C2 "func" file` |
-| `rg` preview | `-o` with char limit | `rg -o ".{0,30}keyword.{0,30}" file` |
-| `grep` | `-m N` or pipe `head` | `grep -n "x" file \| head -30` |
-| `cat` | ❌ NEVER on large files | Use `head -100` or `sed -n '1,100p'` |
-| `search_script_content` | `pageSize=10-20` | Never omit pageSize |
-| `search_functions` | `pageSize=10-20` | Never omit pageSize |
-| `list_network_requests` | `pageSize=30-50` | Never omit pageSize |
-| `get_scope_variables` | `pageSize=20`, `maxDepth=3` | Use `searchTerm` to filter |
+### The Minified JS Problem
 
-**Safe rg patterns:**
+**LINE LIMITS ARE USELESS FOR MINIFIED CODE!** A single line in `bundle.min.js` can contain the ENTIRE application. You MUST limit by CHARACTERS, not lines.
+
+### Mandatory Limits
+
+| Tool/Command | REQUIRED Limit | Why |
+|--------------|----------------|-----|
+| `rg` on minified JS | `cut -c1-500` or `-o ".{0,50}..."` | 1 line = entire file |
+| `rg` context `-C` | **MAX `-C2`**, prefer `-C0` | Each context line = huge |
+| `grep` on minified | `cut -c1-500` | Same problem |
+| `sed` range | Max 50 lines on normal, **5 lines on minified** | 5 minified lines = 50KB+ |
+| `head`/`tail` | Useless alone on minified | Must combine with `cut` |
+
+### Safe Patterns (MEMORIZE THESE)
+
 ```bash
-# ✅ Find definition with limited output
-rg -n --max-count=5 "function\s+targetFunc" source/
+# ✅ SAFE: Character-limited search on minified JS
+rg -n -o ".{0,60}keyword.{0,60}" bundle.min.js | head -20
 
-# ✅ Preview in minified file (char-limited context)
-rg -o ".{0,50}keyword.{0,50}" source/bundle.js | head -20
+# ✅ SAFE: Get line:column only, no content
+rg -n --column "keyword" bundle.min.js | cut -d: -f1-3 | head -20
 
-# ✅ Get line numbers only, then slice
-rg -n "keyword" file | head -10  # Get line numbers
-sed -n '100,150p' file           # Read specific range
+# ✅ SAFE: Slice with character limit
+sed -n '1p' bundle.min.js | cut -c1000-2000
 
-# ❌ NEVER: unlimited output
-rg "keyword" source/             # Could dump entire file
-rg -C10 "keyword" source/        # 10 lines context × many matches = overflow
+# ✅ SAFE: Count matches first, then decide
+rg -c "keyword" bundle.min.js  # Returns count only
+
+# ✅ SAFE: Extract specific column range from minified line
+sed -n '1p' file.min.js | cut -c${START}-${END}
 ```
 
-**Recovery if output too long**: Stop, use more specific pattern or smaller `pageSize`.
+### DANGEROUS Patterns (NEVER USE)
+
+```bash
+# ❌ FATAL: Full line output on minified
+rg -n "keyword" bundle.min.js              # 1 match = 500KB output!
+
+# ❌ FATAL: Context on minified
+rg -C2 "keyword" bundle.min.js             # 3 lines = 1.5MB!
+
+# ❌ FATAL: sed range without char limit
+sed -n '1,5p' bundle.min.js                # 5 lines = 2.5MB!
+
+# ❌ FATAL: head without cut
+head -10 bundle.min.js                     # 10 lines = 5MB!
+
+# ❌ DANGEROUS: Large context even on normal files
+rg -C10 "keyword" source/                  # 10 lines × many matches = overflow
+```
+
+### MCP Tool Limits
+
+| Tool | REQUIRED Parameters | Max Values |
+|------|---------------------|------------|
+| `search_script_content` | `pageSize`, `maxTotalChars` | pageSize≤10, maxTotalChars≤500 |
+| `search_functions` | `pageSize`, `maxCodeLines` | pageSize≤10, maxCodeLines≤15 |
+| `list_network_requests` | `pageSize` | pageSize≤30 |
+| `get_scope_variables` | `pageSize`, `maxDepth` | pageSize≤15, maxDepth≤3 |
+| `list_console_messages` | `pageSize` | pageSize≤20 |
+
+### Recovery Protocol
+
+If output is too long:
+1. **STOP immediately** - don't try to process it
+2. Add stricter limits: smaller `pageSize`, add `cut -c1-300`, use `-o` with shorter patterns
+3. Use `rg -c` to count matches first
+4. Consider: do you really need this data, or can debugger give it directly?
 
 ## 🛑 Human Interaction = STOP
 
@@ -202,12 +241,12 @@ list_console_messages(types=["log"])
 ## Network Tools
 
 ```
-search_network_requests(urlPattern="api", resourceTypes=["xhr","fetch"])
+search_network_requests(urlPattern="api", resourceTypes=["xhr","fetch"], pageSize=20)
 search_network_requests(searchContent="sign", method="POST", pageSize=20,
                          statusCodeMin=200, statusCodeMax=299, 
                          includePreservedRequests=true)
 
-list_network_requests(pageSize=50, pageIdx=0, resourceTypes=["xhr","fetch"],
+list_network_requests(pageSize=30, pageIdx=0, resourceTypes=["xhr","fetch"],
                        includePreservedRequests=true)
 
 get_network_request(reqid=123)  // includes call stack!
@@ -217,21 +256,20 @@ save_network_request(reqid=123, filePath="raw/req.http",
 save_static_resource(reqid=45, filePath="source/")
 ```
 
-## JS Analysis Tools (NEW)
+## JS Analysis Tools
 
 ```
 // Analyze function call graph (upstream callers and downstream callees)
 analyze_call_graph(functionName="genSign", upstreamDepth=3, downstreamDepth=3,
                    urlPattern=".*core\\.js.*")
 
-// Search for code patterns in scripts
+// Search for code patterns in scripts - ALWAYS set limits!
 search_script_content(pattern="addEventListener", isRegex=false, 
-                      urlPattern=".*app\\.js.*", pageSize=20, pageIdx=0)
-search_script_content(pattern="function\\s+\\w+\\(", isRegex=true)
+                      urlPattern=".*app\\.js.*", pageSize=10, maxTotalChars=500)
 
-// Search for function definitions
+// Search for function definitions - ALWAYS set limits!
 search_functions(namePattern="handleClick", urlPattern=".*main\\.js.*",
-                fuzzy=true, pageSize=20, pageIdx=0)
+                fuzzy=true, pageSize=10, maxCodeLines=15)
 ```
 
 ## Page & Console Tools
@@ -241,7 +279,6 @@ list_pages() | select_page(pageIdx=0) | navigate_page(type="url"|"reload", url="
 
 list_console_messages(types=["log"], pageSize=20)
 get_console_message(msgid=123)
-inject_console_log(ruleId="log1", urlPattern="app.js", targetCode="function foo() {", logMessage="foo called")
 ```
 
 ## Execution Flow
@@ -255,12 +292,12 @@ inject_console_log(ruleId="log1", urlPattern="app.js", targetCode="function foo(
    - Trace chains: `/init→deviceId` → `/token→sessionToken` → `/api→sign`
 4. **Locate JS**:
    - A) Stack trace: `get_network_request(reqid)` → file:line entry point
-   - B) **JS Analysis**: `search_functions(namePattern="genSign")` → `analyze_call_graph(functionName="genSign")` → locate entry point
+   - B) **JS Analysis**: `search_functions(namePattern="genSign", pageSize=10)` → `analyze_call_graph()` → locate entry point
    - C) **Debugger**: `set_breakpoint` → `step_over/into` → `get_scope_variables` (PRIMARY)
-   - D) **Search scripts**: `search_script_content(pattern="sign", urlPattern=".*core\\.js.*")` for code patterns
-   - E) Grep: max 3 rounds, `head_limit=50`
+   - D) **Search scripts**: `search_script_content(pattern="sign", pageSize=10, maxTotalChars=500)` for code patterns
+   - E) **Grep (char-limited!)**: `rg -o ".{0,50}keyword.{0,50}" file | head -20`
    - F) **Obfuscated?** → deobfuscate first → then debug
-   - G) **Search/Grep**: Use `rg` for keyword definitions (load `#[[file:skills/js_extraction.md]]` if file is large/minified). **Usage**: `rg -n "keyword" source/` to find line numbers. **Preview**: `rg -o ".{0,50}keyword.{0,50}"` to see context in minified files. **Slice**: `sed -n 'start,endp' file > new.js` for rough cuts. **Refine**: Use AST script or manual brace counting to get executable code.
+   - G) **Extract code**: Load `#[[file:skills/js_extraction.md]]` for safe slicing techniques
 5. **Verify**: Browser value → Python same inputs → compare → live test
 
 ## Inputs
@@ -328,8 +365,11 @@ saveDir/
 ## Forbidden
 
 - ❌ Read large JS in full
+- ❌ `rg`/`grep` on minified JS without character limits
+- ❌ `sed` ranges > 5 lines on minified files
+- ❌ Omit `pageSize`/`maxTotalChars` on MCP search tools
 - ❌ Claims without evidence markers
-- ❌ **Struggle with obfuscated code without trying AST deobfuscation**
+- ❌ Struggle with obfuscated code without trying AST deobfuscation
 - ❌ Proceed with "no matching scripts loaded" breakpoints
 - ❌ Use evaluate_script for hooks/logging/intercepting
 - ❌ Output full long strings (truncate even in thinking!)
