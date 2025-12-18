@@ -8,7 +8,7 @@ JS Reverse Engineering: browser request → JS code → algorithm → Python rep
 
 ---
 
-## 🚨 P0: Obfuscation Gate (MANDATORY FIRST STEP)
+## 🚨 P0: Obfuscation Gate (MANDATORY - NO EXCEPTIONS)
 
 **BEFORE any JS analysis, run this check:**
 
@@ -19,8 +19,98 @@ rg -c "_0x[a-f0-9]|\\\\x[0-9a-f]{2}" source/*.js 2>/dev/null || echo "0"
 
 | Result | Action |
 |--------|--------|
-| Count > 0 | **STOP** → Load `#[[file:skills/js_deobfuscation.md]]` → AST transform → save `*_clean.js` → THEN continue |
+| Count > 0 | **MANDATORY**: Execute P0 Deobfuscation Protocol below |
 | Count = 0 | Proceed to P1 |
+
+### ⛔ FORBIDDEN EXCUSES (Will Be Rejected)
+
+These are **NOT valid reasons** to skip deobfuscation:
+
+| ❌ Invalid Excuse | ✅ Correct Action |
+|-------------------|-------------------|
+| "Code is too complex" | Use hybrid approach: browser + AST |
+| "It's a core SDK, hard to deobfuscate" | SDKs are the PRIMARY target - deobfuscate them |
+| "Let me use debugger directly instead" | Debugger on obfuscated code = wasted effort |
+| "Deobfuscation might break the code" | That's why we verify after each transform |
+| "I'll just trace the values" | Tracing `_0x4a2f['push'](_0x3b1c)` is useless |
+
+### P0 Deobfuscation Protocol (EXECUTE THIS)
+
+**Step 1: Load Skill**
+```
+Load #[[file:skills/js_deobfuscation.md]]
+```
+
+**Step 2: Choose Strategy Based on Complexity**
+
+```
+Obfuscation Level?
+├─ Light (just hex vars, no string array)
+│     └─ AST-only: §3 transforms → save *_clean.js
+│
+├─ Medium (string array + decoder function)
+│     └─ Hybrid: Browser capture (§2.2) → AST replace (§3.3) → save *_clean.js
+│
+└─ Heavy (RC4/XOR decoder, shuffler, anti-debug)
+      └─ Full Hybrid Protocol (see below)
+```
+
+**Step 3: Full Hybrid Protocol (For Heavy Obfuscation)**
+
+```javascript
+// 1. Bypass anti-debug FIRST (if present)
+//    - Check for `debugger` statements, timing checks
+//    - Apply §1 bypasses before any breakpoints
+
+// 2. Capture string array AFTER init (in browser)
+set_breakpoint(
+    breakpointId="capture_strings",
+    urlRegex=".*target\\.js.*",
+    lineNumber=XX,  // AFTER shuffler IIFE completes
+    condition='console.log("STRINGS:", JSON.stringify(window._0xabc || _0xabc)), false'
+)
+
+// 3. Capture decoder function behavior (sample 5-10 indices)
+set_breakpoint(
+    breakpointId="sample_decoder",
+    urlRegex=".*target\\.js.*",
+    lineNumber=YY,
+    condition='console.log("DECODE:", JSON.stringify({idx: arguments[0], result: _0xdef(arguments[0])})), false'
+)
+
+// 4. Trigger page load/action → collect console logs
+list_console_messages(types=["log"])
+
+// 5. Build decoder map from browser output
+// 6. Apply AST transforms with captured data
+// 7. Save to source/<name>_clean.js
+// 8. Verify: key values in clean code == browser values
+```
+
+**Step 4: Verification (MANDATORY)**
+
+After deobfuscation, verify the clean code is equivalent:
+```javascript
+// Set breakpoint in ORIGINAL obfuscated code
+set_breakpoint(breakpointId="verify_orig", urlRegex=".*orig\\.js.*", lineNumber=XX,
+    condition='console.log("ORIG:", someValue), false')
+
+// Compare with manual evaluation of clean code
+// Values MUST match before proceeding
+```
+
+**Step 5: Continue Analysis on Clean Code**
+
+Only after `*_clean.js` exists and is verified, proceed to P1.
+
+### Why This Matters
+
+| Analyzing Obfuscated Code | Analyzing Clean Code |
+|---------------------------|----------------------|
+| `_0x4a2f['push'](_0x3b1c[_0x2d8e(0x1a3)])` | `stack.push(config['key'])` |
+| Breakpoint shows: `_0x2d8e(0x1a3)` = ??? | Breakpoint shows: `config['key']` = "secret" |
+| Call graph: `_0x1234` → `_0x5678` → ??? | Call graph: `encrypt` → `hmac` → `base64` |
+| 10x more breakpoints, 10x more confusion | Direct path to algorithm |
 
 **NEVER**: Grep/debug/analyze obfuscated code directly. Deobfuscate FIRST.
 
@@ -112,21 +202,108 @@ resume_execution()
 
 | Pattern | Action |
 |---------|--------|
-| `_0x` vars, hex strings, decoder arrays | **P0**: Deobfuscate first |
-| `while(true){switch}` + stack ops | JSVMP → `#[[file:skills/jsvmp_analysis.md]]` |
+| `_0x` vars, hex strings, decoder arrays | **P0 MANDATORY**: Deobfuscate first (NO EXCEPTIONS) |
+| `while(true){switch}` + stack ops | JSVMP → `#[[file:skills/jsvmp_analysis.md]]` (still deobfuscate surrounding code) |
 | `ReferenceError: window/document` | Env patch → `#[[file:skills/js_env_patching.md]]` |
-| Anti-debug (`debugger` loops) | Deobfuscation skill §1 |
+| Anti-debug (`debugger` loops) | Deobfuscation skill §1 → then continue deobfuscation |
+| "SDK code", "core library", "complex" | **NOT an excuse** → These are PRIMARY targets, deobfuscate them |
+
+### Obfuscation Complexity Indicators
+
+| Indicator | Level | Approach |
+|-----------|-------|----------|
+| Only `_0x` variable names | Light | AST rename only |
+| `_0x` + hex literals (`0x1a2b`) | Light | AST: hex restore + rename |
+| String array + simple accessor | Medium | Browser capture → AST replace |
+| String array + shuffler IIFE | Medium-Heavy | Browser capture AFTER init → AST |
+| RC4/XOR decoder function | Heavy | Analyze decoder → replicate → AST |
+| Multiple decoder functions | Heavy | Map each decoder → AST |
+| Anti-debug + all above | Heavy | §1 bypass → then full protocol |
+
+---
+
+## Hybrid Deobfuscation Workflow (Browser + AST)
+
+**This is the EXPECTED approach for any non-trivial obfuscation.**
+
+### Phase 1: Browser Intelligence Gathering
+
+```javascript
+// 1. Identify string array and decoder function names
+search_script_content(pattern="_0x[a-f0-9]+\\s*=\\s*\\[", pageSize=5, maxTotalChars=300)
+
+// 2. Find where array is initialized (look for shuffler IIFE)
+search_script_content(pattern="while.*--.*push.*shift", pageSize=3, maxTotalChars=300)
+
+// 3. Set logging breakpoint AFTER initialization
+set_breakpoint(
+    breakpointId="array_state",
+    urlRegex=".*target\\.js.*",
+    lineNumber=XX,  // Line AFTER shuffler
+    condition='console.log("ARRAY_STATE:", JSON.stringify({
+        name: "_0xabc",
+        length: _0xabc.length,
+        sample: _0xabc.slice(0, 10)
+    })), false'
+)
+
+// 4. Sample decoder outputs (pick 5-10 random indices)
+set_breakpoint(
+    breakpointId="decoder_sample",
+    urlRegex=".*target\\.js.*",
+    lineNumber=YY,
+    condition='console.log("DECODER:", JSON.stringify({
+        "0x100": _0xdef(0x100),
+        "0x150": _0xdef(0x150),
+        "0x200": _0xdef(0x200)
+    })), false'
+)
+
+// 5. Trigger and collect
+// → User action or page reload
+list_console_messages(types=["log"])
+```
+
+### Phase 2: Local AST Transformation
+
+```javascript
+// With browser-captured data, build AST transforms:
+
+// 1. String replacement (using captured decoder map)
+const decoderMap = { "0x100": "push", "0x150": "length", ... };  // From browser
+
+CallExpression(path) {
+    if (isDecoderCall(path, "_0xdef")) {
+        const idx = getArgValue(path);
+        if (decoderMap[idx]) {
+            path.replaceWith(t.stringLiteral(decoderMap[idx]));
+        }
+    }
+}
+
+// 2. Apply standard transforms (hex restore, property cleanup, etc.)
+// 3. Save to source/<name>_clean.js
+```
+
+### Phase 3: Verification
+
+```javascript
+// Compare key values between original and clean code
+// MUST match before proceeding to algorithm analysis
+```
 
 ---
 
 ## Core Rules
 
-1. **P0 Gate**: Always check obfuscation before analysis
-2. **Log findings**: Update `analysis_notes.md` immediately
-3. **Evidence markers**: `[UNVERIFIED]` / `[VERIFIED]` / `[REPRODUCED]`
-4. **Truncate blobs**: Base64/hex → first 20 chars + `...` + last 10
-5. **Chinese output**: Comments in Python, notes in Chinese
-6. **No meta talk**: Execute directly, don't announce
+1. **P0 Gate**: Always check obfuscation before analysis - NO EXCEPTIONS
+2. **Hybrid First**: For any non-trivial obfuscation, use browser+AST approach
+3. **No Excuses**: "Complex", "SDK", "hard" are not valid reasons to skip deobfuscation
+4. **Log findings**: Update `analysis_notes.md` immediately
+5. **Evidence markers**: `[UNVERIFIED]` / `[VERIFIED]` / `[REPRODUCED]`
+6. **Truncate blobs**: Base64/hex → first 20 chars + `...` + last 10
+7. **Chinese output**: Comments in Python, notes in Chinese
+8. **No meta talk**: Execute directly, don't announce
 
 ---
 
