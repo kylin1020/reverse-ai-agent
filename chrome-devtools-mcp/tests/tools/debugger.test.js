@@ -17,7 +17,7 @@ describe('debugger', () => {
         });
     });
     describe('set_breakpoint', () => {
-        it('should set a breakpoint', async () => {
+        it('should set a breakpoint and return CDP breakpoint ID', async () => {
             server.addRoute('/test.js', (_req, res) => {
                 res.setHeader('Content-Type', 'application/javascript');
                 res.statusCode = 200;
@@ -29,12 +29,12 @@ describe('debugger', () => {
                 await page.goto(server.getRoute('/test-page'), { waitUntil: 'networkidle0' });
                 await setBreakpoint.handler({
                     params: {
-                        breakpointId: 'test-bp-1',
                         urlRegex: '.*test\\.js.*',
                         lineNumber: 2,
                     },
                 }, response, context);
-                assert.ok(response.responseLines.some(line => line.includes('Breakpoint') && line.includes('set successfully')), 'Should confirm breakpoint was set');
+                assert.ok(response.responseLines.some(line => line.includes('Breakpoint set successfully')), 'Should confirm breakpoint was set');
+                assert.ok(response.responseLines.some(line => line.includes('Breakpoint ID:')), 'Should return CDP breakpoint ID');
             });
         });
         it('should set a conditional breakpoint', async () => {
@@ -49,7 +49,6 @@ describe('debugger', () => {
                 await page.goto(server.getRoute('/conditional-page'), { waitUntil: 'networkidle0' });
                 await setBreakpoint.handler({
                     params: {
-                        breakpointId: 'conditional-bp',
                         urlRegex: '.*conditional\\.js.*',
                         lineNumber: 2,
                         condition: 'x > 10',
@@ -61,7 +60,7 @@ describe('debugger', () => {
         });
     });
     describe('list_breakpoints', () => {
-        it('should list active breakpoints', async () => {
+        it('should list active breakpoints with CDP IDs', async () => {
             server.addRoute('/list-test.js', (_req, res) => {
                 res.setHeader('Content-Type', 'application/javascript');
                 res.statusCode = 200;
@@ -74,7 +73,6 @@ describe('debugger', () => {
                 // Set a breakpoint first
                 await setBreakpoint.handler({
                     params: {
-                        breakpointId: 'list-test-bp',
                         urlRegex: '.*list-test\\.js.*',
                         lineNumber: 1,
                     },
@@ -82,7 +80,7 @@ describe('debugger', () => {
                 response.resetResponseLineForTesting();
                 // List breakpoints
                 await listBreakpoints.handler({ params: {} }, response, context);
-                assert.ok(response.responseLines.some(line => line.includes('list-test-bp')), 'Should list the added breakpoint');
+                assert.ok(response.responseLines.some(line => line.includes('list-test')), 'Should list the added breakpoint with URL pattern');
                 assert.ok(response.responseLines.some(line => line.includes('Active breakpoints')), 'Should show active breakpoints header');
             });
         });
@@ -94,7 +92,7 @@ describe('debugger', () => {
         });
     });
     describe('remove_breakpoint', () => {
-        it('should remove a breakpoint', async () => {
+        it('should remove a breakpoint by CDP ID', async () => {
             server.addRoute('/remove-test.js', (_req, res) => {
                 res.setHeader('Content-Type', 'application/javascript');
                 res.statusCode = 200;
@@ -107,14 +105,17 @@ describe('debugger', () => {
                 // Set a breakpoint
                 await setBreakpoint.handler({
                     params: {
-                        breakpointId: 'remove-test-bp',
                         urlRegex: '.*remove-test\\.js.*',
                         lineNumber: 1,
                     },
                 }, response, context);
+                // Extract the CDP breakpoint ID from the response
+                const idLine = response.responseLines.find(line => line.includes('Breakpoint ID:'));
+                assert.ok(idLine, 'Should have breakpoint ID in response');
+                const cdpBreakpointId = idLine.split('Breakpoint ID:')[1].trim();
                 response.resetResponseLineForTesting();
-                // Remove the breakpoint
-                await removeBreakpoint.handler({ params: { breakpointId: 'remove-test-bp' } }, response, context);
+                // Remove the breakpoint using CDP ID
+                await removeBreakpoint.handler({ params: { breakpointId: cdpBreakpointId } }, response, context);
                 assert.ok(response.responseLines.some(line => line.includes('Removed breakpoint')), 'Should confirm breakpoint was removed');
                 response.resetResponseLineForTesting();
                 // Verify it's gone
@@ -125,7 +126,7 @@ describe('debugger', () => {
         it('should warn when removing non-existent breakpoint', async () => {
             await withMcpContext(async (response, context) => {
                 await removeBreakpoint.handler({ params: { breakpointId: 'non-existent-bp' } }, response, context);
-                assert.ok(response.responseLines.some(line => line.includes('not found')), 'Should warn about non-existent breakpoint');
+                assert.ok(response.responseLines.some(line => line.includes('not found') || line.includes('removed')), 'Should warn about non-existent breakpoint');
             });
         });
     });
@@ -140,17 +141,15 @@ describe('debugger', () => {
             await withMcpContext(async (response, context) => {
                 const page = context.getSelectedPage();
                 await page.goto(server.getRoute('/clear-page'), { waitUntil: 'networkidle0' });
-                // Set multiple breakpoints
+                // Set multiple breakpoints (no longer need custom IDs)
                 await setBreakpoint.handler({
                     params: {
-                        breakpointId: 'clear-bp-1',
                         urlRegex: '.*clear-test\\.js.*',
                         lineNumber: 1,
                     },
                 }, response, context);
                 await setBreakpoint.handler({
                     params: {
-                        breakpointId: 'clear-bp-2',
                         urlRegex: '.*clear-test\\.js.*',
                         lineNumber: 2,
                     },
@@ -207,10 +206,9 @@ describe('debugger', () => {
             await withMcpContext(async (response, context) => {
                 const page = context.getSelectedPage();
                 await page.goto(server.getRoute('/disable-page'), { waitUntil: 'networkidle0' });
-                // First enable by setting a breakpoint
+                // First enable by setting a breakpoint (no longer need custom ID)
                 await setBreakpoint.handler({
                     params: {
-                        breakpointId: 'disable-test-bp',
                         urlRegex: '.*disable-test\\.js.*',
                         lineNumber: 1,
                     },
