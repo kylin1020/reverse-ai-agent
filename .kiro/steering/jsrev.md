@@ -8,216 +8,90 @@ JS Reverse Engineering: browser request → JS code → algorithm → Python rep
 
 ---
 
-# ⛔ RULE ZERO: READABILITY GATE (HIGHEST PRIORITY)
+## RULE ZERO: READABILITY GATE
 
-> **PRIMARY SKILL**: #[[file:skills/js_deobfuscation.md]] — Load this FIRST when obfuscation detected!
+> Load `#[[file:skills/js_deobfuscation.md]]` when obfuscation detected!
 
-```
-❶ P-1: Minification? → Beautify FIRST(read js_deobfuscation.md)
-❷ P0:  Obfuscation?  → Deobfuscate FIRST (use browser debug to capture runtime values)
-❸ ONLY THEN: Search / Debug / Analyze
-```
+1. P-1: Minification? → Beautify FIRST
+2. P0: Obfuscation? → Deobfuscate FIRST (browser debug + AST)
+3. ONLY THEN: Search / Debug / Analyze
 
-**Browser debugging serves deobfuscation** — capture string arrays, decoder outputs, then apply AST transforms.
-
-**VIOLATION = SESSION FAILURE. NO EXCEPTIONS. NO EXCUSES.**
+**VIOLATION = SESSION FAILURE.**
 
 ---
 
-## 🚨 P-1: Minification Gate (MANDATORY BEFORE ANY SEARCH)
+## P-1: Minification Gate
 
-**BEFORE using rg/grep/search on ANY JS file, check if it's minified:**
-
+Check before any search:
 ```bash
-# Check line count and file size
 wc -l source/*.js 2>/dev/null | head -20
-# If any file shows: "1 filename.js" or "2 filename.js" with size > 50KB → MINIFIED
-
-# Quick minification detection (lines < 10 AND size > 50KB = minified)
-for f in source/*.js; do
-  [ -f "$f" ] && lines=$(wc -l < "$f") && size=$(wc -c < "$f") && \
-  [ "$lines" -lt 10 ] && [ "$size" -gt 50000 ] && echo "MINIFIED: $f ($lines lines, $size bytes)"
-done
+# lines < 10 AND size > 50KB = MINIFIED
 ```
 
 | Result | Action |
 |--------|--------|
-| MINIFIED detected | **MANDATORY**: Beautify FIRST before any search/analysis |
-| Normal multi-line | Proceed to P0 |
+| MINIFIED | Beautify first: `npx js-beautify -f in.js -o out_formatted.js` |
+| Normal | Proceed to P0 |
 
-### P-1 Beautification Protocol (EXECUTE THIS)
-
-**For minified files, beautify BEFORE any search operations:**
-
+**FORBIDDEN on minified files:**
 ```bash
-# Option 1: js-beautify (recommended)
-npx js-beautify -f source/minified.js -o source/minified_formatted.js
-
-# Option 2: prettier
-npx prettier --write source/minified.js --parser babel
-
-# Option 3: Quick inline (if tools unavailable)
-# Use browser DevTools → Sources → Pretty Print → Copy
+rg "keyword" minified.js      # 1 match = 500KB!
 ```
 
-**After beautification:**
-- All subsequent analysis uses `*_formatted.js` or the beautified version
-- Original minified file kept for reference only
-- Now safe to proceed to P0 Obfuscation Gate
-
-### ⛔ FORBIDDEN (Context Overflow = Session Death)
-
+**SAFE alternatives:**
 ```bash
-# ❌ NEVER run these on minified files:
-rg "keyword" minified.js           # 1 match = 500KB output!
-rg -C2 "keyword" minified.js       # Context lines = 1.5MB!
-grepSearch on minified files       # Same problem
-search_script_content without beautifying first
-
-# ❌ NEVER use line limits on minified files (USELESS):
-rg "keyword" minified.js | head -5  # Still 500KB per line!
-```
-
-### ✅ SAFE Operations on Minified Files (If Beautification Not Possible)
-
-```bash
-# Character-limited extraction only:
 rg -o ".{0,60}keyword.{0,60}" file.js | head -20
-rg -n --column "keyword" file.js | cut -d: -f1-3 | head -20
-sed -n '1p' file.min.js | cut -c1000-2000
-
-# MCP tools with strict limits:
-search_script_content(pattern="...", pageSize=3, maxTotalChars=300)
-search_functions(namePattern="...", pageSize=5, maxCodeLines=10)
 ```
+
+MCP limits: `search_script_content(pageSize=3, maxTotalChars=300)`
 
 ---
 
-## 🚨 P0: Obfuscation Gate (MANDATORY - NO EXCEPTIONS)
-
-**BEFORE any JS analysis, run this check:**
+## P0: Obfuscation Gate
 
 ```bash
-# Quick detection (run on beautified files if P-1 was triggered)
 rg -c "_0x[a-f0-9]|\\\\x[0-9a-f]{2}" source/*.js 2>/dev/null || echo "0"
 ```
 
 | Result | Action |
 |--------|--------|
-| Count > 0 | **MANDATORY**: Execute P0 Deobfuscation Protocol below |
-| Count = 0 | Proceed to P1 |
+| Count > 0 | Deobfuscate first |
+| Count = 0 | Proceed |
 
-### ⛔ FORBIDDEN EXCUSES (Will Be Rejected)
+**Invalid excuses**: "too complex", "SDK code", "might break" → Deobfuscate anyway.
 
-These are **NOT valid reasons** to skip deobfuscation:
+### Deobfuscation Strategy
 
-| ❌ Invalid Excuse | ✅ Correct Action |
-|-------------------|-------------------|
-| "Code is too complex" | Use hybrid approach: browser + AST |
-| "It's a core SDK, hard to deobfuscate" | SDKs are the PRIMARY target - deobfuscate them |
-| "Let me use debugger directly instead" | Debugger on obfuscated code = wasted effort |
-| "Deobfuscation might break the code" | That's why we verify after each transform |
-| "I'll just trace the values" | Tracing `_0x4a2f['push'](_0x3b1c)` is useless |
+| Level | Approach |
+|-------|----------|
+| Light (`_0x` vars only) | AST transforms |
+| Medium (string array + decoder) | Browser capture → AST replace |
+| Heavy (RC4/shuffler/anti-debug) | Full hybrid protocol |
 
-### P0 Deobfuscation Protocol (EXECUTE THIS)
-
-**Step 1: Load Skill**
-```
-Load #[[file:skills/js_deobfuscation.md]]
-```
-
-**Step 2: Choose Strategy Based on Complexity**
-
-```
-Obfuscation Level?
-├─ Light (just hex vars, no string array)
-│     └─ AST-only: §3 transforms → save *_clean.js
-│
-├─ Medium (string array + decoder function)
-│     └─ Hybrid: Browser capture (§2.2) → AST replace (§3.3) → save *_clean.js
-│
-└─ Heavy (RC4/XOR decoder, shuffler, anti-debug)
-      └─ Full Hybrid Protocol (see below)
-```
-
-**Step 3: Full Hybrid Protocol (For Heavy Obfuscation)**
+### Hybrid Protocol (Heavy)
 
 ```javascript
-// 1. Bypass anti-debug FIRST (if present)
-//    - Check for `debugger` statements, timing checks
-//    - Apply §1 bypasses before any breakpoints
+// 1. Capture string array AFTER init
+set_breakpoint(breakpointId="strings", urlRegex=".*target\\.js.*", lineNumber=XX,
+    condition='console.log("STRINGS:", JSON.stringify(_0xabc)), false')
 
-// 2. Capture string array AFTER init (in browser)
-set_breakpoint(
-    breakpointId="capture_strings",
-    urlRegex=".*target\\.js.*",
-    lineNumber=XX,  // AFTER shuffler IIFE completes
-    condition='console.log("STRINGS:", JSON.stringify(window._0xabc || _0xabc)), false'
-)
+// 2. Sample decoder outputs
+set_breakpoint(breakpointId="decoder", urlRegex=".*target\\.js.*", lineNumber=YY,
+    condition='console.log("DECODE:", JSON.stringify({idx: arguments[0], result: _0xdef(arguments[0])})), false')
 
-// 3. Capture decoder function behavior (sample 5-10 indices)
-set_breakpoint(
-    breakpointId="sample_decoder",
-    urlRegex=".*target\\.js.*",
-    lineNumber=YY,
-    condition='console.log("DECODE:", JSON.stringify({idx: arguments[0], result: _0xdef(arguments[0])})), false'
-)
-
-// 4. Trigger page load/action → collect console logs
+// 3. Collect logs
 list_console_messages(types=["log"])
 
-// 5. Build decoder map from browser output
-// 6. Apply AST transforms with captured data
-// 7. Save to source/<name>_clean.js
-// 8. Verify: key values in clean code == browser values
+// 4. Build decoder map → AST transform → save *_clean.js
+// 5. Verify: browser values == clean code values
 ```
-
-**Step 4: Verification (MANDATORY)**
-
-After deobfuscation, verify the clean code is equivalent:
-```javascript
-// Set breakpoint in ORIGINAL obfuscated code
-set_breakpoint(breakpointId="verify_orig", urlRegex=".*orig\\.js.*", lineNumber=XX,
-    condition='console.log("ORIG:", someValue), false')
-
-// Compare with manual evaluation of clean code
-// Values MUST match before proceeding
-```
-
-**Step 5: Continue Analysis on Clean Code**
-
-Only after `*_clean.js` exists and is verified, proceed to P1.
-
-### Why This Matters
-
-| Analyzing Obfuscated Code | Analyzing Clean Code |
-|---------------------------|----------------------|
-| `_0x4a2f['push'](_0x3b1c[_0x2d8e(0x1a3)])` | `stack.push(config['key'])` |
-| Breakpoint shows: `_0x2d8e(0x1a3)` = ??? | Breakpoint shows: `config['key']` = "secret" |
-| Call graph: `_0x1234` → `_0x5678` → ??? | Call graph: `encrypt` → `hmac` → `base64` |
-| 10x more breakpoints, 10x more confusion | Direct path to algorithm |
-
-**NEVER**: Grep/debug/analyze obfuscated code directly. Deobfuscate FIRST.
 
 ---
 
-## 🚨 P1: Output Limits (Context Overflow = Session Death)
+## P1: Output Limits
 
-**Minified JS = 1 line can be 500KB+. LINE LIMITS ARE USELESS!**
-
-```bash
-# ✅ SAFE: Character-limited
-rg -o ".{0,60}keyword.{0,60}" file.js | head -20
-rg -n --column "keyword" file.js | cut -d: -f1-3 | head -20
-sed -n '1p' file.min.js | cut -c1000-2000
-
-# ❌ FATAL: Full line output
-rg "keyword" bundle.min.js        # 1 match = 500KB!
-rg -C2 "keyword" bundle.min.js    # 3 lines = 1.5MB!
-```
-
-| MCP Tool | Required Limits |
-|----------|-----------------|
+| MCP Tool | Limits |
+|----------|--------|
 | `search_script_content` | `pageSize≤10`, `maxTotalChars≤500` |
 | `search_functions` | `pageSize≤10`, `maxCodeLines≤15` |
 | `get_scope_variables` | `pageSize≤15`, `maxDepth≤3` |
@@ -226,48 +100,30 @@ rg -C2 "keyword" bundle.min.js    # 3 lines = 1.5MB!
 
 ## Execution Flow
 
-**Loop**: Capture → Minification Check → Obfuscation Check → Identify → Locate → Verify → Reproduce
-
-1. **Capture**: `list_network_requests(resourceTypes=["xhr","fetch"])` → `save_static_resource` to `source/`
-
-2. **🚨 Minification Gate (P-1)**: Check line count. If minified → beautify → continue with formatted code.
-
-3. **🚨 Obfuscation Gate (P0)**: Run obfuscation check. If obfuscated → deobfuscate → continue with clean code.
-
-4. **Identify Params**: Find `sign|token|nonce|ts|enc|deviceId` in request
-   - Test necessity: remove param → replay → works? skip it
-   - Trace chains: `init→deviceId→token→sign`
-
-5. **Locate JS** (on clean/formatted code only):
-   - A) `get_network_request(reqid)` → stack trace → file:line
-   - B) `search_functions(namePattern="sign", pageSize=10)` → `analyze_call_graph()`
-   - C) `set_breakpoint` → `step_over/into` → `get_scope_variables`
-   - D) `search_script_content(pattern="encrypt", pageSize=10, maxTotalChars=500)`
-
-6. **Verify**: Browser value == Python output → live test
+1. **Capture**: `list_network_requests(resourceTypes=["xhr","fetch"])` → `save_static_resource`
+2. **P-1 Gate**: Minified? → beautify
+3. **P0 Gate**: Obfuscated? → deobfuscate
+4. **Identify**: Find `sign|token|nonce|ts|enc` params
+5. **Locate** (clean code only):
+   - `get_network_request(reqid)` → stack trace
+   - `search_functions(namePattern="sign", pageSize=10)`
+   - `set_breakpoint` → `step_over/into` → `get_scope_variables`
+6. **Verify**: Browser value == Python output
 
 ---
 
-## Debugger Tools (PRIMARY)
+## Debugger Tools
 
-### Breakpoint Types
+### Breakpoints
 
 ```javascript
-// ✅ Log breakpoint (safe, no pause)
+// Log breakpoint (no pause)
 set_breakpoint(breakpointId="log1", urlRegex=".*target\\.js.*", lineNumber=123,
     condition='console.log("VAR:", someVar), false')
 
-// ⚠️ Pausing breakpoint (blocks MCP until resumed)
+// Pausing breakpoint
 set_breakpoint(breakpointId="bp1", urlRegex=".*target\\.js.*", lineNumber=123)
 ```
-
-### Chained Debugging (While Paused)
-
-```
-set_breakpoint(...) → resume_execution() → get_debugger_status() → repeat
-```
-
-**DO NOT** ask user to trigger after each breakpoint. Chain them autonomously.
 
 ### When Paused
 
@@ -279,9 +135,28 @@ step_over() | step_into() | step_out()
 resume_execution()
 ```
 
-### evaluate_script: Globals Only
+### Network
 
-✅ `() => window.globalVar` | ❌ Never for hooks/logging → use `set_breakpoint`
+```javascript
+list_network_requests(resourceTypes=["xhr", "fetch"], pageSize=50)
+search_network_requests(urlPattern="api/sign", method="POST")
+get_network_request(reqid=15)
+save_static_resource(reqid=23, filePath="source/main.js")
+```
+
+### Console
+
+```javascript
+list_console_messages(types=["log", "error"], pageSize=50)
+get_console_message(msgid=42)
+```
+
+### evaluate_script (globals only)
+
+```javascript
+evaluate_script(function="() => window.globalVar")
+// NEVER for hooks/logging → use set_breakpoint
+```
 
 ---
 
@@ -289,141 +164,22 @@ resume_execution()
 
 | Pattern | Action |
 |---------|--------|
-| Single-line 50KB+ files | **P-1 MANDATORY**: Beautify first (NO EXCEPTIONS) |
-| `_0x` vars, hex strings, decoder arrays | **P0 MANDATORY**: Deobfuscate first (NO EXCEPTIONS) |
-| `while(true){switch}` + stack ops | JSVMP → `#[[file:skills/jsvmp_analysis.md]]` (still deobfuscate surrounding code) |
-| `ReferenceError: window/document` | Env patch → `#[[file:skills/js_env_patching.md]]` |
-| Anti-debug (`debugger` loops) | Deobfuscation skill §1 → then continue deobfuscation |
-| "SDK code", "core library", "complex" | **NOT an excuse** → These are PRIMARY targets, deobfuscate them |
-
-### Obfuscation Complexity Indicators
-
-| Indicator | Level | Approach |
-|-----------|-------|----------|
-| Only `_0x` variable names | Light | AST rename only |
-| `_0x` + hex literals (`0x1a2b`) | Light | AST: hex restore + rename |
-| String array + simple accessor | Medium | Browser capture → AST replace |
-| String array + shuffler IIFE | Medium-Heavy | Browser capture AFTER init → AST |
-| RC4/XOR decoder function | Heavy | Analyze decoder → replicate → AST |
-| Multiple decoder functions | Heavy | Map each decoder → AST |
-| Anti-debug + all above | Heavy | §1 bypass → then full protocol |
+| Single-line 50KB+ | P-1: Beautify first |
+| `_0x` vars, hex strings | P0: Deobfuscate first |
+| `while(true){switch}` + stack | JSVMP → `#[[file:skills/jsvmp_analysis.md]]` |
+| `ReferenceError: window` | Env patch → `#[[file:skills/js_env_patching.md]]` |
+| Anti-debug loops | Deobfuscation §1 bypass |
 
 ---
 
-## Hybrid Deobfuscation Workflow (Browser + AST)
-
-**This is the EXPECTED approach for any non-trivial obfuscation.**
-
-### Phase 1: Browser Intelligence Gathering
-
-```javascript
-// 1. Identify string array and decoder function names
-search_script_content(pattern="_0x[a-f0-9]+\\s*=\\s*\\[", pageSize=5, maxTotalChars=300)
-
-// 2. Find where array is initialized (look for shuffler IIFE)
-search_script_content(pattern="while.*--.*push.*shift", pageSize=3, maxTotalChars=300)
-
-// 3. Set logging breakpoint AFTER initialization
-set_breakpoint(
-    breakpointId="array_state",
-    urlRegex=".*target\\.js.*",
-    lineNumber=XX,  // Line AFTER shuffler
-    condition='console.log("ARRAY_STATE:", JSON.stringify({
-        name: "_0xabc",
-        length: _0xabc.length,
-        sample: _0xabc.slice(0, 10)
-    })), false'
-)
-
-// 4. Sample decoder outputs (pick 5-10 random indices)
-set_breakpoint(
-    breakpointId="decoder_sample",
-    urlRegex=".*target\\.js.*",
-    lineNumber=YY,
-    condition='console.log("DECODER:", JSON.stringify({
-        "0x100": _0xdef(0x100),
-        "0x150": _0xdef(0x150),
-        "0x200": _0xdef(0x200)
-    })), false'
-)
-
-// 5. Trigger and collect
-// → User action or page reload
-list_console_messages(types=["log"])
-```
-
-### Phase 2: Local AST Transformation
-
-```javascript
-// With browser-captured data, build AST transforms:
-
-// 1. String replacement (using captured decoder map)
-const decoderMap = { "0x100": "push", "0x150": "length", ... };  // From browser
-
-CallExpression(path) {
-    if (isDecoderCall(path, "_0xdef")) {
-        const idx = getArgValue(path);
-        if (decoderMap[idx]) {
-            path.replaceWith(t.stringLiteral(decoderMap[idx]));
-        }
-    }
-}
-
-// 2. Apply standard transforms (hex restore, property cleanup, etc.)
-// 3. Save to source/<name>_clean.js
-```
-
-### Phase 3: Verification
-
-```javascript
-// Compare key values between original and clean code
-// MUST match before proceeding to algorithm analysis
-```
-
----
-
-## Core Rules
-
-1. **P-1 Gate**: Always check minification before any search - beautify first
-2. **P0 Gate**: Always check obfuscation before analysis - NO EXCEPTIONS
-3. **Hybrid First**: For any non-trivial obfuscation, use browser+AST approach
-4. **No Excuses**: "Complex", "SDK", "hard" are not valid reasons to skip deobfuscation
-5. **Log findings**: Update `analysis_notes.md` immediately
-6. **Evidence markers**: `[UNVERIFIED]` / `[VERIFIED]` / `[REPRODUCED]`
-7. **Truncate blobs**: Base64/hex → first 20 chars + `...` + last 10
-8. **Chinese output**: Comments in Python, notes in Chinese
-9. **No meta talk**: Execute directly, don't announce
-
----
-
-## 🛑 Human Interaction = STOP
+## Human Interaction = STOP
 
 | Scenario | Action |
 |----------|--------|
-| Slider CAPTCHA, drag verify | "请手动拖动滑块完成验证" → **STOP** |
-| Click CAPTCHA, puzzle | "请手动完成验证码" → **STOP** |
-| Login required | "请登录后告诉我" → **STOP** |
-| Any user trigger needed | "请触发xxx后告诉我" → **STOP** |
+| Slider/Click CAPTCHA | "请手动完成验证码" → STOP |
+| Login required | "请登录后告诉我" → STOP |
 
-### ❌ FORBIDDEN (Will Fail)
-
-```javascript
-// NEVER attempt these - detection will fail
-evaluate_script({ function: "simulateDrag..." })
-evaluate_script({ function: "element.dispatchEvent(mousedown/mousemove)..." })
-drag(from_uid, to_uid)  // MCP drag tool also fails on CAPTCHAs
-```
-
-**Why**: CAPTCHA systems detect:
-- Missing mouse trajectory randomness
-- Instant/linear movement patterns  
-- Absence of real input events
-- Headless browser fingerprints
-
-**STOP IMMEDIATELY** after asking for help. Do NOT:
-- Try alternative drag methods
-- Attempt JS simulation
-- Call more tools
+**FORBIDDEN**: `evaluate_script` for drag/click simulation, `drag()` on CAPTCHAs.
 
 ---
 
@@ -431,25 +187,15 @@ drag(from_uid, to_uid)  // MCP drag tool also fails on CAPTCHAs
 
 ```
 saveDir/
-├── analysis_notes.md     # Findings log
-├── source/               # Saved/deobfuscated JS
+├── analysis_notes.md
+├── source/
 │   ├── original.js
-│   ├── original_formatted.js  # After beautification (P-1)
-│   └── original_clean.js      # After deobfuscation (P0)
-├── raw/                  # HTTP captures
-├── lib/
-│   └── crypto_utils.py   # Core algorithms
-└── repro.py              # Main reproduction
+│   ├── original_formatted.js
+│   └── original_clean.js
+├── raw/
+├── lib/crypto_utils.py
+└── repro.py
 ```
-
----
-
-## Inputs
-
-- `url` (required): Target page
-- `focus`: API keyword filter
-- `saveDir`: Default `artifacts/jsrev/<domain>/`
-- `goal`: `reverse` (full algo) | `env` (make JS runnable)
 
 ---
 
@@ -459,3 +205,481 @@ saveDir/
 - `#[[file:skills/jsvmp_analysis.md]]`: VM analysis, breakpoint instrumentation
 - `#[[file:skills/js_env_patching.md]]`: Happy-DOM, Proxy detection
 - `#[[file:skills/js_extraction.md]]`: Safe slicing, Webpack extraction
+
+---
+
+# 📍 Entry Location Techniques (The Critical Step)
+
+Finding the encryption entry point is the most important step. Use these methods in order of effectiveness:
+
+## 1. XHR/Fetch Breakpoints (FASTEST)
+
+```javascript
+// In DevTools Sources panel → XHR/fetch Breakpoints
+// Add URL keyword: "sign", "encrypt", "token", "api/"
+// Code pauses when matching request is sent → check Call Stack
+```
+
+**MCP Equivalent**:
+```javascript
+// Set breakpoint on network-related code
+search_functions(namePattern="fetch|XMLHttpRequest|ajax", pageSize=10)
+// Then set breakpoint at found locations
+```
+
+## 2. Call Stack Tracing (MOST RELIABLE)
+
+```javascript
+// In Network panel:
+// 1. Select the request with encrypted params
+// 2. Check "Initiator" column → shows call stack
+// 3. Click each stack frame to trace back to encryption source
+
+// MCP: Use get_network_request to see initiator
+get_network_request(reqid=123)  // Check initiator/stack trace
+```
+
+## 3. Global Search (Ctrl+Shift+F)
+
+```javascript
+// Search for parameter names found in request:
+// - "sign", "signature", "_signature"
+// - "encrypt", "encode", "token"
+// - Parameter names from the actual request
+
+// MCP:
+search_script_content(pattern="sign\\s*[:=]", pageSize=10, maxTotalChars=500)
+search_functions(namePattern="sign|encrypt|token", pageSize=10)
+```
+
+## 4. DOM Event Breakpoints
+
+```javascript
+// For button-triggered requests:
+// 1. Right-click element → "Break on" → "attribute modifications"
+// 2. Or: Elements panel → Event Listeners → find click handler
+
+// MCP: Find event handlers
+search_script_content(pattern="addEventListener.*click|onclick", pageSize=5)
+```
+
+## 5. Hook Techniques (Intercept at Source)
+
+### Hook JSON.stringify (Catches Most Encryption)
+
+```javascript
+// Inject via DevTools Snippets BEFORE page load:
+(function() {
+    var _stringify = JSON.stringify;
+    JSON.stringify = function(params) {
+        // Filter for interesting params
+        if (params && (params.sign || params.token || params.encrypt)) {
+            debugger;  // Pause here
+            console.log("JSON.stringify:", params);
+        }
+        return _stringify.apply(this, arguments);
+    };
+})();
+```
+
+### Hook Cookie Setter
+
+```javascript
+var cookie_cache = document.cookie;
+Object.defineProperty(document, 'cookie', {
+    get: function() { return cookie_cache; },
+    set: function(val) {
+        if (val.includes('token') || val.includes('sign')) {
+            debugger;
+            console.log('Setting cookie:', val);
+        }
+        cookie_cache = val;
+        return val;
+    }
+});
+```
+
+### Hook XMLHttpRequest.send
+
+```javascript
+(function() {
+    var _send = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.send = function(body) {
+        if (body && body.includes && body.includes('sign')) {
+            debugger;
+            console.log('XHR body:', body);
+        }
+        return _send.apply(this, arguments);
+    };
+})();
+```
+
+---
+
+# 🔐 Algorithm Identification
+
+## Standard Crypto Signatures
+
+| Pattern | Algorithm | Verification |
+|---------|-----------|--------------|
+| 32-char hex output | MD5 | `hashlib.md5(data).hexdigest()` |
+| 40-char hex output | SHA-1 | `hashlib.sha1(data).hexdigest()` |
+| 64-char hex output | SHA-256 | `hashlib.sha256(data).hexdigest()` |
+| Base64 + fixed block size | AES | Check for IV, key, padding mode |
+| Large prime operations | RSA | Look for `n`, `e`, `d` params |
+| `0x67452301` constant | MD5 IV | Standard MD5 |
+| `0x6a09e667` constant | SHA-256 IV | Standard SHA-256 |
+
+## Modified/Custom Algorithms
+
+```javascript
+// Signs of modified standard algorithms:
+// 1. Standard IV but different round constants
+// 2. Extra XOR/shift operations before/after
+// 3. Custom padding schemes
+// 4. Salt/pepper additions
+
+// Detection: Compare output with standard library
+// If mismatch → trace step-by-step to find modification
+```
+
+## Common Encryption Patterns
+
+```javascript
+// Pattern 1: timestamp + params + secret → MD5
+sign = md5(timestamp + JSON.stringify(params) + "secret_key")
+
+// Pattern 2: HMAC-SHA256
+sign = hmac_sha256(secret_key, message)
+
+// Pattern 3: AES-CBC
+encrypted = aes_cbc_encrypt(data, key, iv)
+result = base64(encrypted)
+
+// Pattern 4: RSA public key encryption
+encrypted = rsa_encrypt(data, public_key)
+```
+
+---
+
+# 📦 Webpack/Parcel Bundle Handling
+
+## Identifying Webpack Bundles
+
+```javascript
+// Signatures:
+// - `webpackJsonp` or `__webpack_require__`
+// - Module calls like `n(123)`, `e(456)`, `__webpack_require__(789)`
+// - IIFE wrapper: `(function(modules) { ... })([...])`
+```
+
+## Extracting Webpack Modules
+
+```javascript
+// Step 1: Find the loader function (usually at file start)
+search_script_content(pattern="__webpack_require__|webpackJsonp", pageSize=3)
+
+// Step 2: Locate target module by ID
+// If code calls n(123), search for module 123's definition:
+search_script_content(pattern="123\\s*:\\s*function", pageSize=3)
+
+// Step 3: Export to global for debugging
+// In console: window.myModule = __webpack_require__(123)
+evaluate_script(function="() => window.myModule = __webpack_require__(123)")
+```
+
+## Module Extraction Script
+
+```javascript
+// Node.js script to extract specific module
+const fs = require('fs');
+const code = fs.readFileSync('bundle.js', 'utf8');
+
+// Find module boundaries using brace counting
+function extractModule(code, moduleId) {
+    const regex = new RegExp(`(?<!\\d)${moduleId}\\s*:\\s*function`);
+    const match = code.match(regex);
+    if (!match) return null;
+    
+    let start = match.index;
+    let braceCount = 0;
+    let inString = false;
+    let stringChar = '';
+    
+    for (let i = start; i < code.length; i++) {
+        const char = code[i];
+        // Handle string detection...
+        if (char === '{') braceCount++;
+        if (char === '}') {
+            braceCount--;
+            if (braceCount === 0) {
+                return code.substring(start, i + 1);
+            }
+        }
+    }
+    return null;
+}
+```
+
+---
+
+# 🎭 Common Obfuscation Patterns
+
+## Obfuscator.io (Large Array + Shift)
+
+```javascript
+// Signature: Large string array + rotation function + decoder
+var _0xabc = ['str1', 'str2', ...];  // 100+ strings
+(function(arr, num) {
+    while (--num) { arr.push(arr.shift()); }
+})(_0xabc, 0x1a3);
+var _0xdef = function(idx) { return _0xabc[idx - 0x100]; };
+
+// Solution: Capture array AFTER rotation, build decoder map
+```
+
+## AAEncode / JJEncode / JSFuck
+
+```javascript
+// AAEncode: ﾟωﾟﾉ= /｀ｍ´）ﾉ ~┻━┻   //*´∇｀*/
+// JJEncode: $=~[];$={___:++$, ...
+// JSFuck: [][(![]+[])[+[]]+([![]]+[][[]])[+!+[]+[+[]]]...
+
+// Solution: 
+// 1. Copy code to console (remove final execution `()`)
+// 2. Or replace `eval` with `console.log` to see decoded source
+// 3. The decoded output is the actual logic
+```
+
+## Control Flow Flattening
+
+```javascript
+// Signature: State machine with switch
+var state = 0;
+while (true) {
+    switch (state) {
+        case 0: /* init */ state = 3; break;
+        case 1: /* step2 */ state = 4; break;
+        case 2: /* step3 */ return result;
+        // ...
+    }
+}
+
+// Solution: 
+// - If NO stack operations → AST can restore (js_deobfuscation.md §3.6)
+// - If HAS stack operations → JSVMP, use jsvmp_analysis.md
+```
+
+---
+
+# 🛡️ Anti-Debugging Bypass (Extended)
+
+## Infinite Debugger Loop
+
+```javascript
+// Pattern:
+setInterval(() => { debugger; }, 100);
+// Or:
+(function x() { debugger; x(); })();
+
+// Solutions:
+// 1. DevTools: Right-click line → "Never pause here"
+// 2. Ctrl+F8 to deactivate all breakpoints temporarily
+// 3. Local Overrides: Edit file to remove debugger statements
+```
+
+## Console Detection
+
+```javascript
+// Pattern: Detect DevTools by console timing
+var start = Date.now();
+console.log('test');
+console.clear();
+if (Date.now() - start > 100) { /* DevTools detected */ }
+
+// Solution: Hook console methods or Date.now
+```
+
+## Window Size Detection
+
+```javascript
+// Pattern:
+if (window.outerWidth - window.innerWidth > 160) { /* DevTools open */ }
+
+// Solution: 
+// 1. Undock DevTools to separate window
+// 2. Or hook window properties
+Object.defineProperty(window, 'outerWidth', { get: () => window.innerWidth });
+```
+
+## Function.toString Detection
+
+```javascript
+// Pattern: Check if function is native
+if (func.toString().indexOf('[native code]') === -1) { /* hooked */ }
+
+// Solution: See js_env_patching.md §4.1 for toString hook
+```
+
+---
+
+# 🔄 Simulation & Porting Strategies
+
+## Strategy Selection
+
+```
+Complexity Assessment:
+├─ Simple (MD5/SHA/Base64 only)?
+│     └─ Python direct implementation
+│
+├─ Medium (standard AES/RSA with clear params)?
+│     └─ Python with pycryptodome
+│
+├─ Complex (custom algo, many dependencies)?
+│     └─ Node.js: Extract and run original JS
+│
+└─ Extreme (heavy env checks, fingerprinting)?
+      └─ RPC or Browser Automation (Playwright/Puppeteer)
+```
+
+## Python Implementation Template
+
+```python
+import hashlib
+import hmac
+import base64
+import json
+import time
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
+
+def generate_sign(params: dict, secret: str) -> str:
+    """
+    Reproduce JS sign generation
+    Verified against browser output: [VERIFIED]
+    """
+    # Sort params (if required by JS logic)
+    sorted_params = '&'.join(f'{k}={v}' for k, v in sorted(params.items()))
+    
+    # Add timestamp
+    ts = str(int(time.time() * 1000))
+    
+    # Concatenate and hash
+    raw = f"{sorted_params}&ts={ts}&key={secret}"
+    sign = hashlib.md5(raw.encode()).hexdigest()
+    
+    return sign
+```
+
+## Node.js Extraction Template
+
+```javascript
+// env_setup.js - Run before target code
+const { Window } = require('happy-dom');
+const win = new Window({ url: 'https://target.com' });
+
+global.window = win;
+global.document = win.document;
+global.navigator = win.navigator;
+global.location = win.location;
+
+// Load extracted encryption module
+const encrypt = require('./extracted_encrypt.js');
+
+// Export for Python via child_process or HTTP
+module.exports = { encrypt };
+```
+
+## RPC Approach (Last Resort)
+
+```python
+# When environment is too complex to replicate
+# Use browser as encryption service
+
+import websocket
+import json
+
+class BrowserRPC:
+    def __init__(self, ws_url):
+        self.ws = websocket.create_connection(ws_url)
+    
+    def call_encrypt(self, data):
+        self.ws.send(json.dumps({
+            'action': 'encrypt',
+            'data': data
+        }))
+        return json.loads(self.ws.recv())['result']
+
+# Browser side (injected via Tampermonkey):
+# const ws = new WebSocket('ws://localhost:8765');
+# ws.onmessage = (e) => {
+#     const req = JSON.parse(e.data);
+#     if (req.action === 'encrypt') {
+#         const result = window.encryptFunc(req.data);
+#         ws.send(JSON.stringify({ result }));
+#     }
+# };
+```
+
+---
+
+# 🧰 Tool Stack Reference
+
+| Category | Tool | Use Case |
+|----------|------|----------|
+| **Browser** | Chrome DevTools | Primary debugging |
+| **Proxy** | Charles/Fiddler/mitmproxy | Traffic capture, request replay |
+| **Node.js** | node + babel | Run extracted JS, AST transforms |
+| **Python** | requests + pycryptodome | Final reproduction |
+| **Automation** | Playwright/Puppeteer | Complex fingerprint scenarios |
+| **AST** | @babel/parser + traverse | Deobfuscation transforms |
+
+## Quick Commands
+
+```bash
+# Install AST tools
+npm i @babel/parser @babel/traverse @babel/types @babel/generator
+
+# Install env simulation
+npm i happy-dom jsdom
+
+# Python crypto
+pip install pycryptodome requests
+
+# Beautify minified JS
+npx js-beautify -f input.js -o output.js
+npx prettier --write input.js --parser babel
+```
+
+---
+
+# 📋 Workflow Checklist
+
+```
+□ 1. Capture target request (Network panel / Charles)
+□ 2. Identify encrypted params (sign, token, etc.)
+□ 3. Test param necessity (remove → replay → still works?)
+□ 4. P-1 Gate: Check minification → beautify if needed
+□ 5. P0 Gate: Check obfuscation → deobfuscate if needed
+□ 6. Locate encryption entry (XHR breakpoint / Call Stack / Search)
+□ 7. Set breakpoints, trace data flow
+□ 8. Identify algorithm (standard vs custom)
+□ 9. Extract/port to Python or Node.js
+□ 10. Verify: browser output == local output
+□ 11. Live test with actual request
+□ 12. Document in analysis_notes.md
+```
+
+---
+
+# ⚠️ Legal Disclaimer
+
+JS reverse engineering techniques are for:
+- Security research and penetration testing (with authorization)
+- API compatibility and interoperability
+- Educational purposes
+
+**DO NOT** use for:
+- Scraping protected personal data
+- Bypassing access controls without permission
+- Any illegal activities
