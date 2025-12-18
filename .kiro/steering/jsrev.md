@@ -125,6 +125,29 @@ set_breakpoint(breakpointId="log1", urlRegex=".*target\\.js.*", lineNumber=123,
 set_breakpoint(breakpointId="bp1", urlRegex=".*target\\.js.*", lineNumber=123)
 ```
 
+### ⚠️ MANDATORY: Breakpoint Cleanup
+
+**After EACH debug analysis session, MUST cleanup before continuing:**
+
+```javascript
+// Remove specific breakpoint
+remove_breakpoint(breakpointId="bp1")
+
+// Or clear all breakpoints
+clear_all_breakpoints()
+
+// Then resume execution
+resume_execution()
+```
+
+| Scenario | Action |
+|----------|--------|
+| Pausing breakpoint hit, analysis done | `remove_breakpoint()` → `resume_execution()` |
+| Multiple breakpoints set | `clear_all_breakpoints()` → `resume_execution()` |
+| Switching to new analysis target | `clear_all_breakpoints()` first |
+
+**FAILURE TO CLEANUP = Page freeze / Infinite pause / MCP blocked**
+
 ### When Paused
 
 ```javascript
