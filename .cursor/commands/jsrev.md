@@ -56,6 +56,38 @@ rg -c "_0x[a-f0-9]|\\\\x[0-9a-f]{2}" source/*.js 2>/dev/null || echo "0"
 
 **Invalid excuses**: "too complex", "SDK code", "might break" → Deobfuscate anyway.
 
+---
+
+## P0.5: CLI Output Limits
+
+**CRITICAL**: Single-line JS files can exceed context window. ALWAYS limit output.
+
+| Tool | Safe Pattern | Danger |
+|------|--------------|--------|
+| `rg` | `rg -o ".{0,80}pattern.{0,80}" \| head -30` | Full line = 500KB |
+| `sed` | `sed -n '100,200p'` | Whole file dump |
+| `cat` | **NEVER on JS** | Context overflow |
+| `head` | `head -c 5000` (bytes) | Unlimited output |
+
+**Mandatory flags:**
+```bash
+# rg: always use -o with context limit + head
+rg -o ".{0,80}keyword.{0,80}" file.js | head -30
+
+# For line numbers only
+rg -n "pattern" file.js | head -20
+
+# sed: always specify range
+sed -n '1,100p' file.js
+
+# head: limit bytes for unknown files
+head -c 10000 file.js
+```
+
+**VIOLATION = Context overflow = Session failure**
+
+---
+
 ### Deobfuscation Strategy
 
 | Level | Approach |
