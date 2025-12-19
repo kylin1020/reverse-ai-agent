@@ -87,6 +87,35 @@ fsWrite("tests/decode_sample.py", script_content)
 
 ---
 
+## P1: Analysis Strategy (Local-First)
+
+**CRITICAL**: When analyzing parameter logic, prioritize LOCAL deobfuscated JS for understanding, then use BROWSER for verification.
+
+```
+Analysis Workflow:
+1. READ LOCAL: output/*_deob.js → Understand algorithm logic (readable)
+2. DEBUG BROWSER: set_breakpoint → Verify runtime values (accurate)
+3. COMPARE: Local understanding + Browser values → Confirm correctness
+```
+
+**Why**: Deobfuscated code is readable but may have transform errors. Browser code is accurate but unreadable. Combine both.
+
+**Pattern**:
+```javascript
+// Step 1: Read local deobfuscated code to understand structure
+readFile("output/core_deob.js")  // Find: sign = md5(ts + key + params)
+
+// Step 2: Set breakpoint in browser to capture actual values
+set_breakpoint(urlRegex=".*core\\.js.*", lineNumber=XXX,
+    condition='console.log("ts:", ts, "key:", key), false')
+
+// Step 3: Compare browser values with local logic understanding
+```
+
+**FORBIDDEN**: Analyzing minified/obfuscated browser code directly without local reference.
+
+---
+
 ## Execution Flow
 
 1. **Capture**: `list_network_requests(resourceTypes=["xhr","fetch"])` → `save_static_resource`
@@ -94,7 +123,8 @@ fsWrite("tests/decode_sample.py", script_content)
 3. **P0 Gate**: Obfuscated? → deobfuscate to `output/`
 4. **Identify**: Find `sign|token|nonce|ts|enc` params
 5. **Locate** (clean code only): stack trace / `search_functions` / breakpoints
-6. **Verify**: Browser value == Python output
+6. **Analyze**: Read LOCAL deobfuscated JS → Debug BROWSER for values
+7. **Verify**: Browser value == Python output
 
 ---
 
