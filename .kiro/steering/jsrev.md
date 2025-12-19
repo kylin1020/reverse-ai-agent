@@ -70,6 +70,23 @@ head -c 10000 file.js                              # Bytes limit
 
 ---
 
+## P0.6: No Inline Python Scripts
+
+**FORBIDDEN**: `python -c "..."` for multi-line or complex logic (quoting/escaping breaks easily).
+
+```bash
+# ❌ BAD - will fail on special chars, quotes, newlines
+python -c "import json; data='%7B%22d...'; print(json.loads(urllib.parse.unquote(data)))"
+
+# ✅ GOOD - write to tests/, run manually
+fsWrite("tests/decode_sample.py", script_content)
+# Then: python tests/decode_sample.py
+```
+
+**Rule**: If script > 1 line or contains quotes/special chars → write to `tests/` dir.
+
+---
+
 ## Execution Flow
 
 1. **Capture**: `list_network_requests(resourceTypes=["xhr","fetch"])` → `save_static_resource`
