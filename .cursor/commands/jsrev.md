@@ -149,10 +149,25 @@ resume_execution()
 
 ---
 
-## Human Interaction = STOP
+## Human Interaction = ASK FOR HELP
 
+**When to STOP and ask human:**
 - Slider/Click CAPTCHA → "请手动完成验证码" → STOP
 - Login required → "请登录后告诉我" → STOP
+
+**When to REQUEST CONFIRMATION:**
+- Visual verification (image match, puzzle alignment) → Generate debug image → Ask: "请确认识别是否准确"
+- Coordinate/position accuracy uncertain → Save visual proof → Ask human to verify
+- Algorithm output mismatch but unsure which side is wrong → Show both values → Ask human to compare
+- Multiple possible interpretations of obfuscated logic → List options → Ask human to choose
+
+**Pattern**: When AI confidence is low on visual/spatial tasks:
+```
+1. Generate debug output (screenshot, annotated image, coordinate overlay)
+2. Save to artifacts/jsrev/{domain}/debug/
+3. Ask: "请确认 [具体问题]，图片已保存到 [path]"
+4. WAIT for human response before proceeding
+```
 
 **FORBIDDEN**: `evaluate_script` for drag/click simulation, `drag()` on CAPTCHAs.
 
