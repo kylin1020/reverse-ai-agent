@@ -155,6 +155,30 @@ rg "keyword" file.js | head -20  # head -n won't help!
 
 ---
 
+## 🎯 CAPTCHA VERIFICATION WORKFLOW
+
+**AI cannot solve visual CAPTCHAs** (click/slide/rotate). Use human-in-the-loop:
+
+```
+[Load CAPTCHA] → [Build Visual Tool] → [Human Interaction] → [Verify Params]
+```
+
+### Workflow
+1. **Build interactive tool** (`tests/captcha_test.py`) using OpenCV
+2. **Display**: CAPTCHA image + reference icons/slider
+3. **Human**: clicks/slides/rotates in visual tool
+4. **Capture**: convert to API coordinates
+5. **Submit**: verify encryption algorithm is correct
+
+### Response Interpretation
+- `status: success` → Encryption algorithm correct (server decrypted w param)
+- `result: fail` → Coordinates wrong (expected with test data)
+- `result: success` → Full verification passed
+
+**Key**: If `status: success`, encryption is correct. Coordinate issues are separate.
+
+---
+
 ## 🚀 SESSION START
 
 ```bash
@@ -199,25 +223,22 @@ list_console_messages(savePath="/absolute/path/raw/data.txt")
 
 ---
 
-## P2: PERSISTENT HOOKS
+## P2: HOOK STRATEGIES
 
-`evaluate_script` hooks don't survive reload. Use persistent scripts instead:
+`evaluate_script` hooks don't survive reload. Use these alternatives:
 
+**Option 1: Log breakpoint (recommended)**
 ```javascript
-// Register script to run on every page load
-add_persistent_script(identifier="hook_xyz", script="window.__hook = true;")
-
-// List registered scripts
-list_persistent_scripts()
-
-// Remove specific script
-remove_persistent_script(identifier="hook_xyz")
-
-// Clear all persistent scripts
-clear_persistent_scripts()
+// Logs value without pausing - ", false" is CRITICAL
+set_breakpoint(urlRegex=".*target.js.*", lineNumber=1, columnNumber=12345,
+    condition='console.log("VAR:", someVar), false')
 ```
 
-For simple value logging, `set_breakpoint` with condition also works.
+**Option 2: Re-inject after reload**
+```javascript
+// After navigate_page(type="reload"), re-run evaluate_script to set up hooks
+evaluate_script(function="() => { window.__hook = ...; }")
+```
 
 ---
 
@@ -336,7 +357,6 @@ list_console_messages(savePath="/absolute/path/raw/console.txt")
 
 ```javascript
 clear_all_breakpoints()
-clear_persistent_scripts()
 resume_execution()
 ```
 
@@ -345,7 +365,7 @@ resume_execution()
 ## HUMAN INTERACTION
 
 **STOP and ask:**
-- Slider/Click CAPTCHA → "请手动完成验证码"
+- Slider/Click CAPTCHA → Build visual tool, human solves, verify params
 - Login required → "请登录后告诉我"
 
 **Request confirmation:**
@@ -363,7 +383,7 @@ artifacts/jsrev/{domain}/
 ├── scripts/         # AST transform scripts
 ├── lib/             # Algorithm implementations
 ├── repro/           # Request reproduction
-├── tests/           # Test cases
+├── tests/           # Test cases + interactive tools
 ├── notes/           # Analysis notes
 └── raw/             # Raw samples
 ```
