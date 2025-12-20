@@ -8,92 +8,42 @@ JS Reverse Engineering: browser request → JS code → algorithm → Python rep
 
 ---
 
-## ⚠️ PRE-ACTION CHECKLIST (READ BEFORE EVERY ACTION) ⚠️
+## 🚨 P0: DEOBFUSCATION GATE (BLOCKS ALL ANALYSIS) 🚨
 
-Before you do ANYTHING with JavaScript code, answer these questions:
+**IRON LAW**: Analysis tasks REQUIRE clean code. No exceptions.
 
-```
-□ Have I checked if this code is obfuscated?
-  → If NO: Run obfuscation check FIRST
-  → If YES and obfuscated: STOP. Load deobfuscation skill. Do NOT analyze.
-  → If YES and clean: Proceed
+### When P0 Applies
 
-□ Am I about to analyze/search/debug obfuscated code?
-  → If YES: STOP IMMEDIATELY. This is FORBIDDEN.
-```
+User asks to: analyze, find, trace, debug, "how is X generated", "what encrypts X"
+→ This is an **ANALYSIS task** → P0 gate BLOCKS until code is clean.
 
-**If you catch yourself saying "despite the obfuscation" or "I can see _0x variables" → YOU ARE VIOLATING THE RULES. STOP.**
+User asks to: 补环境, run in Node, fix ReferenceError
+→ This is **ENV PATCHING** → Can work on obfuscated code directly.
 
----
+### Obfuscation Check (RUN FIRST)
 
-## 🚨🚨🚨 RULE ZERO: DEOBFUSCATION GATE (ABSOLUTE BLOCKER) 🚨🚨🚨
-
-### ⛔ THIS IS A HARD GATE - NO EXCEPTIONS ⛔
-
-**WORKFLOW ENFORCED:**
-```
-[See JS Code] → [CHECK OBFUSCATION] → [BLOCKED until clean] → [Analysis]
-                      ↓
-              Obfuscated? ──YES──→ STOP. Load skill. Deobfuscate. DO NOT PROCEED.
-                      ↓
-                     NO ──→ Continue to analysis
-```
-
-### 🔴 IMMEDIATE ACTION REQUIRED
-
-When you encounter ANY JavaScript file, you MUST:
-
-**STEP 1: RUN THIS CHECK FIRST (NON-NEGOTIABLE)**
 ```bash
-head -c 3000 {file} | rg -o "_0x[a-f0-9]{4,6}|\\\\x[0-9a-f]{2}|\\\\u00[0-9a-f]{2}|atob\\(" | head -5
+head -c 3000 {file} | rg -o "_0x[a-f0-9]{4,6}|\\\\x[0-9a-f]{2}|atob\\(" | head -3
 ```
 
-**STEP 2: EVALUATE RESULT**
-- **ANY match found** → Code is OBFUSCATED → **STOP HERE**
-- **No match** → Code is clean → Proceed to analysis
+- **ANY match** → OBFUSCATED → For analysis: STOP, deobfuscate first
+- **No match** → Clean → Proceed
 
-### 🔴 IF OBFUSCATED: MANDATORY SEQUENCE (NO SKIPPING)
+### If Obfuscated + Analysis Task
 
 ```
 1. SAY: "检测到混淆代码，必须先去混淆才能分析。"
-2. DO:  readFile("skills/js_deobfuscation.md")
-3. DO:  Apply deobfuscation techniques from the skill
-4. DO:  Save clean code to output/ directory
-5. THEN: Analyze the CLEAN code only
+2. readFile("skills/js_deobfuscation.md")
+3. Apply deobfuscation, save to output/*_deobfuscated.js
+4. Analyze ONLY the clean output/ files
 ```
 
-### ❌ FORBIDDEN ACTIONS ON OBFUSCATED CODE
+### Forbidden on Obfuscated Code (Analysis Tasks)
 
-You are **PROHIBITED** from doing ANY of these on obfuscated code:
-- ❌ Setting breakpoints
-- ❌ Searching for patterns
-- ❌ Analyzing control flow
-- ❌ Tracing execution
-- ❌ Reading function logic
-- ❌ "Let me try to understand this..."
-- ❌ "I can see that this function..."
-- ❌ "Despite the obfuscation, I notice..."
+- ❌ Setting breakpoints, searching patterns, tracing execution
+- ❌ "Despite the obfuscation...", "I can see _0x..."
 
-### ✅ THE ONLY VALID RESPONSE TO OBFUSCATED CODE
-
-```
-"这段代码是混淆的（检测到 _0x/\x/atob 等特征）。
-根据规则，我必须先去混淆才能继续分析。
-正在加载去混淆技能..."
-
-→ readFile("skills/js_deobfuscation.md")
-```
-
-### 🧠 WHY THIS MATTERS
-
-Analyzing obfuscated code directly = **GUARANTEED FAILURE**:
-- Variable names are meaningless (`_0x4a3b`)
-- String literals are encoded
-- Control flow is scrambled
-- You WILL make wrong conclusions
-- You WILL waste the entire session
-
-**Deobfuscation is NOT optional. It is the PREREQUISITE.**
+**Why**: Obfuscated analysis = 100% failure. Deobfuscation takes 5 min, failed analysis wastes hours.
 
 ---
 
@@ -140,18 +90,14 @@ rg "keyword" file.js | head -20  # head -n won't help!
 
 ---
 
-## 🚀 RULE TWO: SKILL LOADING (AUTO-TRIGGER)
+## 🚀 RULE TWO: SKILL LOADING
 
-**When you detect these patterns, IMMEDIATELY load the corresponding skill:**
-
-| Pattern Detected | Action | Priority |
-|------------------|--------|----------|
-| `_0x`, `\x`, `atob(` | `readFile("skills/js_deobfuscation.md")` | 🔴 BLOCKING |
-| 补环境, ReferenceError | `readFile("skills/js_env_patching.md")` | Normal |
-| `while(1){switch`, VM | `readFile("skills/jsvmp_analysis.md")` | Normal |
-| webpack, `__webpack_require__` | `readFile("skills/js_extraction.md")` | Normal |
-
-**🔴 BLOCKING means: Do NOT proceed until skill is loaded and applied.**
+| Pattern | Skill | Blocks Analysis? |
+|---------|-------|------------------|
+| `_0x`, `\x`, `atob(` | `skills/js_deobfuscation.md` | 🔴 YES (for analysis tasks) |
+| 补环境, ReferenceError | `skills/js_env_patching.md` | No |
+| `while(1){switch`, VM | `skills/jsvmp_analysis.md` | No |
+| webpack, `__webpack_require__` | `skills/js_extraction.md` | No |
 
 ---
 
@@ -185,9 +131,11 @@ rg "keyword" file.js | head -20  # head -n won't help!
 ls artifacts/jsrev/{domain}/ 2>/dev/null && readFile("artifacts/jsrev/{domain}/PROGRESS.md")
 ```
 
+If source/ has obfuscated JS but no output/*_deobfuscated.js → Deobfuscate first.
+
 ---
 
-## P0: NO RETREAT
+## P1: NO RETREAT
 
 JS reverse engineering IS hard. Difficulty ≠ dead end.
 
