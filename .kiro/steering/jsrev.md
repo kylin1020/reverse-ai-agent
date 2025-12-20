@@ -11,7 +11,9 @@ JS Reverse Engineering: browser request → JS code → algorithm → Python rep
 ## 🚀 SESSION START (MANDATORY)
 
 ```bash
-readFile("artifacts/jsrev/{domain}/PROGRESS.md")  # Restore context
+# Check if project exists first
+ls artifacts/jsrev/{domain}/ 2>/dev/null && readFile("artifacts/jsrev/{domain}/PROGRESS.md")
+# If not exists → create new project structure
 ```
 
 ---

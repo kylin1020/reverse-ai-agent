@@ -1,177 +1,153 @@
-# JS Environment Patching & Emulation Skill
+# JS Reverse Engineering & Environment Emulation (AI-Optimized)
 
-> **Trigger**: `ReferenceError`, "Bot Detected" flags, or when `debugger` statements trigger environment checks.
-> **Goal**: Create a "Transparent" browser simulation that passes both property existence tests and deep structural integrity checks.
-
----
-
-## 1. Strategy Selector
-
-```
-Check detection level:
-  │
-  ├─ Level 1: Basic logic (e.g., uses btoa, userAgent)
-  │     └─ Action: Simple Object Mocks ({ userAgent: '...' })
-  │
-  ├─ Level 2: Structural checks (e.g., instanceof, prototype)
-  │     └─ Action: Use Happy-DOM or JSDOM + Prototype Restoration (§3)
-  │
-  └─ Level 3: Anti-Emulation (e.g., checks Proxy, toString, Descriptors)
-        └─ Action: Proxy Sniffing (§2) + Native Function Hooks (§4) + Descriptor Patching (§5)
-```
+> **Context**: Javascript Inverse Engineering, Browser Fingerprinting, Anti-Bot Bypass.
+> **Constraint**: **No manual GUI interaction.** All code extraction must be programmatic (CLI/Scripts).
+> **Goal**: Locate entry point $\rightarrow$ **Extract specific code block** $\rightarrow$ Emulate environment.
 
 ---
 
-## 2. Advanced Proxy Sniffing (The "Transparent" Detective)
+## Phase 1: Locating the Entry Point (CLI & Hooks)
 
-A basic Proxy is easily detected. This version uses `Reflect` to ensure the Proxy behaves exactly like the target object while logging missing properties.
+### 1. Keyword Discovery (CLI via `rg`)
+Use `ripgrep` to locate the file path and line number of key functions without opening the full file.
+
+```bash
+# Pattern 1: Find standard encryption keywords
+rg "encrypt\(|sign\(|MD5\(|AES|RSA" ./target_src -n
+
+# Pattern 2: Find specific parameter assignment (e.g., 'token')
+rg "token\s*[:=]\s*" ./target_src -n
+```
+
+### 2. Runtime Interception (The "Trap" Method)
+If the code is obfuscated/packed, hook `JSON.stringify` or `eval` to dump the *generated* code to a file or stdout.
 
 ```javascript
-const envSniffer = (name, target = {}) => {
-    return new Proxy(target, {
-        get(target, prop, receiver) {
-            // 1. Avoid infinite recursion for internal symbols
-            if (typeof prop === 'symbol') return Reflect.get(target, prop, receiver);
-            
-            const value = Reflect.get(target, prop, receiver);
-            if (value !== undefined) return value;
+// Inject this into the browser console or override script
+const fs = require('fs'); // If running in a local proxy context
+const _eval = window.eval;
+window.eval = function(str) {
+    if (str.includes('debugger')) {
+        console.log("### DETECTED EVAL ENTRY ###");
+        console.log(str); // AI captures this output
+    }
+    return _eval(str);
+};
+```
 
-            // 2. Log missing properties to identify what to patch next
-            console.warn(`[MISSING] ${name}.${String(prop)} accessed.`);
-            
-            // 3. Return a recursive proxy to prevent "cannot read property of undefined"
-            return envSniffer(`${name}.${String(prop)}`);
-        },
-        getOwnPropertyDescriptor(target, prop) {
-            const desc = Reflect.getOwnPropertyDescriptor(target, prop);
-            if (!desc) console.warn(`[CHECK] Descriptor for ${name}.${String(prop)}`);
-            return desc;
+---
+
+## Phase 2: Automated Code Extraction (The "Surgical" Phase)
+*Do not output the entire file. Use these scripts to extract **only** the target function and its closure dependencies.*
+
+### Strategy A: AST Extraction (Node.js - Recommended)
+Use Babel to parse the file and extract a specific function by name. This handles nested braces correctly, which Regex fails to do.
+
+```javascript
+// instruction: Generate and run this script to extract function 'target_fn_name'
+const fs = require('fs');
+const parser = require('@babel/parser');
+const traverse = require('@babel/traverse').default;
+const generate = require('@babel/generator').default;
+
+const code = fs.readFileSync('./full_source.js', 'utf8');
+const ast = parser.parse(code);
+
+traverse(ast, {
+    FunctionDeclaration(path) {
+        if (path.node.id.name === 'target_fn_name') {
+            const output = generate(path.node).code;
+            console.log("### EXTRACTED CODE ###");
+            console.log(output);
         }
-    });
-};
-
-global.window = envSniffer('window', global);
-global.navigator = envSniffer('navigator');
-```
-
----
-
-## 3. Prototype Chain & Type Identity
-
-Scripts often use `Object.prototype.toString.call(obj)` to verify if an object is truly a browser element.
-
-```javascript
-// Ensure [object HTMLDivElement] instead of [object Object]
-const patchToStringTag = (obj, tag) => {
-    Object.defineProperty(obj, Symbol.toStringTag, {
-        value: tag,
-        configurable: true
-    });
-};
-
-// Example: Patching a mock Canvas
-const canvas = { getContext: () => ({}) };
-patchToStringTag(canvas, 'HTMLCanvasElement');
-
-// Standard Prototype Restoration
-class EventTarget {}
-class Node extends EventTarget {}
-class Element extends Node {}
-class HTMLElement extends Element {}
-global.HTMLElement = HTMLElement; 
-```
-
----
-
-## 4. Perfect "Native Code" Emulation
-
-Modern scripts check `fn.toString()` and `fn.prototype`. If you hook a function, you must hide the evidence.
-
-```javascript
-const makeNative = (() => {
-    const fnToString = Function.prototype.toString;
-    const registry = new WeakSet();
-
-    // The Master Hook
-    Function.prototype.toString = function() {
-        if (registry.has(this)) {
-            return `function ${this.name}() { [native code] }`;
+    },
+    // Also extract variable assignments if needed
+    VariableDeclarator(path) {
+        if (path.node.id.name === 'target_fn_name') {
+            const output = generate(path.parentPath.node).code;
+            console.log(output);
         }
-        return fnToString.call(this);
-    };
+    }
+});
+```
 
-    return (fn, name) => {
-        if (name) Object.defineProperty(fn, 'name', { value: name });
-        registry.add(fn);
-        return fn;
-    };
-})();
+### Strategy B: Brace Counting Extraction (Python)
+If Node.js is unavailable, use Python to read the file and extract the block by matching `{` and `}` levels.
 
-// Usage:
-global.setTimeout = makeNative(() => { /* custom logic */ }, 'setTimeout');
+```python
+# instruction: Use this logic to extract the function text block
+def extract_function(file_path, func_name):
+    with open(file_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    # 1. Find start index
+    start_marker = f"function {func_name}"
+    start_idx = content.find(start_marker)
+    if start_idx == -1: return None
+    
+    # 2. Brace counting logic
+    open_braces = 0
+    in_function = False
+    extracted = []
+    
+    for i in range(start_idx, len(content)):
+        char = content[i]
+        extracted.append(char)
+        
+        if char == '{':
+            open_braces += 1
+            in_function = True
+        elif char == '}':
+            open_braces -= 1
+        
+        # If braces return to 0, function ends
+        if in_function and open_braces == 0:
+            return "".join(extracted)
+
+print(extract_function("script.js", "encrypt"))
 ```
 
 ---
 
-## 5. Property Descriptor Patching (Critical)
+## Phase 3: Environment Patching & Emulation
+*Once the code snippet is extracted to `target_snippet.js`, apply patches.*
 
-In real browsers, `navigator.userAgent` is **not** a simple property; it is a **getter** on the `Navigator.prototype`. Bots check this to detect simple object mocks.
+### 1. Strategy Selector
+*   **Level 1**: Code uses `window.btoa`. $\rightarrow$ **Mock Object**.
+*   **Level 2**: Code uses `instanceof`. $\rightarrow$ **JSDOM/Class Mock**.
+*   **Level 3**: Code checks `toString`. $\rightarrow$ **Native Hook**.
+
+### 2. Auto-Discovery (Proxy Sniffer)
+Wrap the extracted code in a sandbox with a Proxy to see what it asks for.
 
 ```javascript
-// ❌ BAD: navigator.userAgent = "..." (Detected)
-// ✅ GOOD: Use a getter on the prototype
-const patchGetter = (obj, prop, value) => {
-    Object.defineProperty(obj, prop, {
-        get: makeNative(() => value, `get ${prop}`),
-        configurable: true,
-        enumerable: true
+const envSniffer = (name) => new Proxy({}, {
+    get(t, prop) {
+        console.warn(`[MISSING] Code requested: ${name}.${String(prop)}`);
+        return envSniffer(`${name}.${String(prop)}`);
+    }
+});
+global.window = envSniffer('window');
+// Run extracted code...
+```
+
+### 3. "Native" Code Emulation (Anti-Tamper)
+Fix `toString()` detection in the patched environment.
+
+```javascript
+const makeNative = (fn, name) => {
+    Object.defineProperty(fn, 'toString', { 
+        value: () => `function ${name || 'native'}() { [native code] }` 
     });
+    return fn;
 };
-
-patchGetter(Navigator.prototype, 'userAgent', 'Mozilla/5.0...');
-patchGetter(Navigator.prototype, 'webdriver', false);
+// Apply: global.setTimeout = makeNative(() => {}, 'setTimeout');
 ```
 
 ---
 
-## 6. Execution Sandbox (Memory Safety)
+## Phase 4: Verification Checklist
 
-Don't run environment-sensitive code in the raw Node.js `global`. Use the `vm` module to prevent the script from detecting Node.js globals like `process` or `require`.
-
-```javascript
-const vm = require('vm');
-
-const code = `(function() { return navigator.userAgent; })()`;
-const context = {
-    navigator: { userAgent: 'Chrome/120.0' },
-    console: console
-};
-
-vm.createContext(context);
-const result = vm.runInContext(code, context);
-```
-
----
-
-## 7. Troubleshooting Checklist
-
-| Detection Method | Countermeasure |
-| :--- | :--- |
-| `instanceof HTMLDivElement` | Define class hierarchy (`class Element {}`, etc.) |
-| `toString()` returns custom code | Use the `makeNative` hook (§4) |
-| `Symbol.toStringTag` | Use `Object.defineProperty(obj, Symbol.toStringTag, ...)` |
-| `Reflect.ownKeys()` | Ensure your Proxy doesn't return unexpected extra keys |
-| `Stack Trace` checks | Ensure your patched functions don't add extra frames to `Error().stack` |
-| `Canvas/WebGL` fingerprinting | Use `Happy-DOM` or return static "Golden" hashes for `toDataURL` |
-
----
-
-## 8. Summary of the "Golden" Workflow
-
-1.  **Initial Run**: Run with the **Advanced Proxy Sniffing** (§2) to see every property accessed.
-2.  **Stubbing**: Create basic objects for `window`, `document`, `navigator`.
-3.  **Refinement**: 
-    *   For `instanceof` errors $\rightarrow$ Implement Classes (§3).
-    *   For `toString` detection $\rightarrow$ Apply `makeNative` (§4).
-    *   For Deep structural checks $\rightarrow$ Move properties to `.prototype` with getters (§5).
-4.  **Verification**: Compare the output of `Object.getOwnPropertyDescriptor(navigator, 'userAgent')` in the browser vs. your environment. They must be identical.
+1.  **Extraction Integrity**: Does the extracted snippet contain syntax errors (missing `}`)? $\rightarrow$ *Retry with AST method.*
+2.  **Dependency Check**: Does the snippet reference undefined variables (e.g., `_0x5a21`)? $\rightarrow$ *Use `rg` to find definition and append to snippet.*
+3.  **Output Match**: Does running the snippet in Node.js produce the same hash/token as the browser?
