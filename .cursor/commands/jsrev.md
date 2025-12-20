@@ -40,6 +40,28 @@ set_breakpoint(urlRegex=".*target\.js.*", lineNumber=XX,
 
 ---
 
+## ⚠️ RULE -0.3: NO evaluate_script + navigate_page LOOP
+
+**FORBIDDEN**: `evaluate_script` hook → `navigate_page` → hook lost → repeat.
+
+`evaluate_script` injects runtime hooks that **DO NOT survive page reload**.
+
+```javascript
+// ❌ USELESS PATTERN:
+evaluate_script(function="() => { window.hook = ...; return 'hooked'; }")
+navigate_page(type="reload")  // Hook is GONE!
+// Agent tries evaluate_script again... infinite loop
+
+// ✅ CORRECT: Use persistent breakpoints instead
+set_breakpoint(urlRegex=".*target\.js.*", lineNumber=1, columnNumber=XXX,
+    condition='console.log("VAL:", someVar), false')
+// Breakpoints survive reload!
+```
+
+**Rule**: For values needed AFTER navigation → use `set_breakpoint`, not `evaluate_script`.
+
+---
+
 ## ⚠️ RULE -0.4: DEEP FUNCTION TRACING
 
 **When analyzing algorithm → Trace layer by layer, not surface level.**
