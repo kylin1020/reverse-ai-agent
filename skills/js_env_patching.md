@@ -117,19 +117,46 @@ print(extract_function("script.js", "encrypt"))
 *   **Level 2**: Code uses `instanceof`. $\rightarrow$ **JSDOM/Class Mock**.
 *   **Level 3**: Code checks `toString`. $\rightarrow$ **Native Hook**.
 
-### 2. Auto-Discovery (Proxy Sniffer)
-Wrap the extracted code in a sandbox with a Proxy to see what it asks for.
+### 2. Auto-Discovery (Recursive Proxy Sniffer)
+Wrap extracted code in a recursive Proxy to detect ALL missing property accesses.
 
 ```javascript
-const envSniffer = (name) => new Proxy({}, {
+// Recursive Proxy: tracks full property path, auto-wraps nested access
+const missing = new Set();
+const envSniffer = (path = 'window') => new Proxy(function(){}, {
     get(t, prop) {
-        console.warn(`[MISSING] Code requested: ${name}.${String(prop)}`);
-        return envSniffer(`${name}.${String(prop)}`);
+        if (prop === Symbol.toPrimitive) return () => '';
+        if (prop === 'toString' || prop === 'valueOf') return () => '';
+        const fullPath = `${path}.${String(prop)}`;
+        missing.add(fullPath);
+        return envSniffer(fullPath);
+    },
+    set(t, prop, val) {
+        console.log(`[SET] ${path}.${String(prop)} =`, val);
+        return true;
+    },
+    apply(t, thisArg, args) {
+        console.log(`[CALL] ${path}()`);
+        return envSniffer(`${path}()`);
+    },
+    construct(t, args) {
+        console.log(`[NEW] ${path}`);
+        return envSniffer(`new ${path}`);
     }
 });
+
 global.window = envSniffer('window');
-// Run extracted code...
+global.document = envSniffer('document');
+global.navigator = envSniffer('navigator');
+
+// Run target code, then:
+process.on('exit', () => {
+    console.log('\n=== MISSING (undefined) ===');
+    [...missing].sort().forEach(p => console.log(p));
+});
 ```
+
+**Key**: Proxy wraps every get/set/call → reveals exact property chain needed (e.g., `document.createElement().getContext`).
 
 ### 3. "Native" Code Emulation (Anti-Tamper)
 Fix `toString()` detection in the patched environment.
