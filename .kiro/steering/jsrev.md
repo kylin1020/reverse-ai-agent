@@ -144,7 +144,7 @@ set_breakpoint(urlRegex=".*core\\.js.*", lineNumber=XXX,
 2. **P-1 Gate**: Minified? → beautify to `output/`
 3. **P0 Gate**: Obfuscated? → deobfuscate to `output/`
 4. **Identify**: Find `sign|token|nonce|ts|enc` params
-5. **Locate** (clean code only): stack trace / local `rg` search / `search_script_content`
+5. **Locate** (clean code only): stack trace / local `rg` search
 6. **Analyze**: Read LOCAL deobfuscated JS → Debug BROWSER for values
 7. **Verify**: Browser value == Python output
 
@@ -181,11 +181,6 @@ resume_execution()
 **Console**
 ```javascript
 list_console_messages(types=["log", "error"], pageSize=50)
-```
-
-**Script Search (browser-side, before saving locally)**
-```javascript
-search_script_content(pattern="sign|encrypt", pageSize=3, contextLength=300)
 ```
 
 **⚠️ MANDATORY Cleanup after debug session:**
@@ -358,10 +353,9 @@ uv run python repro/get_token.py  # Reproduce request
 
 1. **Call Stack Tracing** (most reliable) - `get_network_request(reqid)` → check initiator
 2. **Local Search** (fast) - `rg "sign|encrypt" output/*_deob.js` on deobfuscated files
-3. **Browser Search** (fallback) - `search_script_content(pattern="sign|encrypt", pageSize=3)`
-4. **XHR Breakpoints** - DevTools Sources → XHR breakpoints → add keyword
+3. **XHR Breakpoints** - DevTools Sources → XHR breakpoints → add keyword
 
-**AVOID**: `search_functions` - slow and inefficient, prefer local rg or search_script_content.
+**AVOID**: `search_functions` - slow and inefficient, prefer local rg search.
 
 ---
 
