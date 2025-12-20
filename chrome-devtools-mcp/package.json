@@ -17,7 +17,6 @@
   "author": "Google LLC",
   "license": "Apache-2.0",
   "dependencies": {
-    "@vscode/ripgrep": "^1.15.9",
     "acorn": "^8.15.0",
     "core-js": "3.47.0"
   },

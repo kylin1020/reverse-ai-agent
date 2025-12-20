@@ -63,9 +63,10 @@ var _0xdef = function(idx) { return atob(_0xabc[idx - 0x100]); };
 
 ```javascript
 // Set breakpoint AFTER shuffler IIFE
+// ⚠️ urlRegex: Use SINGLE backslash (MCP handles JSON escaping)
 set_breakpoint(
     breakpointId="capture_array",
-    urlRegex=".*obfuscated\\.js.*",
+    urlRegex=".*obfuscated\.js.*",
     lineNumber=XX,  // After init
     condition='console.log("Array:", JSON.stringify(_0xabc.slice(0,20))), false'
 )
@@ -75,9 +76,10 @@ set_breakpoint(
 
 ```javascript
 // Sample verification (MANDATORY before AST replacement)
+// ⚠️ urlRegex: Use SINGLE backslash
 set_breakpoint(
     breakpointId="verify",
-    urlRegex=".*target\\.js.*",
+    urlRegex=".*target\.js.*",
     lineNumber=XX,
     condition='console.log("VERIFY:", JSON.stringify({
         "0x1a2": _0xdef(0x1a2),
@@ -232,7 +234,8 @@ Apply ONE at a time. Verify after each step.
 
 ```javascript
 // Logging breakpoint (capture values)
-set_breakpoint(breakpointId, urlRegex, lineNumber,
+// ⚠️ urlRegex: Use SINGLE backslash (MCP handles JSON escaping)
+set_breakpoint(breakpointId, urlRegex=".*target\.js.*", lineNumber,
     condition='console.log("VAL:", expr), false')
 
 // Retrieve logs

@@ -109,9 +109,10 @@ while (true) {
 grep(pattern="switch.*_op|switch.*opcode", type="js", head_limit=5)
 
 // Step 2: Set logging breakpoint (NO PAUSE)
+// ⚠️ urlRegex: Use SINGLE backslash (MCP handles JSON escaping)
 set_breakpoint(
     breakpointId="vm_trace",
-    urlRegex=".*target\\.js.*",
+    urlRegex=".*target\.js.*",
     lineNumber=1234,  // First line inside while loop
     condition='console.log("[PC:" + _pc + "] OP:" + _op + " | Stack:", JSON.stringify(_stack.slice(-5))), false'
 )
@@ -138,7 +139,8 @@ condition='console.log("[PC:"+i+"] OP:"+op+" Stack:"+JSON.stringify(s.slice(-3))
 
 ```javascript
 // 1. Set logging breakpoint (NO PAUSE)
-set_breakpoint(breakpointId="vm_log", urlRegex=".*vm\\.js.*", lineNumber=100,
+// ⚠️ urlRegex: Use SINGLE backslash
+set_breakpoint(breakpointId="vm_log", urlRegex=".*vm\.js.*", lineNumber=100,
     condition='console.log("[PC:"+pc+"] OP:"+op), false')
 
 // 2. Trigger execution via:
@@ -203,9 +205,10 @@ When you need to inspect specific state:
 
 ```javascript
 // Pause when specific value appears on stack
+// ⚠️ urlRegex: Use SINGLE backslash
 set_breakpoint(
     breakpointId="pause_on_match",
-    urlRegex=".*vm\\.js.*",
+    urlRegex=".*vm\.js.*",
     lineNumber=100,
     condition='_stack[_stack.length-1]?.includes?.("SearchString")'  // No ", false" = PAUSES
 )
@@ -213,7 +216,7 @@ set_breakpoint(
 // Pause at specific opcode
 set_breakpoint(
     breakpointId="pause_op42",
-    urlRegex=".*vm\\.js.*",
+    urlRegex=".*vm\.js.*",
     lineNumber=100,
     condition='_op === 42'
 )
@@ -277,9 +280,10 @@ evaluate_on_call_frame(expression="JSON.stringify(_bytecode.slice(_pc, _pc+20))"
 
 ```javascript
 // Set breakpoint to log opcode with full context
+// ⚠️ urlRegex: Use SINGLE backslash
 set_breakpoint(
     breakpointId="opcode_map",
-    urlRegex=".*vm\\.js.*",
+    urlRegex=".*vm\.js.*",
     lineNumber=100,
     condition='console.log("OP:"+_op+" BEFORE:"+JSON.stringify(_stack.slice(-3))), false'
 )
@@ -401,7 +405,8 @@ inject_console_log(
 
 ```javascript
 // ✅ Logging breakpoint (safe, no pause)
-set_breakpoint(breakpointId, urlRegex, lineNumber, 
+// ⚠️ urlRegex: Use SINGLE backslash (MCP handles JSON escaping)
+set_breakpoint(breakpointId, urlRegex=".*target\.js.*", lineNumber, 
     condition='console.log("...", var), false')
 
 // ✅ Retrieve logs
@@ -409,7 +414,7 @@ list_console_messages(types=["log"], pageSize=100)
 get_console_message(msgid=123)
 
 // ⚠️ Pausing breakpoint (careful - blocks MCP!)
-set_breakpoint(breakpointId, urlRegex, lineNumber, condition='_op===42')
+set_breakpoint(breakpointId, urlRegex=".*target\.js.*", lineNumber, condition='_op===42')
 
 // ✅ When paused - use debugger tools
 get_debugger_status()

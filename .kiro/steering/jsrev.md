@@ -128,7 +128,8 @@ Analysis Workflow:
 readFile("output/core_deob.js")  // Find: sign = md5(ts + key + params)
 
 // Step 2: Set breakpoint in browser to capture actual values
-set_breakpoint(urlRegex=".*core\\.js.*", lineNumber=XXX,
+// ⚠️ Use SINGLE backslash in urlRegex
+set_breakpoint(urlRegex=".*core\.js.*", lineNumber=XXX,
     condition='console.log("ts:", ts, "key:", key), false')
 
 // Step 3: Compare browser values with local logic understanding
@@ -162,11 +163,16 @@ save_static_resource(reqid=23, filePath="source/main.js")
 **Breakpoints**
 ```javascript
 // Log breakpoint (no pause) - trailing ", false" is CRITICAL
-set_breakpoint(urlRegex=".*target\\.js.*", lineNumber=123,
+// ⚠️ urlRegex: Use SINGLE backslash (MCP handles JSON escaping)
+set_breakpoint(urlRegex=".*target\.js.*", lineNumber=123,
     condition='console.log("VAR:", someVar), false')
 
 // Pausing breakpoint
-set_breakpoint(urlRegex=".*target\\.js.*", lineNumber=123)
+set_breakpoint(urlRegex=".*target\.js.*", lineNumber=123)
+
+// Common patterns:
+// ".*5703\.app.*\.js"     ✅ Correct - matches 5703.app.xxx.js
+// ".*5703\\.app.*\\.js"   ❌ Wrong - double escape, won't match
 ```
 
 **When Paused**
