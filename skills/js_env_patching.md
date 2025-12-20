@@ -1,228 +1,177 @@
-```markdown
-# JavaScript Environment Patching Skill
+# JS Environment Patching & Emulation Skill
 
-> **Trigger**: `ReferenceError: document/window is not defined`, browser fingerprint checks, anti-bot detection loops.  
-> **Goal**: Create a simulated browser environment in Node.js/Python to execute encrypted JS logic.  
-> **Tools**: `Proxy` (Sniffing), `Happy-DOM` (Base Env), `Never-JScore` (High-Perf), `Pure JS` (Anti-Detect).
+> **Trigger**: `ReferenceError`, "Bot Detected" flags, or when `debugger` statements trigger environment checks.
+> **Goal**: Create a "Transparent" browser simulation that passes both property existence tests and deep structural integrity checks.
 
 ---
 
-## 0. Strategy Selector
+## 1. Strategy Selector
 
 ```
-Which execution engine are you using?
+Check detection level:
   │
-  ├─ Python (Never-JScore) ?
-  │     └─ GOTO §3 (Native Polyfills)
+  ├─ Level 1: Basic logic (e.g., uses btoa, userAgent)
+  │     └─ Action: Simple Object Mocks ({ userAgent: '...' })
   │
-  └─ Node.js ?
-        │
-        ├─ Need complex DOM (canvas, forms, cookies)?
-        │     └─ YES → GOTO §2 (Happy-DOM)
-        │
-        └─ High Security / Anti-Fingerprint / VM?
-              └─ YES → GOTO §1 (Proxy Sniffing) → §4 (Pure JS Patching)
+  ├─ Level 2: Structural checks (e.g., instanceof, prototype)
+  │     └─ Action: Use Happy-DOM or JSDOM + Prototype Restoration (§3)
+  │
+  └─ Level 3: Anti-Emulation (e.g., checks Proxy, toString, Descriptors)
+        └─ Action: Proxy Sniffing (§2) + Native Function Hooks (§4) + Descriptor Patching (§5)
 ```
 
 ---
 
-## 1. Proxy Sniffing (The "Detective")
+## 2. Advanced Proxy Sniffing (The "Transparent" Detective)
 
-**Goal**: Detect exactly what properties the obfuscated code is accessing, instead of guessing.
+A basic Proxy is easily detected. This version uses `Reflect` to ensure the Proxy behaves exactly like the target object while logging missing properties.
 
-**Snippet (Inject at the top of the target script)**:
 ```javascript
-const createProxy = (name, target = {}) => {
+const envSniffer = (name, target = {}) => {
     return new Proxy(target, {
-        get: (target, prop) => {
-            if (prop === Symbol.toPrimitive) return undefined;
-            // Return actual value if exists
-            if (prop in target) return target[prop];
+        get(target, prop, receiver) {
+            // 1. Avoid infinite recursion for internal symbols
+            if (typeof prop === 'symbol') return Reflect.get(target, prop, receiver);
             
-            console.log(`[MISSING] ${name}.${String(prop)}`);
+            const value = Reflect.get(target, prop, receiver);
+            if (value !== undefined) return value;
+
+            // 2. Log missing properties to identify what to patch next
+            console.warn(`[MISSING] ${name}.${String(prop)} accessed.`);
             
-            // Recursive proxy for nested objects (e.g., navigator.plugins[0])
-            return createProxy(`${name}.${String(prop)}`);
+            // 3. Return a recursive proxy to prevent "cannot read property of undefined"
+            return envSniffer(`${name}.${String(prop)}`);
         },
-        set: (target, prop, value) => {
-            console.log(`[SET] ${name}.${String(prop)} = ${value}`);
-            target[prop] = value;
-            return true;
+        getOwnPropertyDescriptor(target, prop) {
+            const desc = Reflect.getOwnPropertyDescriptor(target, prop);
+            if (!desc) console.warn(`[CHECK] Descriptor for ${name}.${String(prop)}`);
+            return desc;
         }
     });
 };
 
-// Mount detectives
-global.window = createProxy('window', global);
-global.document = createProxy('document');
-global.navigator = createProxy('navigator');
-global.location = createProxy('location');
-global.localStorage = createProxy('localStorage');
-```
-
-**Action**: Run the script. If logs show `[MISSING] navigator.userAgent`, patch it specifically.
-
----
-
-## 2. Lightweight Framework (Happy-DOM)
-
-**Best for**: General purpose, fast, low memory. Better than JSDOM.
-
-**Installation**: `npm install happy-dom`
-
-**Template**:
-```javascript
-const { Window } = require('happy-dom');
-const win = new Window({
-    url: 'https://target-site.com',
-    width: 1920, 
-    height: 1080
-});
-
-// Sync globals
-global.window = win;
-global.document = win.document;
-global.navigator = win.navigator;
-global.location = win.location;
-global.HTMLElement = win.HTMLElement;
-
-// ⚠️ Overwrite dangerous defaults
-Object.defineProperty(win.navigator, 'webdriver', { get: () => false });
+global.window = envSniffer('window', global);
+global.navigator = envSniffer('navigator');
 ```
 
 ---
 
-## 3. Never-JScore Configuration
+## 3. Prototype Chain & Type Identity
 
-**Best for**: Python-native execution, high performance.
-
-**Template**:
-```python
-import never_jscore
-
-ctx = never_jscore.Context(enable_node_compat=True)
-
-# Pre-inject environment before loading target code
-ctx.evaluate("""
-    // 1. Basic BOM
-    var window = globalThis;
-    var self = window;
-    
-    // 2. Navigator Patch
-    var navigator = {
-        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36...",
-        webdriver: false,
-        platform: "Win32",
-        language: "en-US",
-        plugins: []
-    };
-    
-    // 3. Location Patch
-    var location = {
-        href: "https://www.target.com/",
-        origin: "https://www.target.com",
-        protocol: "https:",
-        host: "www.target.com"
-    };
-    
-    // 4. Document Placeholder
-    var document = {
-        referrer: "",
-        cookie: "",
-        createElement: function(tag) { return { style: {} }; },
-        getElementById: function(id) { return null; }
-    };
-""")
-```
-
----
-
-## 4. Pure JS & Anti-Detection (Advanced)
-
-**Best for**: Bypassing sophisticated "bot" checks that detect JSDOM/Happy-DOM or verify `native code`.
-
-### 4.1 The `toString` Hook (Native Emulation)
-Obfuscated code checks if functions are native (return `[native code]`).
+Scripts often use `Object.prototype.toString.call(obj)` to verify if an object is truly a browser element.
 
 ```javascript
-(() => {
-    const $toString = Function.prototype.toString;
-    const _symbol = Symbol('native_guard');
+// Ensure [object HTMLDivElement] instead of [object Object]
+const patchToStringTag = (obj, tag) => {
+    Object.defineProperty(obj, Symbol.toStringTag, {
+        value: tag,
+        configurable: true
+    });
+};
 
+// Example: Patching a mock Canvas
+const canvas = { getContext: () => ({}) };
+patchToStringTag(canvas, 'HTMLCanvasElement');
+
+// Standard Prototype Restoration
+class EventTarget {}
+class Node extends EventTarget {}
+class Element extends Node {}
+class HTMLElement extends Element {}
+global.HTMLElement = HTMLElement; 
+```
+
+---
+
+## 4. Perfect "Native Code" Emulation
+
+Modern scripts check `fn.toString()` and `fn.prototype`. If you hook a function, you must hide the evidence.
+
+```javascript
+const makeNative = (() => {
+    const fnToString = Function.prototype.toString;
+    const registry = new WeakSet();
+
+    // The Master Hook
     Function.prototype.toString = function() {
-        // Return fake native string if marked
-        if (this[_symbol]) {
-            const name = this.name || 'anonymous';
-            return `function ${name}() { [native code] }`;
+        if (registry.has(this)) {
+            return `function ${this.name}() { [native code] }`;
         }
-        // Prevent recursive detection of the hook itself
-        if (this === Function.prototype.toString) {
-            return 'function toString() { [native code] }';
-        }
-        return $toString.call(this);
+        return fnToString.call(this);
     };
 
-    // Helper to protect functions
-    global.protect = (fn, name) => {
-        Object.defineProperty(fn, 'name', { value: name });
-        fn[_symbol] = true;
+    return (fn, name) => {
+        if (name) Object.defineProperty(fn, 'name', { value: name });
+        registry.add(fn);
         return fn;
     };
 })();
 
 // Usage:
-// window.alert = protect(() => {}, 'alert');
-```
-
-### 4.2 Prototype Chain Restoration
-Checks like `div instanceof HTMLDivElement` fail on simple objects.
-
-```javascript
-class EventTarget {}
-class Node extends EventTarget {}
-class Element extends Node {}
-class HTMLElement extends Element {}
-class HTMLDivElement extends HTMLElement {}
-class HTMLCanvasElement extends HTMLElement {}
-
-global.HTMLDivElement = HTMLDivElement;
-global.HTMLCanvasElement = HTMLCanvasElement;
+global.setTimeout = makeNative(() => { /* custom logic */ }, 'setTimeout');
 ```
 
 ---
 
-## 5. Environment Cleanup (Node.js Hiding)
+## 5. Property Descriptor Patching (Critical)
 
-**Trigger**: Code checks `process.version` or `Buffer` to detect Node.js.
+In real browsers, `navigator.userAgent` is **not** a simple property; it is a **getter** on the `Navigator.prototype`. Bots check this to detect simple object mocks.
 
 ```javascript
-const cleanEnv = () => {
-    // Delete Node.js distinct markers
-    delete global.process;
-    delete global.Buffer;
-    delete global.global;
-    
-    // Rename global to window completely
-    global.window = global;
-    
-    // Mock requestAnimationFrame if missing
-    if (!global.requestAnimationFrame) {
-        global.requestAnimationFrame = (callback) => setTimeout(callback, 16);
-    }
+// ❌ BAD: navigator.userAgent = "..." (Detected)
+// ✅ GOOD: Use a getter on the prototype
+const patchGetter = (obj, prop, value) => {
+    Object.defineProperty(obj, prop, {
+        get: makeNative(() => value, `get ${prop}`),
+        configurable: true,
+        enumerable: true
+    });
 };
 
-// Execute immediately before target code
-cleanEnv();
+patchGetter(Navigator.prototype, 'userAgent', 'Mozilla/5.0...');
+patchGetter(Navigator.prototype, 'webdriver', false);
 ```
 
 ---
 
-## 6. Troubleshooting
+## 6. Execution Sandbox (Memory Safety)
 
-| Error | Fix |
-|-------|-----|
-| `TypeError: Cannot read property 'userAgent' of undefined` | `navigator` is missing. Add `global.navigator = {}`. |
-| `SecurityError: localStorage access denied` | Use `Happy-DOM` or mock `localStorage` object with `getItem/setItem`. |
-| `Proxy` logs show infinite recursion | Code is traversing the prototype chain. Return `null` for `Symbol` props in Proxy. |
-| `ReferenceError: document` inside a function | Ensure `document` is attached to `global` (Node) or `globalThis` (Never-JScore). |
+Don't run environment-sensitive code in the raw Node.js `global`. Use the `vm` module to prevent the script from detecting Node.js globals like `process` or `require`.
+
+```javascript
+const vm = require('vm');
+
+const code = `(function() { return navigator.userAgent; })()`;
+const context = {
+    navigator: { userAgent: 'Chrome/120.0' },
+    console: console
+};
+
+vm.createContext(context);
+const result = vm.runInContext(code, context);
 ```
+
+---
+
+## 7. Troubleshooting Checklist
+
+| Detection Method | Countermeasure |
+| :--- | :--- |
+| `instanceof HTMLDivElement` | Define class hierarchy (`class Element {}`, etc.) |
+| `toString()` returns custom code | Use the `makeNative` hook (§4) |
+| `Symbol.toStringTag` | Use `Object.defineProperty(obj, Symbol.toStringTag, ...)` |
+| `Reflect.ownKeys()` | Ensure your Proxy doesn't return unexpected extra keys |
+| `Stack Trace` checks | Ensure your patched functions don't add extra frames to `Error().stack` |
+| `Canvas/WebGL` fingerprinting | Use `Happy-DOM` or return static "Golden" hashes for `toDataURL` |
+
+---
+
+## 8. Summary of the "Golden" Workflow
+
+1.  **Initial Run**: Run with the **Advanced Proxy Sniffing** (§2) to see every property accessed.
+2.  **Stubbing**: Create basic objects for `window`, `document`, `navigator`.
+3.  **Refinement**: 
+    *   For `instanceof` errors $\rightarrow$ Implement Classes (§3).
+    *   For `toString` detection $\rightarrow$ Apply `makeNative` (§4).
+    *   For Deep structural checks $\rightarrow$ Move properties to `.prototype` with getters (§5).
+4.  **Verification**: Compare the output of `Object.getOwnPropertyDescriptor(navigator, 'userAgent')` in the browser vs. your environment. They must be identical.
