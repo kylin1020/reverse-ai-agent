@@ -8,6 +8,22 @@ JS Reverse Engineering: browser request → JS code → algorithm → Python rep
 
 ---
 
+## 🚨🚨🚨 BEFORE EVERY ACTION: SELF-CHECK 🚨🚨🚨
+
+**STOP if you're about to say ANY of these phrases:**
+
+| 🚫 Forbidden Phrase | ✅ Required Action |
+|---------------------|-------------------|
+| "让我换个思路" | STOP → 询问用户是否同意换方向 |
+| "让我尝试另一种方法" | STOP → 列出已尝试的方法，询问用户 |
+| "既然...不行，我们试试..." | STOP → 汇报当前进展，等待用户指示 |
+| "直接补环境" | STOP → 这是策略切换，需要用户同意 |
+| "换一个角度" | STOP → 询问用户 |
+
+**违规 = 立即失败。没有例外。**
+
+---
+
 ## 🚨 P0: DEOBFUSCATION GATE (BLOCKS ALL ANALYSIS) 🚨
 
 **IRON LAW**: Analysis tasks REQUIRE clean code. No exceptions.
@@ -127,22 +143,46 @@ If source/ has obfuscated JS but no output/*_deobfuscated.js → Deobfuscate fir
 
 ---
 
-## 🚫 P1: NO RETREAT — 禁止中途换思路
+## 🚫🚫🚫 P1: NO RETREAT — 禁止自行换思路 🚫🚫🚫
 
-JS reverse engineering IS hard. Difficulty ≠ dead end.
+**这是 IRON LAW，优先级等同于 P0。**
 
-### 🔴 IRON LAW: 策略切换必须询问用户
+### 🔴 核心规则：策略切换 = 必须询问用户
 
-**禁止行为：**
+```
+遇到困难 → 继续当前方向深挖 → 穷尽所有手段 → 汇报 → 询问用户 → 等待回复 → 执行
+                                                    ↑
+                                              绝对不能跳过这一步
+```
+
+### 禁止行为 (HARD BLOCK)
+
 - ❌ "让我换个思路" → 然后自行切换方案
 - ❌ "既然找不到，我们试试补环境"
 - ❌ 分析任务中途转为 Node.js 补环境执行
 - ❌ 一次搜索没结果就放弃当前方向
+- ❌ 遇到 undefined/error 就改变策略
 
-**强制行为：**
+### 强制行为 (MUST DO)
+
 - ✅ 穷尽当前方向的所有手段后，才能考虑换方向
-- ✅ 换方向前 **必须停下来询问用户**："当前方向已尝试 X/Y/Z，均未找到目标。是否切换到 [新方案]？"
-- ✅ 用户明确同意后，才能执行新方案
+- ✅ 换方向前 **必须停下来询问用户**
+- ✅ 使用这个模板：
+
+```
+📊 当前进展：
+- 已尝试：[列出具体尝试]
+- 发现：[列出发现]
+- 卡点：[具体问题]
+
+🔀 建议方向：
+A) [继续当前方向的具体下一步]
+B) [备选方案]
+
+请问选择哪个方向？
+```
+
+- ✅ **等待用户回复后才能继续**
 
 ### 穷尽手段的定义
 
@@ -163,26 +203,34 @@ JS reverse engineering IS hard. Difficulty ≠ dead end.
 - `cryptoFuncs: []` → 可能是自定义实现，继续追踪数据流
 - 没找到标准 API → 搜索位运算、循环、数组操作
 - 函数名混淆 → 通过调用关系和返回值类型定位
+- `undefined.apply` 错误 → 检查 VM 状态初始化，不是换思路的理由
 
 ### 违规示例
 
 ```
+❌ AI: "X4 可能是 undefined，让我换个思路 - 直接从浏览器导出..."
+   → 违规：未询问用户，遇到一个错误就换方向
+
 ❌ AI: "cryptoFuncs 为空，让我换个思路，直接补环境跑..."
    → 违规：未询问用户，未穷尽手段
 
-✅ AI: "已尝试：1) 搜索 crypto API - 无结果 2) Hook fetch - 找到请求点 
-        3) 追踪 3 层调用栈 - 数据在第 2 层被加密 4) 搜索位运算 - 
-        找到 XOR 操作但未确认关联。
+✅ AI: "📊 当前进展：
+        - 已尝试：1) 搜索 crypto API - 无结果 2) Hook fetch - 找到请求点 
+          3) 追踪 3 层调用栈 - 数据在第 2 层被加密
+        - 发现：XOR 操作存在但未确认关联
+        - 卡点：无法确定 XOR 操作与目标参数的关系
         
-        当前卡在：无法确定 XOR 操作与目标参数的关系。
-        建议：A) 继续深入 XOR 函数 B) 尝试补环境执行
+        🔀 建议方向：
+        A) 继续深入 XOR 函数，设置断点观察输入输出
+        B) 尝试补环境执行
+        
         请问选择哪个方向？"
    → 正确：汇报进展，列出选项，等待用户决定
 ```
 
 ---
 
-## P1: BROWSER IS TRUTH
+## P1.5: BROWSER IS TRUTH
 
 ```javascript
 // Print function source (limited!)
