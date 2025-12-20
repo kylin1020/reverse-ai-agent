@@ -47,11 +47,21 @@ rg -c "_0x[a-f0-9]|\\\\x[0-9a-f]{2}" source/*.js 2>/dev/null || echo "0"
 
 ---
 
-## P0.1: NO METHOD OSCILLATION
+## P0.1: NO PREMATURE PIVOT
 
-**FORBIDDEN**: A → B → A → B switching. Commit to ONE method for 3+ attempts.
+**FORBIDDEN**: Switching approach without exhausting current lead.
 
-Before switching: `"已尝试 [方法] [N] 次，失败原因: [X]。切换到 [新方法]？"`
+```
+❌ Found n.apply(d,e) → "换个思路追踪 a_bogus"
+✅ Found n.apply(d,e) → Trace return value m → Follow m's usage → Continue until dead end
+```
+
+**Before ANY pivot, MUST answer:**
+1. Did I capture the return value? 
+2. Did I trace where it flows?
+3. Did I hit a REAL dead end (undefined, error, 3+ failed attempts)?
+
+**If NO → KEEP TRACING. Don't pivot.**
 
 ---
 
