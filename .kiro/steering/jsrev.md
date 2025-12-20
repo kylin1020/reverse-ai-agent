@@ -8,6 +8,26 @@ JS Reverse Engineering: browser request → JS code → algorithm → Python rep
 
 ---
 
+## 🚀 RULE ZERO: SKILL LOADING (HIGHEST PRIORITY)
+
+**MANDATORY**: Detect keywords in user request → Load skill IMMEDIATELY before any action.
+
+| User Keywords | Skill to Load | Action |
+|---------------|---------------|--------|
+| 补环境, env patch, environment, Node.js运行, ReferenceError | `readFile("skills/js_env_patching.md")` | Load FIRST |
+| 混淆, deobfuscate, _0x, 解混淆, obfuscation | `readFile("skills/js_deobfuscation.md")` | Load FIRST |
+| JSVMP, VM, while(true){switch}, 虚拟机 | `readFile("skills/jsvmp_analysis.md")` | Load FIRST |
+| 提取, extract, webpack, bundle | `readFile("skills/js_extraction.md")` | Load FIRST |
+
+**Execution**: 
+1. Scan user message for keywords above
+2. If match → `readFile("skills/xxx.md")` IMMEDIATELY
+3. Then proceed with session start
+
+**VIOLATION = SESSION FAILURE.**
+
+---
+
 ## 🚀 SESSION START (MANDATORY)
 
 ```bash
@@ -18,7 +38,7 @@ ls artifacts/jsrev/{domain}/ 2>/dev/null && readFile("artifacts/jsrev/{domain}/P
 
 ---
 
-## RULE ZERO: READABILITY GATE
+## RULE ONE: READABILITY GATE
 
 > Load `#[[file:skills/js_deobfuscation.md]]` when obfuscation detected!
 
@@ -364,12 +384,18 @@ resume_execution()
 
 ---
 
-## Pattern Recognition
+## Pattern Recognition (Runtime Detection)
 
-- Single-line 50KB+ → P-1: Beautify first
-- `_0x` vars, hex strings → P0: Deobfuscate first → `#[[file:skills/js_deobfuscation.md]]`
-- `while(true){switch}` + stack → JSVMP → `#[[file:skills/jsvmp_analysis.md]]`
-- `ReferenceError: window` → Env patch → `#[[file:skills/js_env_patching.md]]`
+**When analyzing code, detect these patterns → Load skill:**
+
+| Pattern Detected | Skill | Command |
+|------------------|-------|---------|
+| Single-line 50KB+ | Beautify first | `npx js-beautify` |
+| `_0x` vars, hex strings | `readFile("skills/js_deobfuscation.md")` | Load then deobfuscate |
+| `while(true){switch}` + stack | `readFile("skills/jsvmp_analysis.md")` | Load then trace |
+| `ReferenceError: window` | `readFile("skills/js_env_patching.md")` | Load then patch |
+
+**CRITICAL**: When pattern detected mid-session → STOP → Load skill → Continue with skill guidance.
 
 ---
 
@@ -511,12 +537,16 @@ uv run python repro/get_token.py  # Reproduce request
 
 ---
 
-## Reference Skills
+## Reference Skills (Load on Demand)
 
-- `#[[file:skills/js_deobfuscation.md]]` - AST transforms, anti-debug, string decode
-- `#[[file:skills/jsvmp_analysis.md]]` - VM analysis, breakpoint instrumentation
-- `#[[file:skills/js_env_patching.md]]` - Happy-DOM, Proxy detection
-- `#[[file:skills/js_extraction.md]]` - Safe slicing, Webpack extraction
+| Skill | When to Load | Command |
+|-------|--------------|---------|
+| `skills/js_deobfuscation.md` | AST transforms, anti-debug, string decode | `readFile("skills/js_deobfuscation.md")` |
+| `skills/jsvmp_analysis.md` | VM analysis, breakpoint instrumentation | `readFile("skills/jsvmp_analysis.md")` |
+| `skills/js_env_patching.md` | Node.js env, Proxy detection, mock objects | `readFile("skills/js_env_patching.md")` |
+| `skills/js_extraction.md` | Safe slicing, Webpack extraction | `readFile("skills/js_extraction.md")` |
+
+**Rule**: When user mentions skill-related keywords or pattern detected → Load skill BEFORE proceeding.
 
 ---
 
@@ -540,7 +570,7 @@ uv run python repro/get_token.py  # Reproduce request
 **Porting strategy:**
 - Simple (MD5/SHA/Base64) → Python direct
 - Medium (AES/RSA) → Python + pycryptodome
-- Complex (env checks) → `#[[file:skills/js_env_patching.md]]`
+- Complex (env checks) → `readFile("skills/js_env_patching.md")` then follow guide
 
 ---
 
