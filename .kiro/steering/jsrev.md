@@ -51,16 +51,53 @@ rg "keyword" file.js | head -20  # head -n won't help!
 
 ---
 
-## 🚀 RULE ONE: SKILL LOADING
+## 🚀 RULE ONE: READABILITY GATE (BLOCKING)
 
-**MANDATORY**: Detect keywords → Load skill IMMEDIATELY.
+**⛔ STOP! Before ANY analysis, search, or debugging:**
 
-| Keywords | Skill |
-|----------|-------|
-| 补环境, env patch, ReferenceError | `skills/js_env_patching.md` |
-| 混淆, deobfuscate, _0x | `skills/js_deobfuscation.md` |
-| JSVMP, VM, while(true){switch} | `skills/jsvmp_analysis.md` |
-| 提取, extract, webpack | `skills/js_extraction.md` |
+### Step 1: Detect Obfuscation (MANDATORY)
+
+```bash
+# Quick obfuscation check (run on EVERY new JS file)
+head -c 3000 source/*.js | rg -o "_0x[a-f0-9]{4,6}|\\['\\\\x|atob\\(|\\\\u00|\\\\x[0-9a-f]{2}" | head -5
+```
+
+**Obfuscation Indicators** (ANY match = MUST deobfuscate):
+- `_0x` prefix variables → obfuscator.io
+- `\x` or `\u00` escapes → string encoding
+- `atob(` chains → base64 layers
+- `['...']` property access → bracket notation
+- Single-letter vars + massive expressions
+
+### Step 2: If Obfuscated → Load Skill + Deobfuscate
+
+```
+readFile("skills/js_deobfuscation.md")  # LOAD FIRST!
+# Then apply deobfuscation techniques BEFORE analysis
+```
+
+### Step 3: If Minified Only → Beautify
+
+```bash
+npx js-beautify -f source/in.js -o output/{name}_formatted.js
+```
+
+**❌ FORBIDDEN**: Searching/debugging obfuscated code directly.
+**❌ FORBIDDEN**: "Let me try to analyze this obfuscated code..."
+**✅ REQUIRED**: Deobfuscate → THEN analyze clean code.
+
+---
+
+## 🚀 RULE TWO: SKILL LOADING
+
+**AUTO-TRIGGER**: Detect patterns → Load skill IMMEDIATELY.
+
+| Pattern Detected | Action |
+|------------------|--------|
+| `_0x`, `\x`, `atob(` chains | `readFile("skills/js_deobfuscation.md")` |
+| 补环境, ReferenceError | `readFile("skills/js_env_patching.md")` |
+| `while(1){switch`, VM patterns | `readFile("skills/jsvmp_analysis.md")` |
+| webpack, `__webpack_require__` | `readFile("skills/js_extraction.md")` |
 
 ---
 
@@ -68,23 +105,6 @@ rg "keyword" file.js | head -20  # head -n won't help!
 
 ```bash
 ls artifacts/jsrev/{domain}/ 2>/dev/null && readFile("artifacts/jsrev/{domain}/PROGRESS.md")
-```
-
----
-
-## RULE TWO: READABILITY GATE
-
-1. Minified? → Beautify FIRST
-2. Obfuscated? → Deobfuscate FIRST
-3. THEN: Search / Debug / Analyze
-
-```bash
-# Check minification (safe)
-wc -l source/*.js 2>/dev/null | head -20
-# lines < 10 AND size > 50KB = MINIFIED
-
-# Beautify
-npx js-beautify -f in.js -o output/{name}_formatted.js
 ```
 
 ---
