@@ -40,19 +40,35 @@ console.log(`[TRACE] PC:${PC} | OP:${OP} | STACK:${JSON.stringify(STACK.slice(-5
 
 **Task**: Use the MCP `list_console_messages` tool to offload massive logs to local storage for high-performance searching.
 
+### ⚠️ CRITICAL: Single-Line Output Explosion
+
+VM trace logs contain `JSON.stringify()` output → single lines can be 10KB+. **ALWAYS use `-M` flag** to cap line length.
+
 1.  **Trigger Execution**: Perform the action in the browser (click, submit, etc.) or use `evaluate_script` to call the target global function.
 2.  **Save to Disk**:
     ```javascript
     // Use the savePath parameter to avoid memory overflow in the chat interface
     list_console_messages(savePath="vm_trace_full.txt", types=["log"])
     ```
-3.  **Local Data Mining**:
-    Use CLI tools (`rg`, `grep`, `awk`) to analyze the generated `vm_trace_full.txt`.
+3.  **Local Data Mining** (MANDATORY `-M` flag):
 
-    *   **Filter Opcodes**: `rg "OP:42" vm_trace_full.txt`
-    *   **Find Input**: `rg "your_input_string" vm_trace_full.txt`
-    *   **Trace Data Flow**: `rg -A 5 "OP: (ADD|XOR|SUB)" vm_trace_full.txt`
-    *   **Identify Loops**: `awk -F'|' '{print $1}' vm_trace_full.txt | uniq -c | head -n 20`
+    ```bash
+    # ✅ SAFE - Always use -M to cap per-line output
+    rg -M 200 "OP:42" vm_trace_full.txt | head -50
+    rg -M 200 "your_input_string" vm_trace_full.txt
+    rg -M 300 -A 2 "OP:(ADD|XOR|SUB)" vm_trace_full.txt | head -100
+    
+    # ✅ SAFE - awk/cut naturally handle line parsing
+    awk -F'|' '{print $1}' vm_trace_full.txt | uniq -c | head -20
+    cut -d'|' -f1,2 vm_trace_full.txt | head -50
+    
+    # ❌ FORBIDDEN - will explode context
+    rg "OP:42" vm_trace_full.txt              # No -M = disaster
+    cat vm_trace_full.txt                      # Never
+    rg -A 5 "pattern" vm_trace_full.txt       # Context lines also huge
+    ```
+
+**Rule**: Trace logs have JSON → single line = massive. `-M 200` is mandatory.
 
 ---
 

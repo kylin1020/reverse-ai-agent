@@ -103,17 +103,70 @@ rg -c "_0x[a-f0-9]|\\\\x[0-9a-f]{2}" source/*.js 2>/dev/null || echo "0"
 
 ---
 
-## P0.5: CLI Output Limits
+## P0.5: CLI Output Limits (CONTEXT EXPLOSION PREVENTION)
 
-**CRITICAL**: Single-line JS can overflow context. ALWAYS limit output.
+**CRITICAL**: Single-line output can overflow context. This applies to:
+- Minified JS files (1 line = 500KB)
+- VM trace logs (JSON.stringify outputs massive single lines)
+- Console logs from instrumentation breakpoints
+
+**⚠️ `-M` flag shows `[Omitted long matching line]` instead of content!**
+
+Use `-o` with context regex to extract truncated matches:
 
 ```bash
-rg -o ".{0,80}keyword.{0,80}" file.js | head -30  # Safe
-rg -n "pattern" file.js | head -20                 # Line numbers only
+# ✅ BEST: Use -o with context to show truncated content
+rg -o ".{0,80}keyword.{0,80}" file.js | head -30   # Shows 160 chars around match
+rg -o ".{0,100}keyword.{0,100}" vm_trace.txt      # Wider context for traces
+
+# ✅ SAFE: -n for line numbers only (no content)
+rg -n "keyword" file.js | head -20                 # Just line:column
+
+# ✅ SAFE: --column to get position for breakpoints
+rg -n --column "keyword" source/file.js | head -5  # line:column:match
+
+# ✅ Other safe patterns
 sed -n '1,100p' file.js                            # Range only
 head -c 10000 file.js                              # Bytes limit
-# NEVER: cat file.js, rg without -o on minified
+awk -F'|' '{print $1,$2}' trace.txt | head -100   # Field extraction
+
+# ❌ FORBIDDEN - will explode context or show nothing useful
+cat file.js                                        # Never on minified
+rg "keyword" minified.js                           # Full line = disaster
+rg -M 200 "keyword" minified.js                    # Shows [Omitted] not content!
 ```
+
+**Rule**: For long lines, use `rg -o ".{0,N}pattern.{0,N}"` to show truncated content.
+
+---
+
+## P0.55: JSVMP Instrumentation Log Safety
+
+**CRITICAL**: VM trace breakpoints produce JSON.stringify output → single log line can be 10KB+.
+
+```javascript
+// ⚠️ Breakpoint condition outputs JSON → huge single lines
+set_breakpoint(urlRegex=".*vm\.js.*", lineNumber=XX,
+    condition='console.log(`[TRACE] PC:${pc} STACK:${JSON.stringify(stack)}`), false')
+```
+
+**When analyzing saved trace logs:**
+```bash
+# ✅ BEST: Use -o with context to show truncated content
+rg -o ".{0,80}\[TRACE\].{0,80}" vm_trace.txt | head -100
+rg -o ".{0,50}PC:42.{0,100}" vm_trace.txt | head -50
+
+# ✅ SAFE: Extract specific fields only
+awk -F'|' '{print $1,$2}' vm_trace.txt | head -100
+cut -d'|' -f1-2 vm_trace.txt | head -100
+
+# ❌ FORBIDDEN - context explosion or useless output
+rg "\[TRACE\]" vm_trace.txt                        # Full line = disaster
+rg -M 200 "\[TRACE\]" vm_trace.txt                 # Shows [Omitted] not content!
+rg -A 3 "pattern" vm_trace.txt                     # Context lines also huge
+```
+
+**Rule**: Trace logs = JSON = massive lines. Use `-o ".{0,N}pattern.{0,N}"` to extract.
 
 ---
 
@@ -162,27 +215,31 @@ index-url = "https://mirrors.aliyun.com/pypi/simple/"
 
 ```
 Analysis Workflow:
-1. READ LOCAL: output/*_deob.js → Understand algorithm logic (readable)
-2. DEBUG BROWSER: set_breakpoint → Verify runtime values (accurate)
-3. COMPARE: Local understanding + Browser values → Confirm correctness
+1. READ LOCAL: output/*_formatted.js → Understand algorithm logic (readable)
+2. GET LINE FROM SOURCE: rg in source/*.js → Get REAL line:column from ORIGINAL script
+3. DEBUG BROWSER: set_breakpoint with SOURCE line → Verify runtime values
+4. COMPARE: Local understanding + Browser values → Confirm correctness
 ```
 
 **Why**: Deobfuscated code is readable but may have transform errors. Browser code is accurate but unreadable. Combine both.
 
-**Pattern**:
-```javascript
-// Step 1: Read local deobfuscated code to understand structure
-readFile("output/core_deob.js")  // Find: sign = md5(ts + key + params)
+⚠️ **LINE NUMBER WARNING**: Formatted/deobfuscated files have DIFFERENT line numbers than original source!
 
-// Step 2: Set breakpoint in browser to capture actual values
-// ⚠️ Use SINGLE backslash in urlRegex
-set_breakpoint(urlRegex=".*core\.js.*", lineNumber=XXX,
-    condition='console.log("ts:", ts, "key:", key), false')
+```bash
+# Step 1: Read local formatted code to understand structure
+readFile("output/core_formatted.js")  # Find function "encrypt" logic
 
-// Step 3: Compare browser values with local logic understanding
+# Step 2: Get REAL line:column from ORIGINAL source file (NOT formatted!)
+rg -n --column "encrypt" source/core.js | head -5
+# → Returns: 1:12345 (line 1, column 12345 in minified source)
+
+# Step 3: Set breakpoint using SOURCE line:column
+set_breakpoint(urlRegex=".*core\.js.*", lineNumber=1, columnNumber=12345)
 ```
 
-**FORBIDDEN**: Analyzing minified/obfuscated browser code directly without local reference.
+**FORBIDDEN**: 
+- Analyzing minified/obfuscated browser code directly without local reference
+- Using line numbers from output/*_formatted.js for browser breakpoints
 
 ---
 
@@ -208,14 +265,43 @@ save_static_resource(reqid=23, filePath="source/main.js")
 ```
 
 **Breakpoints**
+
+⚠️ **CRITICAL: Line Number Mismatch**
+
+Formatted/deobfuscated files (output/) have DIFFERENT line numbers than original source (source/)!
+
+```
+output/core_formatted.js line 6526  ≠  source/core.js line 1, column 12345
+```
+
+**MANDATORY**: Get breakpoint coordinates from ORIGINAL source file, not formatted files.
+
+```bash
+# ✅ CORRECT: Search in ORIGINAL source file to get real line:column
+rg -n --column "functionName" source/core.js | head -5
+# → 1:12345:functionName  (line 1, column 12345)
+
+# Then set breakpoint with columnNumber for minified code:
+set_breakpoint(urlRegex=".*core\.js.*", lineNumber=1, columnNumber=12345)
+
+# ❌ WRONG: Using line number from formatted file
+# rg found "sum" at line 6526 in output/core_formatted.js
+# set_breakpoint(lineNumber=6526)  ← WILL FAIL - wrong line!
+```
+
+**Workflow for setting breakpoints:**
+1. READ output/*_formatted.js → understand logic, find function/variable NAME
+2. SEARCH source/*.js → `rg -n --column "name" source/file.js` → get REAL line:column
+3. SET breakpoint → use source line + columnNumber (for minified single-line files)
+
 ```javascript
 // Log breakpoint (no pause) - trailing ", false" is CRITICAL
 // ⚠️ urlRegex: Use SINGLE backslash (MCP handles JSON escaping)
-set_breakpoint(urlRegex=".*target\.js.*", lineNumber=123,
+set_breakpoint(urlRegex=".*target\.js.*", lineNumber=1, columnNumber=12345,
     condition='console.log("VAR:", someVar), false')
 
 // Pausing breakpoint
-set_breakpoint(urlRegex=".*target\.js.*", lineNumber=123)
+set_breakpoint(urlRegex=".*target\.js.*", lineNumber=1, columnNumber=12345)
 
 // Common patterns:
 // ".*5703\.app.*\.js"     ✅ Correct - matches 5703.app.xxx.js
