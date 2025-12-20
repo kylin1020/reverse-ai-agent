@@ -76,10 +76,32 @@ python -c "import json; data='%7B%22d...'; print(json.loads(urllib.parse.unquote
 
 # ✅ GOOD - write to tests/, run manually
 fsWrite("tests/decode_sample.py", script_content)
-# Then: python tests/decode_sample.py
+# Then: uv run python tests/decode_sample.py
 ```
 
 **Rule**: If script > 1 line or contains quotes/special chars → write to `tests/` dir.
+
+---
+
+## P0.7: Python Environment (uv preferred)
+
+```bash
+# uv available → use uv (with Aliyun mirror in pyproject.toml)
+uv add requests pycryptodome
+uv run python tests/test_algo.py
+
+# uv not found → fallback to venv
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/
+```
+
+**pyproject.toml** (uv mirror):
+```toml
+[tool.uv]
+index-url = "https://mirrors.aliyun.com/pypi/simple/"
+```
+
+**Rule**: Use `uv run python` when uv available, never bare `python`.
 
 ---
 
@@ -118,7 +140,7 @@ set_breakpoint(urlRegex=".*core\\.js.*", lineNumber=XXX,
 2. **P-1 Gate**: Minified? → beautify to `output/`
 3. **P0 Gate**: Obfuscated? → deobfuscate to `output/`
 4. **Identify**: Find `sign|token|nonce|ts|enc` params
-5. **Locate** (clean code only): stack trace / `search_functions` / breakpoints
+5. **Locate** (clean code only): stack trace / local `rg` search / `search_script_content`
 6. **Analyze**: Read LOCAL deobfuscated JS → Debug BROWSER for values
 7. **Verify**: Browser value == Python output
 
@@ -299,8 +321,8 @@ artifacts/jsrev/{domain}/
 
 ## Quick Start
 \`\`\`bash
-python -m pytest tests/           # Run tests
-python repro/get_token.py         # Reproduce request
+uv run pytest tests/              # Run tests
+uv run python repro/get_token.py  # Reproduce request
 \`\`\`
 
 ## Key Findings
@@ -330,10 +352,12 @@ python repro/get_token.py         # Reproduce request
 
 **Priority order:**
 
-1. **XHR/Fetch Breakpoints** (fastest) - DevTools Sources → XHR breakpoints → add keyword
-2. **Call Stack Tracing** (most reliable) - `get_network_request(reqid)` → check initiator
-3. **Global Search** - `search_functions(namePattern="sign|encrypt", pageSize=10)`
-4. **DOM Event Breakpoints** - For button-triggered requests
+1. **Call Stack Tracing** (most reliable) - `get_network_request(reqid)` → check initiator
+2. **Local Search** (fast) - `rg "sign|encrypt" output/*_deob.js` on deobfuscated files
+3. **Browser Search** (fallback) - `search_script_content(pattern="sign|encrypt", pageSize=3)`
+4. **XHR Breakpoints** - DevTools Sources → XHR breakpoints → add keyword
+
+**AVOID**: `search_functions` - slow and inefficient, prefer local rg or search_script_content.
 
 ---
 
