@@ -1,0 +1,6 @@
+/**
+ * @license
+ * Copyright 2025 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+import{getCdpSession as e}from"./cdp.js";const t=new WeakMap;function r(e){let r=t.get(e);return r||(r=new Map,t.set(e,r)),r}export async function addScript(t,n,a){const i=await e(t),o={identifier:(await i.send("Page.addScriptToEvaluateOnNewDocument",{source:n})).identifier,name:a,source:n,createdAt:Date.now()};return r(t).set(o.identifier,o),o}export async function removeScript(t,n){const a=r(t);if(!a.has(n))return!1;const i=await e(t);return await i.send("Page.removeScriptToEvaluateOnNewDocument",{identifier:n}),a.delete(n),!0}export function listScripts(e){const t=r(e);return Array.from(t.values())}export async function clearScripts(t){const n=r(t),a=n.size;if(0===a)return 0;const i=await e(t),o=Array.from(n.keys()).map(e=>i.send("Page.removeScriptToEvaluateOnNewDocument",{identifier:e}));return await Promise.all(o),n.clear(),a}export function truncateSource(e,t=100){return e.length<=t?e:e.substring(0,t)+"..."}

@@ -113,9 +113,25 @@ evaluate_script(function="() => JSON.stringify(Object.keys(obj)).slice(0,1000)")
 
 ---
 
-## P2: NO evaluate_script + navigate_page LOOP
+## P2: PERSISTENT HOOKS
 
-`evaluate_script` hooks don't survive reload. Use `set_breakpoint` instead.
+`evaluate_script` hooks don't survive reload. Use persistent scripts instead:
+
+```javascript
+// Register script to run on every page load
+add_persistent_script(identifier="hook_xyz", script="window.__hook = true;")
+
+// List registered scripts
+list_persistent_scripts()
+
+// Remove specific script
+remove_persistent_script(identifier="hook_xyz")
+
+// Clear all persistent scripts
+clear_persistent_scripts()
+```
+
+For simple value logging, `set_breakpoint` with condition also works.
 
 ---
 
@@ -220,6 +236,7 @@ list_console_messages(savePath="/absolute/path/raw/console.txt")
 
 ```javascript
 clear_all_breakpoints()
+clear_persistent_scripts()
 resume_execution()
 ```
 
