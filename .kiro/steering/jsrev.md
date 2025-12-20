@@ -47,6 +47,22 @@ head -c 3000 {file} | rg -o "_0x[a-f0-9]{4,6}|\\\\x[0-9a-f]{2}|atob\\(" | head -
 
 ---
 
+## 🔍 P0.5: NECESSITY CHECK
+
+Before analyzing cookie/param generation, verify it's actually required:
+
+```bash
+# Test request WITHOUT target param → compare response
+curl -v 'URL' -H 'Cookie: other_only' 2>&1 | head -c 3000
+```
+
+| Response | Action |
+|----------|--------|
+| 200 + valid | ⏭️ "该参数非必需，无需逆向" |
+| 403/401/blocked | ✅ Proceed with analysis |
+
+---
+
 ## 🛡️ RULE ONE: OUTPUT LIMITS
 
 **CRITICAL**: ALL commands MUST limit output to prevent context explosion.
