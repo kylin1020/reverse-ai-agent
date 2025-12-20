@@ -332,6 +332,17 @@ set_breakpoint(urlRegex=".*target.js.*", lineNumber=1, columnNumber=12345,
 set_breakpoint(urlRegex=".*target.js.*", lineNumber=1, columnNumber=12345)
 ```
 
+### ⚠️ Pausing Breakpoint = Human Triggers
+
+After setting a pausing breakpoint, **DO NOT** call `navigate_page`/`evaluate_script`/`click` to trigger it → MCP blocks waiting = DEADLOCK.
+
+```
+✅ set_breakpoint → ASK human to refresh/click → WAIT → get_debugger_status
+❌ set_breakpoint → navigate_page(type="reload") → 💀 DEADLOCK
+```
+
+**Safe to execute**: Log breakpoints (`condition='..., false'`), already-paused stepping.
+
 ### When Paused
 
 ```javascript
@@ -362,7 +373,8 @@ resume_execution()
 
 **STOP and ask:**
 - Slider/Click CAPTCHA → Build visual tool, human solves, verify params
-- Login required → "请登录后告诉我"
+- Login required → "Please login first"
+- Pausing breakpoint + need trigger → "Breakpoint set. Please refresh/click to trigger, then tell me."
 
 **Request confirmation:**
 - Visual verification uncertain → Save debug image → Ask human
