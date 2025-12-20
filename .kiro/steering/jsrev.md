@@ -8,7 +8,96 @@ JS Reverse Engineering: browser request → JS code → algorithm → Python rep
 
 ---
 
-## �️ RULE ZEORO: OUTPUT LIMITS (HIGHEST PRIORITY)
+## ⚠️ PRE-ACTION CHECKLIST (READ BEFORE EVERY ACTION) ⚠️
+
+Before you do ANYTHING with JavaScript code, answer these questions:
+
+```
+□ Have I checked if this code is obfuscated?
+  → If NO: Run obfuscation check FIRST
+  → If YES and obfuscated: STOP. Load deobfuscation skill. Do NOT analyze.
+  → If YES and clean: Proceed
+
+□ Am I about to analyze/search/debug obfuscated code?
+  → If YES: STOP IMMEDIATELY. This is FORBIDDEN.
+```
+
+**If you catch yourself saying "despite the obfuscation" or "I can see _0x variables" → YOU ARE VIOLATING THE RULES. STOP.**
+
+---
+
+## 🚨🚨🚨 RULE ZERO: DEOBFUSCATION GATE (ABSOLUTE BLOCKER) 🚨🚨🚨
+
+### ⛔ THIS IS A HARD GATE - NO EXCEPTIONS ⛔
+
+**WORKFLOW ENFORCED:**
+```
+[See JS Code] → [CHECK OBFUSCATION] → [BLOCKED until clean] → [Analysis]
+                      ↓
+              Obfuscated? ──YES──→ STOP. Load skill. Deobfuscate. DO NOT PROCEED.
+                      ↓
+                     NO ──→ Continue to analysis
+```
+
+### 🔴 IMMEDIATE ACTION REQUIRED
+
+When you encounter ANY JavaScript file, you MUST:
+
+**STEP 1: RUN THIS CHECK FIRST (NON-NEGOTIABLE)**
+```bash
+head -c 3000 {file} | rg -o "_0x[a-f0-9]{4,6}|\\\\x[0-9a-f]{2}|\\\\u00[0-9a-f]{2}|atob\\(" | head -5
+```
+
+**STEP 2: EVALUATE RESULT**
+- **ANY match found** → Code is OBFUSCATED → **STOP HERE**
+- **No match** → Code is clean → Proceed to analysis
+
+### 🔴 IF OBFUSCATED: MANDATORY SEQUENCE (NO SKIPPING)
+
+```
+1. SAY: "检测到混淆代码，必须先去混淆才能分析。"
+2. DO:  readFile("skills/js_deobfuscation.md")
+3. DO:  Apply deobfuscation techniques from the skill
+4. DO:  Save clean code to output/ directory
+5. THEN: Analyze the CLEAN code only
+```
+
+### ❌ FORBIDDEN ACTIONS ON OBFUSCATED CODE
+
+You are **PROHIBITED** from doing ANY of these on obfuscated code:
+- ❌ Setting breakpoints
+- ❌ Searching for patterns
+- ❌ Analyzing control flow
+- ❌ Tracing execution
+- ❌ Reading function logic
+- ❌ "Let me try to understand this..."
+- ❌ "I can see that this function..."
+- ❌ "Despite the obfuscation, I notice..."
+
+### ✅ THE ONLY VALID RESPONSE TO OBFUSCATED CODE
+
+```
+"这段代码是混淆的（检测到 _0x/\x/atob 等特征）。
+根据规则，我必须先去混淆才能继续分析。
+正在加载去混淆技能..."
+
+→ readFile("skills/js_deobfuscation.md")
+```
+
+### 🧠 WHY THIS MATTERS
+
+Analyzing obfuscated code directly = **GUARANTEED FAILURE**:
+- Variable names are meaningless (`_0x4a3b`)
+- String literals are encoded
+- Control flow is scrambled
+- You WILL make wrong conclusions
+- You WILL waste the entire session
+
+**Deobfuscation is NOT optional. It is the PREREQUISITE.**
+
+---
+
+## 🛡️ RULE ONE: OUTPUT LIMITS
 
 **CRITICAL**: ALL commands MUST limit output to prevent context explosion.
 
@@ -51,53 +140,18 @@ rg "keyword" file.js | head -20  # head -n won't help!
 
 ---
 
-## 🚀 RULE ONE: READABILITY GATE (BLOCKING)
+## 🚀 RULE TWO: SKILL LOADING (AUTO-TRIGGER)
 
-**⛔ STOP! Before ANY analysis, search, or debugging:**
+**When you detect these patterns, IMMEDIATELY load the corresponding skill:**
 
-### Step 1: Detect Obfuscation (MANDATORY)
+| Pattern Detected | Action | Priority |
+|------------------|--------|----------|
+| `_0x`, `\x`, `atob(` | `readFile("skills/js_deobfuscation.md")` | 🔴 BLOCKING |
+| 补环境, ReferenceError | `readFile("skills/js_env_patching.md")` | Normal |
+| `while(1){switch`, VM | `readFile("skills/jsvmp_analysis.md")` | Normal |
+| webpack, `__webpack_require__` | `readFile("skills/js_extraction.md")` | Normal |
 
-```bash
-# Quick obfuscation check (run on EVERY new JS file)
-head -c 3000 source/*.js | rg -o "_0x[a-f0-9]{4,6}|\\['\\\\x|atob\\(|\\\\u00|\\\\x[0-9a-f]{2}" | head -5
-```
-
-**Obfuscation Indicators** (ANY match = MUST deobfuscate):
-- `_0x` prefix variables → obfuscator.io
-- `\x` or `\u00` escapes → string encoding
-- `atob(` chains → base64 layers
-- `['...']` property access → bracket notation
-- Single-letter vars + massive expressions
-
-### Step 2: If Obfuscated → Load Skill + Deobfuscate
-
-```
-readFile("skills/js_deobfuscation.md")  # LOAD FIRST!
-# Then apply deobfuscation techniques BEFORE analysis
-```
-
-### Step 3: If Minified Only → Beautify
-
-```bash
-npx js-beautify -f source/in.js -o output/{name}_formatted.js
-```
-
-**❌ FORBIDDEN**: Searching/debugging obfuscated code directly.
-**❌ FORBIDDEN**: "Let me try to analyze this obfuscated code..."
-**✅ REQUIRED**: Deobfuscate → THEN analyze clean code.
-
----
-
-## 🚀 RULE TWO: SKILL LOADING
-
-**AUTO-TRIGGER**: Detect patterns → Load skill IMMEDIATELY.
-
-| Pattern Detected | Action |
-|------------------|--------|
-| `_0x`, `\x`, `atob(` chains | `readFile("skills/js_deobfuscation.md")` |
-| 补环境, ReferenceError | `readFile("skills/js_env_patching.md")` |
-| `while(1){switch`, VM patterns | `readFile("skills/jsvmp_analysis.md")` |
-| webpack, `__webpack_require__` | `readFile("skills/js_extraction.md")` |
+**🔴 BLOCKING means: Do NOT proceed until skill is loaded and applied.**
 
 ---
 
@@ -129,6 +183,18 @@ evaluate_script(function="() => targetFunc.toString().slice(0, 2000)")
 
 // Explore object keys
 evaluate_script(function="() => JSON.stringify(Object.keys(obj)).slice(0,1000)")
+```
+
+### ⚠️ evaluate_script Truncation Workaround
+
+`evaluate_script` return values get truncated. For large data, log to console then save:
+
+```javascript
+// Step 1: Log to console (no truncation)
+evaluate_script(function="() => console.log(JSON.stringify(largeObject))")
+
+// Step 2: Save console output to file
+list_console_messages(savePath="/absolute/path/raw/data.txt")
 ```
 
 ---
