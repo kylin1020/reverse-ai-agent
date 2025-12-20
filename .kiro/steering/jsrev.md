@@ -73,21 +73,48 @@ rg -c "_0x[a-f0-9]|\\\\x[0-9a-f]{2}" source/*.js 2>/dev/null || echo "0"
 
 ---
 
-## P0.1: NO PREMATURE PIVOT
+## P0.1: NO RETREAT - PERSISTENCE IS MANDATORY
 
-**FORBIDDEN**: Switching approach without exhausting current lead.
+**CRITICAL**: JS reverse engineering IS hard. Difficulty is EXPECTED, not a reason to pivot.
 
+**FORBIDDEN retreat patterns:**
 ```
-❌ Found n.apply(d,e) → "换个思路追踪 a_bogus"
-✅ Found n.apply(d,e) → Trace return value m → Follow m's usage → Continue until dead end
+❌ "换个思路" / "try different approach" after 1-2 attempts
+❌ "Let me hook XMLHttpRequest instead" (abandoning current trace)
+❌ "SM3 might be compiled into JSVMP bytecode" (speculation without proof)
+❌ Switching from code analysis to network interception when stuck
+❌ Giving up on a function trace because "it's too complex"
 ```
 
-**Before ANY pivot, MUST answer:**
-1. Did I capture the return value? 
-2. Did I trace where it flows?
-3. Did I hit a REAL dead end (undefined, error, 3+ failed attempts)?
+**MANDATORY persistence:**
+```
+✅ Found n.apply(d,e) → Capture return value → Trace where it flows → Keep going
+✅ Function returns undefined? → Check if it modifies arguments by reference
+✅ Can't find function? → Search 5+ different patterns before concluding
+✅ Complex nested calls? → Trace layer by layer, document each step
+✅ JSVMP detected? → Load skill, instrument VM, analyze bytecode
+```
 
-**If NO → KEEP TRACING. Don't pivot.**
+**Before ANY pivot, MUST prove ALL of these:**
+1. ✅ Captured return value AND checked argument mutations
+2. ✅ Traced data flow for 3+ levels deep
+3. ✅ Tried 5+ different search patterns / breakpoint locations
+4. ✅ Documented findings in notes/ (not just "didn't work")
+5. ✅ Asked human if truly stuck (don't silently pivot)
+
+**Pivot checklist (ALL must be YES):**
+```
+[ ] I captured and logged the actual runtime values
+[ ] I traced the data flow until it disappeared or errored
+[ ] I tried multiple breakpoint locations (not just one)
+[ ] I searched for the target in 5+ different ways
+[ ] I documented what I found (even partial findings)
+[ ] Current approach is PROVEN impossible, not just difficult
+```
+
+**If ANY is NO → KEEP TRACING. Difficulty ≠ Dead end.**
+
+**VIOLATION = SESSION FAILURE.**
 
 ---
 
@@ -299,7 +326,7 @@ set_breakpoint(urlRegex=".*core\.js.*", lineNumber=1, columnNumber=12345)
 
 ## Execution Flow
 
-1. **Capture**: `list_network_requests(resourceTypes=["xhr","fetch"])` → `save_static_resource`
+1. **Capture**: `list_network_requests(resourceTypes=["xhr","fetch"])` → `save_static_resource` (⚠️ absolute path!)
 2. **P-1 Gate**: Minified? → beautify to `output/`
 3. **P0 Gate**: Obfuscated? → deobfuscate to `output/`
 4. **Identify**: Find `sign|token|nonce|ts|enc` params
@@ -311,11 +338,45 @@ set_breakpoint(urlRegex=".*core\.js.*", lineNumber=1, columnNumber=12345)
 
 ## MCP Tools Quick Reference
 
+### ⚠️ CRITICAL: ABSOLUTE PATH REQUIRED
+
+**ALL MCP tools that save files MUST use ABSOLUTE paths!**
+
+MCP server runs in different working directory than workspace. Relative paths will fail with `ENOENT: no such file or directory`.
+
+```javascript
+// ❌ WRONG - relative path fails
+save_static_resource(reqid=23, filePath="source/main.js")
+list_console_messages(savePath="raw/vm_trace.txt")
+take_screenshot(filePath="debug/screenshot.png")
+
+// ✅ CORRECT - absolute path works
+save_static_resource(reqid=23, filePath="/Users/kylin/project/artifacts/jsrev/example.com/source/main.js")
+list_console_messages(savePath="/Users/kylin/project/artifacts/jsrev/example.com/raw/vm_trace.txt")
+take_screenshot(filePath="/Users/kylin/project/artifacts/jsrev/example.com/debug/screenshot.png")
+```
+
+**Affected MCP tools:**
+- `save_static_resource(filePath=...)` - Save JS/CSS from network
+- `save_network_request(filePath=...)` - Save HTTP request/response
+- `list_console_messages(savePath=...)` - Save console logs
+- `take_screenshot(filePath=...)` - Save screenshot
+- `take_snapshot(filePath=...)` - Save page snapshot
+- `save_scope_variables(filePath=...)` - Save debugger variables
+
+**Pattern**: Always construct absolute path:
+```
+{workspace_root}/artifacts/jsrev/{domain}/{subdir}/{filename}
+```
+
+---
+
 **Network**
 ```javascript
 list_network_requests(resourceTypes=["xhr", "fetch"], pageSize=50)
 get_network_request(reqid=15)  // Check initiator/stack trace
-save_static_resource(reqid=23, filePath="source/main.js")
+// ⚠️ Use absolute path!
+save_static_resource(reqid=23, filePath="/absolute/path/to/source/main.js")
 ```
 
 **Breakpoints**
@@ -374,6 +435,16 @@ resume_execution()
 **Console**
 ```javascript
 list_console_messages(types=["log", "error"], pageSize=50)
+// ⚠️ Save to file requires absolute path!
+list_console_messages(types=["log"], savePath="/absolute/path/to/raw/console.txt")
+```
+
+**Screenshot & Snapshot**
+```javascript
+// ⚠️ All file paths must be absolute!
+take_screenshot(filePath="/absolute/path/to/debug/screenshot.png")
+take_snapshot(filePath="/absolute/path/to/debug/snapshot.txt")
+save_scope_variables(filePath="/absolute/path/to/debug/variables.json")
 ```
 
 **⚠️ MANDATORY Cleanup after debug session:**
