@@ -12,7 +12,42 @@ readFile("artifacts/jsrev/{domain}/PROGRESS.md")  # Restore context
 
 ---
 
-## ⚠️ RULE -1: NO METHOD OSCILLATION
+## RULE ZERO: READABILITY GATE
+
+> Load `#[[file:skills/js_deobfuscation.md]]` when obfuscation detected!
+
+1. P-1: Minification? → Beautify FIRST
+2. P0: Obfuscation? → Deobfuscate FIRST
+3. ONLY THEN: Search / Debug / Analyze
+
+**VIOLATION = SESSION FAILURE.**
+
+---
+
+## P-1: Minification Gate
+
+```bash
+wc -l source/*.js 2>/dev/null | head -20
+# lines < 10 AND size > 50KB = MINIFIED → beautify first
+npx js-beautify -f in.js -o output/{name}_formatted.js
+```
+
+**FORBIDDEN on minified**: `rg "keyword" minified.js` (1 match = 500KB output!)
+
+**SAFE**: `rg -M 200 -o ".{0,60}keyword.{0,60}" file.js | head -20`
+
+---
+
+## P0: Obfuscation Gate
+
+```bash
+rg -c "_0x[a-f0-9]|\\\\x[0-9a-f]{2}" source/*.js 2>/dev/null || echo "0"
+# Count > 0 → Deobfuscate first (load skills/js_deobfuscation.md)
+```
+
+---
+
+## P0.1: NO METHOD OSCILLATION
 
 **FORBIDDEN**: A → B → A → B switching. Commit to ONE method for 3+ attempts.
 
@@ -20,7 +55,7 @@ Before switching: `"已尝试 [方法] [N] 次，失败原因: [X]。切换到 [
 
 ---
 
-## ⚠️ RULE -0.5: BROWSER IS TRUTH
+## P0.2: BROWSER IS TRUTH
 
 **When stuck → Print it in browser FIRST, then analyze code.**
 
@@ -40,7 +75,7 @@ set_breakpoint(urlRegex=".*target\.js.*", lineNumber=XX,
 
 ---
 
-## ⚠️ RULE -0.3: NO evaluate_script + navigate_page LOOP
+## P0.3: NO evaluate_script + navigate_page LOOP
 
 **FORBIDDEN**: `evaluate_script` hook → `navigate_page` → hook lost → repeat.
 
@@ -62,7 +97,7 @@ set_breakpoint(urlRegex=".*target\.js.*", lineNumber=1, columnNumber=XXX,
 
 ---
 
-## ⚠️ RULE -0.4: DEEP FUNCTION TRACING
+## P0.4: DEEP FUNCTION TRACING
 
 **When analyzing algorithm → Trace layer by layer, not surface level.**
 
@@ -90,41 +125,6 @@ evaluate_script(function="() => innerFunc.toString().slice(0, 2000)")
 
 ---
 
-## RULE ZERO: READABILITY GATE
-
-> Load `#[[file:skills/js_deobfuscation.md]]` when obfuscation detected!
-
-1. P-1: Minification? → Beautify FIRST
-2. P0: Obfuscation? → Deobfuscate FIRST
-3. ONLY THEN: Search / Debug / Analyze
-
-**VIOLATION = SESSION FAILURE.**
-
----
-
-## P-1: Minification Gate
-
-```bash
-wc -l source/*.js 2>/dev/null | head -20
-# lines < 10 AND size > 50KB = MINIFIED → beautify first
-npx js-beautify -f in.js -o output/{name}_formatted.js
-```
-
-**FORBIDDEN on minified**: `rg "keyword" minified.js` (1 match = 500KB output!)
-
-**SAFE**: `rg -o ".{0,60}keyword.{0,60}" file.js | head -20`
-
----
-
-## P0: Obfuscation Gate
-
-```bash
-rg -c "_0x[a-f0-9]|\\\\x[0-9a-f]{2}" source/*.js 2>/dev/null || echo "0"
-# Count > 0 → Deobfuscate first (load skills/js_deobfuscation.md)
-```
-
----
-
 ## P0.5: CLI Output Limits (CONTEXT EXPLOSION PREVENTION)
 
 **CRITICAL**: Single-line output can overflow context. This applies to:
@@ -132,37 +132,33 @@ rg -c "_0x[a-f0-9]|\\\\x[0-9a-f]{2}" source/*.js 2>/dev/null || echo "0"
 - VM trace logs (JSON.stringify outputs massive single lines)
 - Console logs from instrumentation breakpoints
 
-**⚠️ `-M` flag shows `[Omitted long matching line]` instead of content!**
+**⚠️ MANDATORY: Always use `-M` to limit line length!**
 
-Use `-o` with context regex to extract truncated matches:
+`head -n` only limits LINE COUNT, not LINE LENGTH. One minified line = 500KB explosion!
 
 ```bash
-# ✅ BEST: Use -o with context to show truncated content
-rg -o ".{0,80}keyword.{0,80}" file.js | head -30   # Shows 160 chars around match
-rg -o ".{0,100}keyword.{0,100}" vm_trace.txt      # Wider context for traces
+# ✅ CORRECT: -M limits line length, -o extracts match with context
+rg -M 200 -o ".{0,80}keyword.{0,80}" file.js      # 200 char limit + context extract
+rg -M 300 -o ".{0,100}keyword.{0,100}" trace.txt  # Wider context for traces
+rg -M 200 -n --column "keyword" source/file.js    # Get line:column for breakpoints
 
-# ✅ SAFE: -n for line numbers only (no content)
-rg -n "keyword" file.js | head -20                 # Just line:column
-
-# ✅ SAFE: --column to get position for breakpoints
-rg -n --column "keyword" source/file.js | head -5  # line:column:match
-
-# ✅ Other safe patterns
-sed -n '1,100p' file.js                            # Range only
+# ✅ SAFE: Other patterns with built-in limits
+sed -n '1,100p' file.js                            # Range only (multi-line files)
 head -c 10000 file.js                              # Bytes limit
 awk -F'|' '{print $1,$2}' trace.txt | head -100   # Field extraction
 
-# ❌ FORBIDDEN - will explode context or show nothing useful
+# ❌ FORBIDDEN - context explosion
 cat file.js                                        # Never on minified
 rg "keyword" minified.js                           # Full line = disaster
-rg -M 200 "keyword" minified.js                    # Shows [Omitted] not content!
+rg "keyword" file.js | head -20                    # head limits lines, NOT chars!
+rg -n "keyword" file.js | head -5                  # Still explodes on minified
 ```
 
-**Rule**: For long lines, use `rg -o ".{0,N}pattern.{0,N}"` to show truncated content.
+**Rule**: EVERY `rg` command MUST include `-M <num>` to cap line length. Never rely on `head -n` alone.
 
 ---
 
-## P0.55: JSVMP Instrumentation Log Safety
+## P0.6: JSVMP Instrumentation Log Safety
 
 **CRITICAL**: VM trace breakpoints produce JSON.stringify output → single log line can be 10KB+.
 
@@ -174,25 +170,25 @@ set_breakpoint(urlRegex=".*vm\.js.*", lineNumber=XX,
 
 **When analyzing saved trace logs:**
 ```bash
-# ✅ BEST: Use -o with context to show truncated content
-rg -o ".{0,80}\[TRACE\].{0,80}" vm_trace.txt | head -100
-rg -o ".{0,50}PC:42.{0,100}" vm_trace.txt | head -50
+# ✅ CORRECT: -M + -o together
+rg -M 200 -o ".{0,80}\[TRACE\].{0,80}" vm_trace.txt | head -100
+rg -M 200 -o ".{0,50}PC:42.{0,100}" vm_trace.txt | head -50
 
 # ✅ SAFE: Extract specific fields only
 awk -F'|' '{print $1,$2}' vm_trace.txt | head -100
 cut -d'|' -f1-2 vm_trace.txt | head -100
 
-# ❌ FORBIDDEN - context explosion or useless output
+# ❌ FORBIDDEN - context explosion
 rg "\[TRACE\]" vm_trace.txt                        # Full line = disaster
-rg -M 200 "\[TRACE\]" vm_trace.txt                 # Shows [Omitted] not content!
+rg "\[TRACE\]" vm_trace.txt | head -10             # head won't help, line too long!
 rg -A 3 "pattern" vm_trace.txt                     # Context lines also huge
 ```
 
-**Rule**: Trace logs = JSON = massive lines. Use `-o ".{0,N}pattern.{0,N}"` to extract.
+**Rule**: Trace logs = JSON = massive lines. MUST use `-M` + `-o` together.
 
 ---
 
-## P0.6: No Inline Python Scripts
+## P0.7: No Inline Python Scripts
 
 **FORBIDDEN**: `python -c "..."` for multi-line or complex logic (quoting/escaping breaks easily).
 
@@ -209,7 +205,7 @@ fsWrite("tests/decode_sample.py", script_content)
 
 ---
 
-## P0.7: Python Environment (uv preferred)
+## P0.8: Python Environment (uv preferred)
 
 ```bash
 # uv available → use uv (with Aliyun mirror in pyproject.toml)
@@ -300,7 +296,7 @@ output/core_formatted.js line 6526  ≠  source/core.js line 1, column 12345
 
 ```bash
 # ✅ CORRECT: Search in ORIGINAL source file to get real line:column
-rg -n --column "functionName" source/core.js | head -5
+rg -M 200 -n --column "functionName" source/core.js | head -5
 # → 1:12345:functionName  (line 1, column 12345)
 
 # Then set breakpoint with columnNumber for minified code:
@@ -313,7 +309,7 @@ set_breakpoint(urlRegex=".*core\.js.*", lineNumber=1, columnNumber=12345)
 
 **Workflow for setting breakpoints:**
 1. READ output/*_formatted.js → understand logic, find function/variable NAME
-2. SEARCH source/*.js → `rg -n --column "name" source/file.js` → get REAL line:column
+2. SEARCH source/*.js → `rg -M 200 -n --column "name" source/file.js` → get REAL line:column
 3. SET breakpoint → use source line + columnNumber (for minified single-line files)
 
 ```javascript
