@@ -97,6 +97,51 @@ set_breakpoint(urlRegex=".*vm\.js.*", lineNumber=1, columnNumber=XXXX)
 
 ---
 
+## Phase 4.5: Arithmetic Operation Tracing (Magic Constant Discovery)
+
+**When standard trace is insufficient, instrument arithmetic operations (+, -, *, /, %, ^, &, |, >>).**
+
+⚠️ **Warning**: Produces MASSIVE logs. Use only when algorithm structure is unclear.
+
+**Why it works:**
+- Crypto algorithms use magic constants in arithmetic: `0x5A827999` (SHA1), `0x61C88647` (TEA)
+- Bit rotation patterns reveal algorithm type: `>>> 7, >>> 18` = SHA256 sigma
+- Multiplication/modulo constants identify hash rounds
+
+**Instrumentation template:**
+```javascript
+// At arithmetic operation handler in VM
+console.log(`[ARITH] ${a} ${op} ${b} = ${result}`), false
+
+// Example output reveals algorithm structure:
+// [ARITH] 0x67452301 + 0xd76aa478 = 0x3EB1C779  ← MD5 round constant!
+// [ARITH] x >>> 7 = y                            ← SHA256 sigma pattern
+// [ARITH] x * 0x61C88647 = y                     ← TEA delta constant
+```
+
+**Mining arithmetic logs:**
+```bash
+# Find magic constants (hex patterns)
+rg -o "0x[0-9a-fA-F]{6,8}" arith_trace.txt | sort | uniq -c | sort -rn | head -20
+
+# Find rotation patterns
+rg -o ">>> [0-9]+" arith_trace.txt | sort | uniq -c | sort -rn
+
+# Find repeated multiplication constants
+rg -o "\* 0x[0-9a-fA-F]+" arith_trace.txt | sort | uniq -c | sort -rn | head -10
+```
+
+**Known magic constants:**
+| Constant | Algorithm |
+|----------|-----------|
+| `0x67452301, 0xEFCDAB89` | MD5 IV |
+| `0x6A09E667, 0xBB67AE85` | SHA256 IV |
+| `0x5A827999, 0x6ED9EBA1` | SHA1 round constants |
+| `0x61C88647` | TEA delta |
+| `0x9E3779B9` | Golden ratio (TEA, many hashes) |
+
+---
+
 ## Phase 5: Deliverables
 
 1. **Component Map**: PC, Stack, Bytecode, Opcode variable names
