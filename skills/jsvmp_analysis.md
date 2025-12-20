@@ -2,106 +2,113 @@
 
 > **Trigger**: `while(true) { switch(op) {...} }` VM dispatcher with stack operations  
 > **Goal**: Recover algorithm from VM bytecode via breakpoint instrumentation  
-> **Related**: `skills/js_deobfuscation.md` (for non-VM obfuscation)  
-> **Tools**: Use `set_breakpoint` for logging. `evaluate_script` ONLY for triggering globals.
-
-## Phase 1: Locating the VM Heart & Golden Breakpoints
-
-**Task**: Find the precise lines for instrumentation. Accuracy here prevents "Log Noise."
-
-1.  **The Initialization Point**: 
-    *   **Location**: Just before the `while(true)` loop.
-    *   **Goal**: Capture the initial `Bytecode` array, `Keys`, and `Environment` variables.
-2.  **The Fetch-Decode (The Golden Breakpoint)**:
-    *   **Location**: The first line inside the loop, specifically where the opcode is extracted (e.g., `op = bytecode[pc++]`).
-    *   **Goal**: This is the primary log entry. It must capture the state *before* the opcode executes.
-3.  **The External Bridge**:
-    *   **Location**: Inside the `switch` case that handles `apply`, `call`, or member access (e.g., `obj[member]`).
-    *   **Goal**: Identify when the VM exits to native JavaScript (e.g., calling `btoa`, `Canvas`, or `Math`).
-4.  **The Context/Memory Pool**:
-    *   **Location**: Look for an array/object used for variable storage (not the stack).
-    *   **Goal**: Track long-term data persistence.
+> **Related**: `skills/js_deobfuscation.md` (for non-VM obfuscation)
 
 ---
 
-## Phase 2: Strategic Instrumentation
+## ⚠️ CORE METHODOLOGY: Trace → Reverse → Verify
 
-**Task**: Use `set_breakpoint` to generate logs without pausing execution.
+**JSVMP is a black box. The ONLY way to understand it:**
 
-**Template for `set_breakpoint` Condition**:
+```
+1. INSTRUMENT → Set breakpoints at VM dispatcher
+2. TRACE      → Capture runtime execution logs  
+3. REVERSE    → Analyze trace to deduce algorithm logic
+4. VERIFY     → Set targeted breakpoints to confirm hypothesis
+5. IMPLEMENT  → Reproduce in Python
+```
+
+**Static analysis is USELESS.** You cannot read bytecode. You can only observe execution.
+
+---
+
+## ⚠️ RULE ZERO: NO PLAINTEXT SEARCH
+
+**JSVMP compiles ALL logic into bytecode. Plaintext keywords DO NOT EXIST.**
+
+```bash
+# ❌ FORBIDDEN - POINTLESS in JSVMP:
+rg "btoa|atob|base64|MD5|SHA|encrypt|sign" source/vm.js
+rg "fromCharCode|charCodeAt" source/vm.js
+
+# ✅ CORRECT - Identify algorithm from TRACE:
+# - Runtime constants: 0x67452301 = MD5 IV, 0x6a09e667 = SHA256 IV
+# - Operation patterns: XOR chains, bit rotations, S-Box lookups
+# - Output format: 32-char hex = MD5, 64-char = SHA256
+```
+
+**VIOLATION = WASTED EFFORT.**
+
+---
+
+## Phase 1: Locate VM Dispatcher & Set Golden Breakpoints
+
+**Task**: Find instrumentation points. Accuracy prevents log noise.
+
+1. **VM Entry**: Just before `while(true)` → Capture bytecode array, keys, env
+2. **Fetch-Decode (Golden BP)**: First line in loop where `op = bytecode[pc++]` → Primary trace point
+3. **External Bridge**: `apply`/`call` handler → Detect native JS calls
+4. **Memory Pool**: Variable storage array (not stack) → Track persistent data
+
+---
+
+## Phase 2: Instrumentation
+
+**Template** (replace vars with actual minified names):
 ```javascript
-// Replace PC, OP, STACK, and POOL with actual minified names found in source
-console.log(`[TRACE] PC:${PC} | OP:${OP} | STACK:${JSON.stringify(STACK.slice(-5))} | POOL:${JSON.stringify(POOL)}`), false
+console.log(`[T] PC:${PC}|OP:${OP}|STK:${JSON.stringify(STK.slice(-5))}`), false
 ```
 
 ---
 
-## Phase 3: Managing Log Explosion
+## Phase 3: Trace Collection & Mining
 
-**Task**: Use the MCP `list_console_messages` tool to offload massive logs to local storage for high-performance searching.
+```javascript
+// Save logs to file (avoid context overflow)
+list_console_messages(savePath="vm_trace.txt", types=["log"])
+```
 
-### ⚠️ CRITICAL: Single-Line Output Explosion
+```bash
+# ✅ SAFE - Use -o with context or -M to cap output
+rg -o ".{0,50}OP:42.{0,100}" vm_trace.txt | head -50
+rg -M 200 "your_input" vm_trace.txt | head -30
+awk -F'|' '{print $1,$2}' vm_trace.txt | head -100
 
-VM trace logs contain `JSON.stringify()` output → single lines can be 10KB+. **ALWAYS use `-M` flag** to cap line length.
-
-1.  **Trigger Execution**: Perform the action in the browser (click, submit, etc.) or use `evaluate_script` to call the target global function.
-2.  **Save to Disk**:
-    ```javascript
-    // Use the savePath parameter to avoid memory overflow in the chat interface
-    list_console_messages(savePath="vm_trace_full.txt", types=["log"])
-    ```
-3.  **Local Data Mining** (MANDATORY `-M` flag):
-
-    ```bash
-    # ✅ SAFE - Always use -M to cap per-line output
-    rg -M 200 "OP:42" vm_trace_full.txt | head -50
-    rg -M 200 "your_input_string" vm_trace_full.txt
-    rg -M 300 -A 2 "OP:(ADD|XOR|SUB)" vm_trace_full.txt | head -100
-    
-    # ✅ SAFE - awk/cut naturally handle line parsing
-    awk -F'|' '{print $1}' vm_trace_full.txt | uniq -c | head -20
-    cut -d'|' -f1,2 vm_trace_full.txt | head -50
-    
-    # ❌ FORBIDDEN - will explode context
-    rg "OP:42" vm_trace_full.txt              # No -M = disaster
-    cat vm_trace_full.txt                      # Never
-    rg -A 5 "pattern" vm_trace_full.txt       # Context lines also huge
-    ```
-
-**Rule**: Trace logs have JSON → single line = massive. `-M 200` is mandatory.
+# ❌ FORBIDDEN - context explosion
+rg "pattern" vm_trace.txt    # No limit = disaster
+```
 
 ---
 
-## Phase 4: Pattern Recognition & Algorithm Mapping
+## Phase 4: Reverse Algorithm from Trace
 
-**Task**: Analyze the filtered logs to reconstruct the algorithm.
+**From trace logs, deduce:**
 
-1.  **Instruction Mapping**:
-    *   `[10, 20] -> [30]` (Result 30) => Likely `ADD`.
-    *   `[10, 20] -> [30]` (Result 30 is `10 ^ 20`) => Likely `XOR`.
-2.  **Constant Identification**:
-    *   `0x67452301`, `0xEFCDAB89`: MD5 / SHA-1.
-    *   `0x6a09e667`, `0xbb67ae85`: SHA-256.
-    *   Large 256-byte arrays: AES S-Box or Custom Mapping.
-3.  **Differential Analysis**:
-    *   Generate `trace_a.txt` (input: "AAAA") and `trace_b.txt` (input: "AAAB").
-    *   Use `diff` or `code --diff` to find exactly where the logic branches based on input.
+1. **Opcode Mapping**: `[10,20]→[30]` = ADD, `[10,20]→[200]` = MUL, etc.
+2. **Constants**: `0x67452301` = MD5, `0x6a09e667` = SHA256, 256-byte array = S-Box
+3. **Differential Analysis**: Compare trace_a (input "AAA") vs trace_b (input "AAB") → find divergence point
 
----
-
-## Phase 5: Implementation (The Deliverable)
-
-**The final output must include**:
-1.  **Component Map**: Identification of PC, Stack, Bytecode, and Opcode variables.
-2.  **Opcode Table**: A mapping of hex/integer opcodes to their logical functions (e.g., `0x01: PUSH`, `0x02: ADD`).
-3.  **Pseudo-code**: A high-level reconstruction of the logic (e.g., "The VM takes the input, XORs it with a hardcoded key, then passes it to an MD5-like round").
-4.  **Python Implementation**: A functional script that replicates the VM's output.
+**Then VERIFY hypothesis with targeted breakpoint:**
+```javascript
+// Pause at suspected crypto round to inspect values
+set_breakpoint(urlRegex=".*vm\.js.*", lineNumber=1, columnNumber=XXXX)
+// Check: get_scope_variables(), evaluate_on_call_frame()
+```
 
 ---
 
-## Troubleshooting & Expert Tips
+## Phase 5: Deliverables
 
-*   **Log is too noisy?** Add a condition to the breakpoint: `OP === 0x25 && console.log(...)`.
-*   **Missing Data?** Check if the VM uses a "Secondary Stack" or "Accumulator" register.
-*   **Variable Scope?** If the stack is `undefined`, you are likely logging in the wrong function scope. Use `get_scope_variables` at a manual breakpoint to verify.
-*   **Anti-Debugging?** If the VM terminates when logs start, look for `Date.now()` or `performance.now()` checks within the `while` loop and patch them via `inject_console_log`.
+1. **Component Map**: PC, Stack, Bytecode, Opcode variable names
+2. **Opcode Table**: `0x01: PUSH, 0x02: ADD, 0x03: XOR...`
+3. **Algorithm Pseudo-code**: High-level logic reconstruction
+4. **Python Implementation**: Functional reproduction
+
+---
+
+## Troubleshooting
+
+- **Noisy logs?** Filter: `OP === 0x25 && console.log(...)`
+- **Missing data?** Check for secondary stack or accumulator register
+- **Undefined vars?** Wrong scope → use `get_scope_variables` to verify
+- **Anti-debug?** Look for `Date.now()` / `performance.now()` timing checks
