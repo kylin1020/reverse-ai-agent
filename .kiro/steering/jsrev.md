@@ -10,14 +10,65 @@ JS Reverse Engineering: browser request → JS code → algorithm → Python rep
 
 ## 🚀 SESSION START (MANDATORY)
 
-**On every session start, restore context first:**
-
 ```bash
-readFile("artifacts/jsrev/{domain}/PROGRESS.md")  # Most important
-readFile("artifacts/jsrev/{domain}/notes/*.md")   # If exists
+readFile("artifacts/jsrev/{domain}/PROGRESS.md")  # Restore context
 ```
 
-If PROGRESS.md doesn't exist, create and initialize it.
+---
+
+## ⚠️ RULE -1: NO METHOD OSCILLATION
+
+**FORBIDDEN**: A → B → A → B switching. Commit to ONE method for 3+ attempts.
+
+Before switching: `"已尝试 [方法] [N] 次，失败原因: [X]。切换到 [新方法]？"`
+
+---
+
+## ⚠️ RULE -0.5: BROWSER IS TRUTH
+
+**When stuck → Print it in browser FIRST, then analyze code.**
+
+```javascript
+// Print function source
+evaluate_script(function="() => targetFunc.toString().slice(0, 2000)")
+
+// Explore object
+evaluate_script(function="() => JSON.stringify(Object.keys(obj))")
+
+// Log at breakpoint
+set_breakpoint(urlRegex=".*target\.js.*", lineNumber=XX,
+    condition='console.log("val:", x), false')
+```
+
+**FORBIDDEN**: Guessing function behavior without browser verification.
+
+---
+
+## ⚠️ RULE -0.4: DEEP FUNCTION TRACING
+
+**When analyzing algorithm → Trace layer by layer, not surface level.**
+
+```javascript
+// Step 1: Hook function to get call stack + args
+evaluate_script(function="() => {
+    const orig = window.targetFunc;
+    window.targetFunc = function(...args) {
+        console.log('[HOOK] args:', JSON.stringify(args));
+        console.log('[HOOK] stack:', new Error().stack);
+        return orig.apply(this, args);
+    };
+    return 'hooked';
+}")
+
+// Step 2: Find inner function from stack trace → print its source
+evaluate_script(function="() => innerFunc.toString().slice(0, 2000)")
+
+// Step 3: Repeat for each layer until reaching core algorithm
+```
+
+**Pattern**: `outerFunc → innerFunc → coreAlgo` - trace ALL layers.
+
+**FORBIDDEN**: Stopping at surface function without tracing inner calls.
 
 ---
 
@@ -355,13 +406,9 @@ uv run python repro/get_token.py  # Reproduce request
 
 ## Entry Point Location Techniques
 
-**Priority order:**
-
-1. **Call Stack Tracing** (most reliable) - `get_network_request(reqid)` → check initiator
-2. **Local Search** (fast) - `rg "sign|encrypt" output/*_deob.js` on deobfuscated files
-3. **XHR Breakpoints** - DevTools Sources → XHR breakpoints → add keyword
-
-**AVOID**: `search_functions` - slow and inefficient, prefer local rg search.
+1. **Call Stack** - `get_network_request(reqid)` → check initiator
+2. **Local Search** - `rg "sign|encrypt" output/*_deob.js`
+3. **Browser Print** - `evaluate_script` to print function source directly
 
 ---
 
