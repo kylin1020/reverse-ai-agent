@@ -109,9 +109,25 @@ evaluate_script(function="() => JSON.stringify(Object.keys(obj)).slice(0,1000)")
 
 ---
 
-## P2: NO evaluate_script + navigate_page LOOP
+## P2: PERSISTENT HOOKS
 
-`evaluate_script` hooks don't survive reload. Use `set_breakpoint` instead.
+`evaluate_script` hooks don't survive reload. Use persistent scripts instead:
+
+```javascript
+// Register script to run on every page load
+add_persistent_script(identifier="hook_xyz", script="window.__hook = true;")
+
+// List registered scripts
+list_persistent_scripts()
+
+// Remove specific script
+remove_persistent_script(identifier="hook_xyz")
+
+// Clear all persistent scripts
+clear_persistent_scripts()
+```
+
+For simple value logging, `set_breakpoint` with condition also works.
 
 ---
 
@@ -184,15 +200,29 @@ get_network_request(reqid=15)
 save_static_resource(reqid=23, filePath="/absolute/path/source/main.js")
 ```
 
+### URL Regex: Keep It Simple
+
+```javascript
+// ❌ OVER-ESCAPED (hard to read, error-prone)
+urlRegex=".*bdms_1\\.0\\.1\\.19_fix\\.js.*"
+urlPattern=".*example\\.com/api/v1\\.0.*"
+
+// ✅ SIMPLE (dots rarely cause false matches)
+urlRegex=".*bdms_1.0.1.19_fix.js.*"
+urlPattern=".*example.com/api/v1.0.*"
+```
+
+**Rule**: Only escape when ambiguity matters. `file.js` won't match `fileXjs`.
+
 ### Breakpoints
 
 ```javascript
 // Log breakpoint (no pause) - ", false" is CRITICAL
-set_breakpoint(urlRegex=".*target\.js.*", lineNumber=1, columnNumber=12345,
+set_breakpoint(urlRegex=".*target.js.*", lineNumber=1, columnNumber=12345,
     condition='console.log("VAR:", someVar), false')
 
 // Pausing breakpoint
-set_breakpoint(urlRegex=".*target\.js.*", lineNumber=1, columnNumber=12345)
+set_breakpoint(urlRegex=".*target.js.*", lineNumber=1, columnNumber=12345)
 ```
 
 ### When Paused
@@ -216,6 +246,7 @@ list_console_messages(savePath="/absolute/path/raw/console.txt")
 
 ```javascript
 clear_all_breakpoints()
+clear_persistent_scripts()
 resume_execution()
 ```
 
