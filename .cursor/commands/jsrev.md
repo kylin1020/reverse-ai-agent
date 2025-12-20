@@ -97,30 +97,6 @@ rg "keyword" file.js | head -20  # head -n won't help!
 
 ---
 
-## 🎯 CAPTCHA VERIFICATION WORKFLOW
-
-**AI cannot solve visual CAPTCHAs** (click/slide/rotate). Use human-in-the-loop:
-
-```
-[Load CAPTCHA] → [Build Visual Tool] → [Human Interaction] → [Verify Params]
-```
-
-### Workflow
-1. **Build interactive tool** (`tests/captcha_test.py`) using OpenCV
-2. **Display**: CAPTCHA image + reference icons/slider
-3. **Human**: clicks/slides/rotates in visual tool
-4. **Capture**: convert to API coordinates
-5. **Submit**: verify encryption algorithm is correct
-
-### Response Interpretation
-- `status: success` → Encryption algorithm correct (server decrypted w param)
-- `result: fail` → Coordinates wrong (expected with test data)
-- `result: success` → Full verification passed
-
-**Key**: If `status: success`, encryption is correct. Coordinate issues are separate.
-
----
-
 ## 🚀 SESSION START
 
 ```bash
@@ -319,13 +295,10 @@ resume_execution()
 
 ## HUMAN INTERACTION
 
-**STOP and ask:**
-- Slider/Click CAPTCHA → Build visual tool, human solves, verify params
+**STOP and ask human:**
+- Visual CAPTCHA → Build OpenCV tool (`tests/`), human solves, AI verifies params
 - Login required → "Please login first"
-- Pausing breakpoint + need trigger → "Breakpoint set. Please refresh/click to trigger, then tell me."
-
-**Request confirmation:**
-- Visual verification uncertain → Save debug image → Ask human
+- Pausing breakpoint → "Breakpoint set. Please refresh/click, then tell me."
 
 ---
 
@@ -343,6 +316,33 @@ artifacts/jsrev/{domain}/
 ├── notes/           # Analysis notes
 └── raw/             # Raw samples
 ```
+
+---
+
+## 🎯 COMPLETION CRITERIA
+
+**Goal**: `repro/*.py` → server returns valid response.
+
+- ✅ Encrypted params match browser values, dynamic generation works
+- ❌ "Algorithm identified" without working code
+- ❌ Works with captured values but not fresh ones
+
+---
+
+## 🤝 HUMAN-IN-THE-LOOP
+
+For visual tasks (CAPTCHA click/slide/rotate):
+
+```python
+# tests/captcha_tool.py - AI builds, human operates
+import cv2
+cv2.imshow("Task", image)
+cv2.setMouseCallback("Task", on_mouse)  # Capture clicks/drags
+```
+
+**Flow**: AI builds tool → Human interacts → AI collects coords → AI tests API
+
+**Response**: `status: success` = encryption correct (coords may still be wrong)
 
 ---
 
