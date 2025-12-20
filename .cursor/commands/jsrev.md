@@ -6,7 +6,17 @@ inclusion: always
 
 JS Reverse Engineering: browser request → JS code → algorithm → Python reproduction.
 
----
+## 🚨 P0: DEOBFUSCATION GATE (BLOCKS ANALYSIS) 🚨
+
+**IRON LAW**: Analysis tasks REQUIRE clean code. No exceptions.
+
+### When P0 Applies
+
+User asks to: analyze, find, trace, debug, "how is X generated", "what encrypts X"
+→ **ANALYSIS task** → P0 gate BLOCKS until code is clean.
+
+User asks to: 补环境, run in Node, fix ReferenceError
+→ **ENV PATCHING** → Can work on obfuscated code directly.
 
 ## 🚨🚨🚨 RULE ZERO: OUTPUT LIMITS (HIGHEST PRIORITY) 🚨🚨🚨
 
@@ -65,20 +75,6 @@ head -n 50 minified.js
 ```
 
 **VIOLATION = IMMEDIATE SESSION FAILURE. NO RECOVERY.**
-
----
-
-## 🚨 P0: DEOBFUSCATION GATE (BLOCKS ANALYSIS) 🚨
-
-**IRON LAW**: Analysis tasks REQUIRE clean code. No exceptions.
-
-### When P0 Applies
-
-User asks to: analyze, find, trace, debug, "how is X generated", "what encrypts X"
-→ **ANALYSIS task** → P0 gate BLOCKS until code is clean.
-
-User asks to: 补环境, run in Node, fix ReferenceError
-→ **ENV PATCHING** → Can work on obfuscated code directly.
 
 ### Obfuscation Check (RUN FIRST)
 
@@ -143,15 +139,58 @@ If source/ has obfuscated JS but no output/*_deobfuscated.js → Deobfuscate fir
 
 ---
 
-## P2: NO RETREAT
+## 🚫 P2: NO RETREAT — 禁止中途换思路
 
 JS reverse engineering IS hard. Difficulty ≠ dead end.
 
-**Before pivot, MUST prove:**
-1. Captured return value + checked argument mutations
-2. Traced data flow 3+ levels deep
-3. Tried 5+ search patterns
-4. Documented findings in notes/
+### 🔴 IRON LAW: 策略切换必须询问用户
+
+**禁止行为：**
+- ❌ "让我换个思路" → 然后自行切换方案
+- ❌ "既然找不到，我们试试补环境"
+- ❌ 分析任务中途转为 Node.js 补环境执行
+- ❌ 一次搜索没结果就放弃当前方向
+
+**强制行为：**
+- ✅ 穷尽当前方向的所有手段后，才能考虑换方向
+- ✅ 换方向前 **必须停下来询问用户**："当前方向已尝试 X/Y/Z，均未找到目标。是否切换到 [新方案]？"
+- ✅ 用户明确同意后，才能执行新方案
+
+### 穷尽手段的定义
+
+在声称"找不到"之前，必须完成以下全部：
+
+| # | 手段 | 示例 |
+|---|------|------|
+| 1 | 搜索 5+ 种关键词模式 | 函数名、参数名、返回值特征、魔法常量、位运算 |
+| 2 | Hook 关键 API | `XMLHttpRequest`, `fetch`, `crypto`, `JSON.stringify` |
+| 3 | 断点追踪 3+ 层调用栈 | 从请求发起点向上/向下追踪 |
+| 4 | 检查参数变异 | 函数调用前后，参数是否被修改 |
+| 5 | 搜索位运算特征 | `>>> 0`, `& 0xff`, `^ key`, `<< 8` |
+| 6 | 搜索编码特征 | `btoa`, `atob`, `charCodeAt`, `fromCharCode` |
+| 7 | 记录所有发现 | 写入 `notes/` 目录 |
+
+### 空结果 ≠ 死路
+
+- `cryptoFuncs: []` → 可能是自定义实现，继续追踪数据流
+- 没找到标准 API → 搜索位运算、循环、数组操作
+- 函数名混淆 → 通过调用关系和返回值类型定位
+
+### 违规示例
+
+```
+❌ AI: "cryptoFuncs 为空，让我换个思路，直接补环境跑..."
+   → 违规：未询问用户，未穷尽手段
+
+✅ AI: "已尝试：1) 搜索 crypto API - 无结果 2) Hook fetch - 找到请求点 
+        3) 追踪 3 层调用栈 - 数据在第 2 层被加密 4) 搜索位运算 - 
+        找到 XOR 操作但未确认关联。
+        
+        当前卡在：无法确定 XOR 操作与目标参数的关系。
+        建议：A) 继续深入 XOR 函数 B) 尝试补环境执行
+        请问选择哪个方向？"
+   → 正确：汇报进展，列出选项，等待用户决定
+```
 
 ---
 
