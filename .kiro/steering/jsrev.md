@@ -195,6 +195,19 @@ head -n 1 minified.js    # ❌ Returns 500KB (1 line!)
 head -c 5000 minified.js # ✅ Returns 5KB max
 ```
 
+### read_file Tool Limits
+
+```text
+# ❌ NEVER read entire minified JS files
+readFile("bundle.min.js")  # Could be 500KB+ single line!
+
+# ✅ ALWAYS limit line range for JS files
+readFile("file.js", start_line=1, end_line=100)  # Max 100 lines
+
+# For minified files, prefer bash with byte limits:
+head -c 10000 bundle.min.js  # First 10KB
+```
+
 ### Mandatory Patterns
 
 ```bash
@@ -438,7 +451,7 @@ uv run python tests/test.py
 ```javascript
 
 // ✅ CORRECT
-save_static_resource(reqid=23, filePath="artifacts/jsrev/example.com/source/main.js")
+save_static_resource(reqid=23, filePath="/project_dir/artifacts/jsrev/example.com/source/main.js")
 ```
 
 ### Network
