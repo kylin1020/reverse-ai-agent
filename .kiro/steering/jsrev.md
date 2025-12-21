@@ -48,34 +48,33 @@ If source/ has obfuscated JS but no output/*_deobfuscated.js → Deobfuscate fir
 npx js-beautify -f {file} -o {output_file}
 ```
 
-### Step 2: Multi-Pattern Detection
+### Step 2: AI-Based Obfuscation Detection
 
-Run ALL checks — any match = obfuscated:
+Read the first 3000 characters and analyze for obfuscation patterns:
 
 ```bash
-# 1. Hex variable names: _0x4a3b, _0xabc123
-head -c 5000 {file} | rg -c "_0x[a-f0-9]{3,}" | xargs -I{} test {} -gt 3 && echo "OBFUSCATED: hex vars"
-
-# 2. Hex/Unicode escapes: \x48\x65, \u0048
-head -c 5000 {file} | rg -c "\\\\x[0-9a-f]{2}|\\\\u[0-9a-f]{4}" | xargs -I{} test {} -gt 5 && echo "OBFUSCATED: hex escapes"
-
-# 3. Large string array at top (obfuscator signature)
-head -c 3000 {file} | rg -q "var \w+=\[\"[^\"]{0,50}\"(,\"[^\"]{0,50}\"){10,}\]" && echo "OBFUSCATED: string array"
-
-# 4. Control flow flattening: while(true){switch...case}
-head -c 10000 {file} | rg -q "while\s*\(\s*!{0,2}\s*(true|1|!!)\s*\)\s*\{?\s*switch" && echo "OBFUSCATED: control flow"
-
-# 5. Comma expression abuse: (a=1,b=2,c())
-head -c 5000 {file} | rg -c "\([^()]*=[^()]*,[^()]*=[^()]*,[^()]*\)" | xargs -I{} test {} -gt 5 && echo "OBFUSCATED: comma expr"
-
-# 6. Anti-debug patterns
-head -c 10000 {file} | rg -q "debugger|Function\([\"']debugger" && echo "OBFUSCATED: anti-debug"
+head -c 3000 {file}
 ```
 
-| Result | Action |
-|--------|--------|
-| Any "OBFUSCATED" | STOP → `skills/js_deobfuscation.md` |
-| All clear | Proceed |
+**Obfuscation Indicators** (any match = obfuscated):
+
+| Pattern | Example | Indicator |
+|---------|---------|-----------|
+| Hex variable names | `_0x4a3b`, `_0xabc123` | obfuscator-io style |
+| Hex/Unicode escapes | `\x48\x65`, `\u0048` | String encoding |
+| Large string array | `var a=["str1","str2",...]` | String table rotation |
+| Control flow flattening | `while(true){switch(x){case...}}` | CFG obfuscation |
+| Comma expression abuse | `(a=1,b=2,c=3,fn())` | Expression flattening |
+| Anti-debug | `debugger`, `Function("debugger")` | Protection mechanism |
+| Meaningless names | Single letters, random strings | Identifier mangling |
+| Dead code injection | Unreachable branches, unused vars | Code bloating |
+
+**Decision**:
+
+| Assessment | Action |
+|------------|--------|
+| Obfuscated | STOP → `skills/js_deobfuscation.md` |
+| Clean/Minified only | Proceed (beautify is sufficient) |
 
 ### Forbidden on Obfuscated Code
 
