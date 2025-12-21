@@ -2,6 +2,12 @@
 inclusion: manual
 ---
 
+# ⛔ SUPREME DIRECTIVE: CALL STACK ANALYSIS FIRST
+
+> **Call stack analysis is the ONLY correct starting point. Searching, guessing, or switching methods is WRONG.**
+>
+> If you catch yourself saying "let me try another approach" — STOP. You are violating the rules.
+
 ## jsrev
 
 **Focus**: Reverse engineer JS encryption/signing algorithms → reproduce in Python.
@@ -12,49 +18,118 @@ inclusion: manual
 
 ---
 
-## ⚠️ CORE: CALL STACK FIRST
+## 🚨 IRON LAW: CALL STACK ANALYSIS IS MANDATORY
 
-**Have a target request? → Trace call stack FIRST. Search is auxiliary.**
+### The Golden Rule
 
-### Workflow
+**Call stack = Ground truth. Everything else is auxiliary.**
+
+Dynamic analysis via call stack reveals the ACTUAL execution path. Static analysis (searching, reading code) is ONLY for supplementing what you learn from the call stack.
+
+### ❌ FORBIDDEN BEHAVIORS (IMMEDIATE VIOLATION)
+
+1. **Switching methods** — Before call stack analysis is complete, NO other methods allowed
+2. **Blind searching** — NO searching code without call stack context
+3. **Skipping frames** — MUST analyze frame by frame, cannot skip any relevant frame
+4. **Abandoning direction** — One failure is NOT a reason to give up
+
+### ✅ MANDATORY WORKFLOW (Execute in strict order)
 
 ```
-1. list_network_requests → find request with target param
-2. set_breakpoint on request URL → human triggers → paused
-3. get_debugger_status(maxCallStackFrames=20) → read stack
-4. Stack frame shows: file + line + function → THAT'S YOUR TARGET
-5. get_scope_variables(frameIndex=N) → inspect generation logic
-6. Step through → extract algorithm → implement Python
+Phase 1: Locate Target Request
+├── list_network_requests → Find request containing target parameter
+├── Record: reqid, URL, target parameter name
+└── Confirm: This is the request I need to analyze
+
+Phase 2: Set Breakpoint and Wait
+├── set_breakpoint(urlRegex=".*targetURL.*", lineNumber=1)
+├── Tell user: "Breakpoint set, please refresh page/trigger request"
+└── Wait for user confirmation before continuing
+
+Phase 3: Deep Call Stack Analysis (CORE!)
+├── get_debugger_status(maxCallStackFrames=30)
+├── Starting from stack top, record each frame:
+│   ├── Frame 0: filename, line number, function name, key variables
+│   ├── Frame 1: ...
+│   ├── Frame N: Find the source of parameter generation
+│   └── Continue tracing upward until algorithm entry point found
+├── get_scope_variables(frameIndex=N) to inspect variables at each key frame
+└── Output: Complete call chain diagram
+
+Phase 4: Deep Dive Along Call Chain
+├── Starting from algorithm entry point, step_into/step_over
+├── Record input/output changes at each step
+├── Identify: encryption functions, encoding functions, hash functions
+└── Continue tracing until complete algorithm understood
+
+Phase 5: Code Extraction and Implementation
+├── Save relevant source code to source/
+├── Document algorithm logic in notes/
+└── Implement Python version in lib/
 ```
 
-### Search = Auxiliary (After Stack Trace)
+### 🔒 PHASE LOCK: Cannot proceed to next phase without completing current phase
 
-Use `rg` to locate code AFTER you know function/variable names from call stack:
+| Current Phase | Completion Criteria | Forbidden Actions |
+|---------------|---------------------|-------------------|
+| Phase 3 Call Stack Analysis | Complete call chain recorded | NO searching code, NO guessing |
+| Phase 4 Deep Analysis | Algorithm flow understood | NO switching to other functions |
 
-```bash
-# ✅ Search with context from stack trace
-rg -M 200 -o ".{0,80}functionNameFromStack.{0,80}" source/*.js
+### 📊 Call Stack Analysis Output Template (MUST complete)
 
-# ❌ Blind search without stack context
-rg "sign|token|encrypt" source/*.js  # Too generic, wastes time
+```markdown
+## Call Stack Analysis Results
+
+### Target Request
+- URL: {url}
+- Target Parameter: {param_name}
+- Current Value: {param_value}
+
+### Call Chain (from request initiation to parameter generation)
+| Frame | File | Line | Function | Purpose |
+|-------|------|------|----------|---------|
+| 0 | xhr.js | 123 | send | Send request |
+| 1 | api.js | 456 | request | Wrap request |
+| 2 | sign.js | 789 | generateSign | ⭐ Signature generation |
+| ... | ... | ... | ... | ... |
+
+### Key Findings
+- Signature function location: {file}:{line}
+- Input parameters: {inputs}
+- Output format: {output_format}
+- Algorithm characteristics: {algorithm_hints}
+
+### Next Steps
+- [ ] Deep dive into Frame {N}'s {function_name}
 ```
-
-| Method | When to Use |
-|--------|-------------|
-| Call stack trace | **ALWAYS FIRST** - gives exact location |
-| Code search | After stack trace - find related code |
 
 ---
 
-## 🛑 SELF-CHECK: STOP ON THESE PHRASES
+## 🛑 SELF-CHECK: Method Switching Requires User Approval
 
-| Forbidden | Action |
-|-----------|--------|
-| "Let me try another approach" | STOP → Ask user permission |
-| "Since X failed, let's try Y" | STOP → Report progress, wait for user |
-| "Let me switch direction" | STOP → List attempts, ask user |
+### Trigger Word Detection (Saying these = IMMEDIATE STOP)
 
-**Violation = Immediate failure.**
+| Forbidden Phrases | Correct Action |
+|-------------------|----------------|
+| "Let me try another method" | STOP → Report current progress → Wait for user instruction |
+| "Search didn't find it, let me try..." | STOP → You should be using call stack, not searching |
+| "This direction isn't working" | STOP → List what you've tried → Ask user |
+| "Let me directly analyze..." | STOP → You skipped call stack analysis |
+
+### Correct Help Request Template
+
+```
+📊 Current Progress:
+- Phase: {current phase}
+- Completed: {specific content}
+- Problem encountered: {specific problem}
+
+❓ Need Confirmation:
+- Continue current direction?
+- Or would you like me to try: {alternative approach}
+```
+
+**Switching methods without user approval = SERIOUS VIOLATION**
 
 ---
 
@@ -91,7 +166,7 @@ curl -v 'URL' -H 'Cookie: other_only' 2>&1 | head -c 3000
 
 | Response | Action |
 |----------|--------|
-| 200 + valid | ⏭️ "该参数非必需，无需逆向" |
+| 200 + valid | ⏭️ "This parameter is not required, no need to reverse" |
 | 403/401/blocked | ✅ Proceed with analysis |
 
 ---
@@ -158,44 +233,72 @@ If source/ has obfuscated JS but no output/*_deobfuscated.js → Deobfuscate fir
 
 ---
 
-## P1: NO RETREAT
+## P1: CONTINUOUS DEEP ANALYSIS (NO RETREAT)
 
-**Strategy switch = MUST ask user first.**
-
-```
-Stuck → Exhaust all options → Report → Ask user → Wait → Execute
-                                         ↑
-                                   Never skip this
-```
-
-### Forbidden
-
-- ❌ Switching approach without asking
-- ❌ Abandoning direction after one failed search
-- ❌ Changing strategy on first error
-
-### Required Template
+### 🎯 Core Principle: Follow the call stack continuously, no lateral jumping
 
 ```
-📊 Progress:
-- Tried: [list attempts]
-- Found: [findings]
-- Blocked: [specific issue]
+Correct Path:
+Frame 0 → Frame 1 → Frame 2 → ... → Algorithm Source
+   ↓         ↓         ↓
+ Check vars  Check vars  Check vars
 
-🔀 Options:
-A) [continue current direction]
-B) [alternative]
-
-Which direction?
+Wrong Path:
+Frame 0 → Search code → Switch function → Guess → Fail
 ```
 
-### "Exhausted" Means (IN ORDER)
+### ✅ Correct Way to Continue Analysis
 
-1. Trace call stack from target request
-2. Step through stack frames, inspect variables
-3. Search code using names from stack trace
-4. Hook key APIs (XHR, fetch, crypto)
-5. Document in `notes/`
+```javascript
+// 1. Get complete call stack
+get_debugger_status(maxCallStackFrames=30)
+
+// 2. Analyze frame by frame (DO NOT skip!)
+for (frameIndex = 0; frameIndex < stackDepth; frameIndex++) {
+    get_scope_variables(frameIndex=frameIndex, pageSize=20)
+    // Record: What is this frame doing? What's the input? What's the output?
+}
+
+// 3. After finding key frame, dive into that function
+step_into()  // Enter function internals
+// Continue step_over/step_into until algorithm understood
+```
+
+### ❌ Forbidden Analysis Patterns
+
+| Wrong Pattern | Why It's Wrong | Correct Approach |
+|---------------|----------------|------------------|
+| Glance at call stack then search | No deep analysis | Check variables frame by frame |
+| Search fails so switch methods | Search is only auxiliary | Return to call stack and continue |
+| Jump between multiple functions | Loses analysis thread | Follow one path deep |
+| Guess function behavior | Unreliable | step_into to actually execute |
+
+### 📋 Analysis Checklist (MUST complete for each stack frame)
+
+- [ ] Record function name and file location
+- [ ] Check local variables `get_scope_variables(frameIndex=N)`
+- [ ] Understand this frame's input and output
+- [ ] Determine if this is algorithm core (encryption/signing/encoding)
+- [ ] If it's core, step_into for deep analysis
+
+### 🔄 Correct Flow When Encountering Difficulties
+
+```
+Difficulty → Check if call stack analysis complete → Not complete → Continue analysis
+                                                          ↓
+                                                       Complete
+                                                          ↓
+                                                  Report progress → Wait for user instruction
+```
+
+**Definition of "exhausted all options" (MUST follow order):**
+
+1. ✅ Fully analyzed every frame in call stack
+2. ✅ Checked variables at each key frame
+3. ✅ step_into entered algorithm functions
+4. ✅ Recorded algorithm input/output
+5. ✅ Documented findings in notes/
+6. ⏸️ Only after completing ALL above steps can you report "need help"
 
 ---
 
@@ -225,13 +328,13 @@ navigate_page(type="reload", timeout=3000)
 **❌ Forbidden**: Guessing location, searching "debugger" blindly, analyzing without stack
 **✅ Required**: Call stack = truth, replace exact code from stack trace
 
-**常见反调试模式**:
-| 模式 | 替换策略 |
-|------|----------|
-| `debugger;` | 直接删除 |
-| `setInterval(()=>{debugger},100)` | 删除整个 setInterval |
-| `constructor("debugger")()` | 替换为空函数 |
-| `Function("debugger")()` | 替换为空函数 |
+**Common Anti-Debug Patterns**:
+| Pattern | Replacement Strategy |
+|---------|---------------------|
+| `debugger;` | Delete directly |
+| `setInterval(()=>{debugger},100)` | Delete entire setInterval |
+| `constructor("debugger")()` | Replace with empty function |
+| `Function("debugger")()` | Replace with empty function |
 
 ### ⚠️ evaluate_script Truncation Workaround
 
@@ -259,7 +362,7 @@ Runtime hooks live in page memory → refresh clears all → hook gone. **No wor
 **Option 1: Log breakpoint (best)**
 ```javascript
 // CDP-level, survives refresh
-set_breakpoint(urlRegex=".*target.js.*", lineNumber=1, columnNumber=123,
+set_breakpoint(urlRegex=".*target.js.*", lineNumber=1, columnNumber=12345,
     condition='console.log("VAR:", someVar), false')
 ```
 
@@ -319,7 +422,7 @@ uv run python tests/test.py
 ```
 1. Call stack trace → get file + line + function
 2. Save source file, read locally
-3. Search related code using names from stack
+3. Search related code using names from stack (AUXILIARY only)
 4. Set breakpoint, step through
 5. Implement in Python
 ```
