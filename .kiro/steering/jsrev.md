@@ -12,6 +12,22 @@ inclusion: manual
 
 ---
 
+## ⚠️ DISCIPLINE RULES
+
+**STAY FOCUSED**: Do NOT switch approaches frequently. Complexity is expected — commit to current approach until exhausted.
+
+**DEOBFUSCATION IS MANDATORY**: Once started, MUST complete. No shortcuts, no "let me try another way".
+
+```
+❌ "Code is messy, let me try breakpoints instead" → WRONG
+❌ "Too complex, switching to runtime analysis" → WRONG  
+✅ Complete deobfuscation → THEN analyze clean code
+```
+
+**Why**: Partial deobfuscation = wasted effort. Clean code is prerequisite for ALL subsequent analysis.
+
+---
+
 ## 🚀 SESSION START
 
 ```bash
@@ -392,10 +408,14 @@ resume_execution()
 
 ## HUMAN INTERACTION
 
-**STOP and ask human:**
-- Visual CAPTCHA → Build OpenCV tool, human solves
-- Login required → "Please login first"
-- Pausing breakpoint set → "Please refresh/click, then tell me"
+**Delegate to human when:**
+- Pausing breakpoint set → "Breakpoint ready. Please refresh/click to trigger, then tell me."
+- Slider/CAPTCHA interaction → Human performs, AI analyzes result
+- Login/auth required → "Please login first"
+- Complex UI interactions (drag, multi-step clicks)
+- Operations causing repeated failures
+
+**Focus on**: Analysis, pattern recognition, code understanding. Let human handle browser interactions.
 
 ---
 
