@@ -2,13 +2,7 @@
 inclusion: manual
 ---
 
-# ⛔ SUPREME DIRECTIVE: CALL STACK ANALYSIS FIRST
-
-> **Call stack analysis is the ONLY correct starting point. Searching, guessing, or switching methods is WRONG.**
->
-> If you catch yourself saying "let me try another approach" — STOP. You are violating the rules.
-
-## jsrev
+# jsrev
 
 **Focus**: Reverse engineer JS encryption/signing algorithms → reproduce in Python.
 
@@ -18,122 +12,17 @@ inclusion: manual
 
 ---
 
-## 🚨 IRON LAW: CALL STACK ANALYSIS IS MANDATORY
+## 🚀 SESSION START
 
-### The Golden Rule
-
-**Call stack = Ground truth. Everything else is auxiliary.**
-
-Dynamic analysis via call stack reveals the ACTUAL execution path. Static analysis (searching, reading code) is ONLY for supplementing what you learn from the call stack.
-
-### ❌ FORBIDDEN BEHAVIORS (IMMEDIATE VIOLATION)
-
-1. **Switching methods** — Before call stack analysis is complete, NO other methods allowed
-2. **Blind searching** — NO searching code without call stack context
-3. **Skipping frames** — MUST analyze frame by frame, cannot skip any relevant frame
-4. **Abandoning direction** — One failure is NOT a reason to give up
-
-### ✅ MANDATORY WORKFLOW (Execute in strict order)
-
-```
-Phase 1: Locate Target Request
-├── list_network_requests → Find request containing target parameter
-├── Record: reqid, URL, target parameter name
-└── Confirm: This is the request I need to analyze
-
-Phase 2: Set Breakpoint and Wait
-├── set_breakpoint(urlRegex=".*targetURL.*", lineNumber=1)
-├── Tell user: "Breakpoint set, please refresh page/trigger request"
-└── Wait for user confirmation before continuing
-
-Phase 3: Deep Call Stack Analysis (CORE!)
-├── get_debugger_status(maxCallStackFrames=30)
-├── Starting from stack top, record each frame:
-│   ├── Frame 0: filename, line number, function name, key variables
-│   ├── Frame 1: ...
-│   ├── Frame N: Find the source of parameter generation
-│   └── Continue tracing upward until algorithm entry point found
-├── get_scope_variables(frameIndex=N) to inspect variables at each key frame
-└── Output: Complete call chain diagram
-
-Phase 4: Deep Dive Along Call Chain
-├── Starting from algorithm entry point, step_into/step_over
-├── Record input/output changes at each step
-├── Identify: encryption functions, encoding functions, hash functions
-└── Continue tracing until complete algorithm understood
-
-Phase 5: Code Extraction and Implementation
-├── Save relevant source code to source/
-├── Document algorithm logic in notes/
-└── Implement Python version in lib/
+```bash
+ls artifacts/jsrev/{domain}/ 2>/dev/null && readFile("artifacts/jsrev/{domain}/PROGRESS.md")
 ```
 
-### 🔒 PHASE LOCK: Cannot proceed to next phase without completing current phase
-
-| Current Phase | Completion Criteria | Forbidden Actions |
-|---------------|---------------------|-------------------|
-| Phase 3 Call Stack Analysis | Complete call chain recorded | NO searching code, NO guessing |
-| Phase 4 Deep Analysis | Algorithm flow understood | NO switching to other functions |
-
-### 📊 Call Stack Analysis Output Template (MUST complete)
-
-```markdown
-## Call Stack Analysis Results
-
-### Target Request
-- URL: {url}
-- Target Parameter: {param_name}
-- Current Value: {param_value}
-
-### Call Chain (from request initiation to parameter generation)
-| Frame | File | Line | Function | Purpose |
-|-------|------|------|----------|---------|
-| 0 | xhr.js | 123 | send | Send request |
-| 1 | api.js | 456 | request | Wrap request |
-| 2 | sign.js | 789 | generateSign | ⭐ Signature generation |
-| ... | ... | ... | ... | ... |
-
-### Key Findings
-- Signature function location: {file}:{line}
-- Input parameters: {inputs}
-- Output format: {output_format}
-- Algorithm characteristics: {algorithm_hints}
-
-### Next Steps
-- [ ] Deep dive into Frame {N}'s {function_name}
-```
+If source/ has obfuscated JS but no output/*_deobfuscated.js → Deobfuscate first.
 
 ---
 
-## 🛑 SELF-CHECK: Method Switching Requires User Approval
-
-### Trigger Word Detection (Saying these = IMMEDIATE STOP)
-
-| Forbidden Phrases | Correct Action |
-|-------------------|----------------|
-| "Let me try another method" | STOP → Report current progress → Wait for user instruction |
-| "Search didn't find it, let me try..." | STOP → You should be using call stack, not searching |
-| "This direction isn't working" | STOP → List what you've tried → Ask user |
-| "Let me directly analyze..." | STOP → You skipped call stack analysis |
-
-### Correct Help Request Template
-
-```
-📊 Current Progress:
-- Phase: {current phase}
-- Completed: {specific content}
-- Problem encountered: {specific problem}
-
-❓ Need Confirmation:
-- Continue current direction?
-- Or would you like me to try: {alternative approach}
-```
-
-**Switching methods without user approval = SERIOUS VIOLATION**
-
----
-
-## P0: DEOBFUSCATION GATE
+## P0: DEOBFUSCATION GATE (MANDATORY FIRST STEP)
 
 **IRON LAW**: Analysis REQUIRES clean code. No exceptions.
 
@@ -148,14 +37,22 @@ head -c 3000 {file} | rg -o "_0x[a-f0-9]{4,6}|\\\\x[0-9a-f]{2}" | head -3
 
 ### Forbidden on Obfuscated Code
 
-- ❌ Setting breakpoints, searching patterns, tracing
+- ❌ Setting breakpoints, searching patterns, tracing call stacks
 - ❌ "Despite obfuscation, I can see..."
+- ❌ Analyzing variable names like `_0x4a3b2c`
 
 **Why**: Obfuscated analysis = 100% failure. Deobfuscation takes 5 min, failed analysis wastes hours.
 
+### Deobfuscation Benefits
+
+After deobfuscation, you get:
+- Readable function/variable names → Easy keyword search
+- Clear algorithm structure → Pattern recognition
+- Meaningful call stacks → Faster tracing
+
 ---
 
-## 🔍 P0.5: NECESSITY CHECK
+## P0.5: NECESSITY CHECK
 
 Before analyzing cookie/param generation, verify it's actually required:
 
@@ -171,9 +68,118 @@ curl -v 'URL' -H 'Cookie: other_only' 2>&1 | head -c 3000
 
 ---
 
-## 🛡️ RULE ONE: OUTPUT LIMITS
+## P1: LOCATE ALGORITHM (Two Approaches)
 
-**CRITICAL**: ALL commands MUST limit output to prevent context explosion.
+**After deobfuscation**, use either or both approaches to find the algorithm:
+
+### Approach A: Keyword Search (Fast, on clean code)
+
+```bash
+# Encryption/Hashing
+rg -M 200 -o ".{0,60}(md5|sha1|sha256|hmac|encrypt|decrypt|hash).{0,60}" output/*.js | head -30
+
+# Signing
+rg -M 200 -o ".{0,60}(sign|signature|token|secret|key).{0,60}" output/*.js | head -30
+
+# Encoding
+rg -M 200 -o ".{0,60}(base64|btoa|atob|encode|decode).{0,60}" output/*.js | head -30
+
+# Target parameter name
+rg -M 200 -o ".{0,60}(targetParamName).{0,60}" output/*.js | head -30
+```
+
+| Pattern | Likely Algorithm |
+|---------|------------------|
+| `0x67452301`, `0x98badcfe` | MD5 constants |
+| `0x6a09e667`, `0xbb67ae85` | SHA-256 constants |
+| `charCodeAt`, XOR loops | Custom encoding |
+| `CryptoJS`, `crypto` | Library usage |
+
+### Approach B: Call Stack Tracing (Precise, ground truth)
+
+Call stack reveals the ACTUAL execution path — this is the most reliable way to locate algorithm.
+
+**Step 1: Locate Target Request**
+```javascript
+list_network_requests(resourceTypes=["xhr", "fetch"], pageSize=50)
+// Find request containing target parameter
+```
+
+**Step 2: Set XHR/Fetch Breakpoint**
+```javascript
+set_breakpoint(urlRegex=".*api/endpoint.*", lineNumber=1)
+// Tell user: "Breakpoint set, please refresh/trigger request"
+```
+
+**Step 3: Analyze Call Stack**
+```javascript
+get_debugger_status(maxCallStackFrames=30)
+```
+
+Trace backwards through frames to find algorithm source:
+| Frame | File | Function | Purpose |
+|-------|------|----------|---------|
+| 0 | xhr.js | send | Request sent |
+| 1 | api.js | request | Wrapper |
+| 2 | sign.js | generateSign | ⭐ Algorithm |
+| ... | ... | ... | Continue tracing up |
+
+**Step 4: Inspect Variables at Key Frame**
+```javascript
+get_scope_variables(frameIndex=2, pageSize=20)
+```
+
+### When to Use Which
+
+| Situation | Recommended Approach |
+|-----------|---------------------|
+| Clean code with meaningful names | Keyword search first, verify with breakpoint |
+| Complex/unfamiliar codebase | Call stack tracing |
+| Keyword search yields too many results | Call stack to pinpoint exact location |
+| Need to understand data flow | Call stack tracing |
+
+**Best practice**: Use both — keyword search to get candidates, call stack to verify and trace data flow.
+
+---
+
+## P2: BREAKPOINT VERIFICATION
+
+**After identifying candidate functions**, use breakpoints to verify:
+
+### Set Breakpoint on Candidate
+
+```javascript
+set_breakpoint(urlRegex=".*target.js.*", lineNumber=1234)
+```
+
+**Then tell user**: "Breakpoint set at `generateSign()`. Please refresh page/trigger request."
+
+### Verify Parameters
+
+When paused:
+```javascript
+get_debugger_status(contextLines=5)
+get_scope_variables(frameIndex=0, pageSize=20)
+```
+
+Check:
+- [ ] Input parameters match expected format
+- [ ] Output matches target parameter value
+- [ ] This is indeed the algorithm entry point
+
+### Step Through Algorithm
+
+```javascript
+step_into()   // Enter function
+step_over()   // Execute line by line
+// Record transformations at each step
+```
+
+---
+
+## 🛡️ OUTPUT LIMITS (CRITICAL)
+
+**ALL commands MUST limit output to prevent context explosion.**
 
 ### Universal Limits
 
@@ -183,15 +189,12 @@ curl -v 'URL' -H 'Cookie: other_only' 2>&1 | head -c 3000
 | `cat` | `head -c 10000 file.js` | `cat file.js` |
 | `head` | `head -c 5000` (bytes) | `head -n 50` on minified |
 | `tail` | `tail -c 5000` | `tail -n 50` on minified |
-| `sed` | `sed -n '1,100p'` (multi-line only) | `sed -n '1p'` on minified |
-| `awk` | `awk '{print substr($0,1,200)}'` | `awk '{print}'` |
-| `jq` | `jq -c '.' \| head -c 5000` | `jq '.'` on large JSON |
 
 ### Why `head -n` Fails
 
 ```bash
 # Minified JS = 1 line = 500KB
-head -n 1 minified.js    # ❌ Returns 500KB (1 line!)
+head -n 1 minified.js    # ❌ Returns 500KB!
 head -c 5000 minified.js # ✅ Returns 5KB max
 ```
 
@@ -202,25 +205,7 @@ head -c 5000 minified.js # ✅ Returns 5KB max
 readFile("bundle.min.js")  # Could be 500KB+ single line!
 
 # ✅ ALWAYS limit line range for JS files
-readFile("file.js", start_line=1, end_line=100)  # Max 100 lines
-
-# For minified files, prefer bash with byte limits:
-head -c 10000 bundle.min.js  # First 10KB
-```
-
-### Mandatory Patterns
-
-```bash
-# ✅ ALWAYS USE
-rg -M 200 -o ".{0,80}keyword.{0,80}" file.js | head -20
-head -c 10000 file.js
-awk '{print substr($0,1,300)}' file.js | head -50
-cut -c1-300 file.js | head -50
-
-# ❌ NEVER USE
-cat file.js
-rg "keyword" file.js
-rg "keyword" file.js | head -20  # head -n won't help!
+readFile("file.js", start_line=1, end_line=100)
 ```
 
 **VIOLATION = CONTEXT OVERFLOW = SESSION FAILURE.**
@@ -236,86 +221,7 @@ rg "keyword" file.js | head -20  # head -n won't help!
 
 ---
 
-## 🚀 SESSION START
-
-```bash
-ls artifacts/jsrev/{domain}/ 2>/dev/null && readFile("artifacts/jsrev/{domain}/PROGRESS.md")
-```
-
-If source/ has obfuscated JS but no output/*_deobfuscated.js → Deobfuscate first.
-
----
-
-## P1: CONTINUOUS DEEP ANALYSIS (NO RETREAT)
-
-### 🎯 Core Principle: Follow the call stack continuously, no lateral jumping
-
-```
-Correct Path:
-Frame 0 → Frame 1 → Frame 2 → ... → Algorithm Source
-   ↓         ↓         ↓
- Check vars  Check vars  Check vars
-
-Wrong Path:
-Frame 0 → Search code → Switch function → Guess → Fail
-```
-
-### ✅ Correct Way to Continue Analysis
-
-```javascript
-// 1. Get complete call stack
-get_debugger_status(maxCallStackFrames=30)
-
-// 2. Analyze frame by frame (DO NOT skip!)
-for (frameIndex = 0; frameIndex < stackDepth; frameIndex++) {
-    get_scope_variables(frameIndex=frameIndex, pageSize=20)
-    // Record: What is this frame doing? What's the input? What's the output?
-}
-
-// 3. After finding key frame, dive into that function
-step_into()  // Enter function internals
-// Continue step_over/step_into until algorithm understood
-```
-
-### ❌ Forbidden Analysis Patterns
-
-| Wrong Pattern | Why It's Wrong | Correct Approach |
-|---------------|----------------|------------------|
-| Glance at call stack then search | No deep analysis | Check variables frame by frame |
-| Search fails so switch methods | Search is only auxiliary | Return to call stack and continue |
-| Jump between multiple functions | Loses analysis thread | Follow one path deep |
-| Guess function behavior | Unreliable | step_into to actually execute |
-
-### 📋 Analysis Checklist (MUST complete for each stack frame)
-
-- [ ] Record function name and file location
-- [ ] Check local variables `get_scope_variables(frameIndex=N)`
-- [ ] Understand this frame's input and output
-- [ ] Determine if this is algorithm core (encryption/signing/encoding)
-- [ ] If it's core, step_into for deep analysis
-
-### 🔄 Correct Flow When Encountering Difficulties
-
-```
-Difficulty → Check if call stack analysis complete → Not complete → Continue analysis
-                                                          ↓
-                                                       Complete
-                                                          ↓
-                                                  Report progress → Wait for user instruction
-```
-
-**Definition of "exhausted all options" (MUST follow order):**
-
-1. ✅ Fully analyzed every frame in call stack
-2. ✅ Checked variables at each key frame
-3. ✅ step_into entered algorithm functions
-4. ✅ Recorded algorithm input/output
-5. ✅ Documented findings in notes/
-6. ⏸️ Only after completing ALL above steps can you report "need help"
-
----
-
-## P1.5: BROWSER IS TRUTH
+## P4: BROWSER RUNTIME
 
 ```javascript
 // Print function source (limited!)
@@ -334,24 +240,13 @@ evaluate_script(function="() => JSON.stringify(Object.keys(obj)).slice(0,1000)")
 get_debugger_status(contextLines=5)
 // 2. Find source from stack, replace anti-debug code
 replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
-// 3. Reload with short timeout (will pause again if not bypassed)
+// 3. Reload
 navigate_page(type="reload", timeout=3000)
 ```
 
-**❌ Forbidden**: Guessing location, searching "debugger" blindly, analyzing without stack
-**✅ Required**: Call stack = truth, replace exact code from stack trace
-
-**Common Anti-Debug Patterns**:
-| Pattern | Replacement Strategy |
-|---------|---------------------|
-| `debugger;` | Delete directly |
-| `setInterval(()=>{debugger},100)` | Delete entire setInterval |
-| `constructor("debugger")()` | Replace with empty function |
-| `Function("debugger")()` | Replace with empty function |
-
 ### ⚠️ evaluate_script Truncation Workaround
 
-`evaluate_script` return values get truncated. For large data, log to console then save:
+For large data, log to console then save:
 
 ```javascript
 // Step 1: Log to console (no truncation)
@@ -363,65 +258,39 @@ list_console_messages(savePath="/absolute/path/raw/data.txt")
 
 ---
 
-## P2: HOOK STRATEGIES
+## P5: HOOK STRATEGIES
 
 ### ❌ `evaluate_script` Cannot Survive Refresh
-Runtime hooks live in page memory → refresh clears all → hook gone. **No workaround.**
-
-⚠️ `persistent=true` does NOT help — it only auto-runs on NEW navigations, not refreshes of current page.
 
 ### ✅ Refresh-Safe Alternatives
 
 **Option 1: Log breakpoint (best)**
 ```javascript
-// CDP-level, survives refresh
 set_breakpoint(urlRegex=".*target.js.*", lineNumber=1, columnNumber=12345,
     condition='console.log("VAR:", someVar), false')
 ```
 
-**Option 2: Script replacement (modify source)**
+**Option 2: Script replacement**
 ```javascript
-// Intercepts script load, injects code into source itself
 replace_script(urlPattern=".*target.js.*",
     oldCode="function sign(data)",
     newCode="function sign(data){console.log('SIGN:',data);")
-// Refresh → modified script loads → hook active
-```
-
-**Rule**: Need hook after refresh? Use `set_breakpoint` or `replace_script`. Never `evaluate_script`.
-
----
-
-## P3: TRACE LOG SAFETY
-
-VM traces output JSON → massive single lines.
-
-```bash
-# ✅ CORRECT
-rg -M 200 -o ".{0,80}\[TRACE\].{0,80}" trace.txt | head -100
-awk -F'|' '{print $1,$2}' trace.txt | head -100
-
-# ❌ FORBIDDEN
-rg "\[TRACE\]" trace.txt
-rg "\[TRACE\]" trace.txt | head -10  # Still explodes!
 ```
 
 ---
 
-## P4: NO INLINE PYTHON
+## P6: PYTHON IMPLEMENTATION
 
 ```bash
-# ❌ BAD
+# ❌ BAD - inline python
 python -c "import json; ..."
 
-# ✅ GOOD
+# ✅ GOOD - file-based
 fsWrite("tests/decode.py", content)
 uv run python tests/decode.py
 ```
 
----
-
-## P5: PYTHON ENV
+### Environment
 
 ```bash
 uv add requests pycryptodome
@@ -430,27 +299,11 @@ uv run python tests/test.py
 
 ---
 
-## P6: ANALYSIS WORKFLOW
-
-```
-1. Call stack trace → get file + line + function
-2. Save source file, read locally
-3. Search related code using names from stack (AUXILIARY only)
-4. Set breakpoint, step through
-5. Implement in Python
-```
-
-⚠️ Formatted files have DIFFERENT line numbers than source!
-
----
-
-## MCP TOOLS
+## MCP TOOLS REFERENCE
 
 ### ⚠️ ABSOLUTE PATH REQUIRED
 
 ```javascript
-
-// ✅ CORRECT
 save_static_resource(reqid=23, filePath="/project_dir/artifacts/jsrev/example.com/source/main.js")
 ```
 
@@ -461,20 +314,6 @@ list_network_requests(resourceTypes=["xhr", "fetch"], pageSize=50)
 get_network_request(reqid=15)
 save_static_resource(reqid=23, filePath="/absolute/path/source/main.js")
 ```
-
-### URL Regex: Keep It Simple
-
-```javascript
-// ❌ OVER-ESCAPED (hard to read, error-prone)
-urlRegex=".*bdms_1\\.0\\.1\\.19_fix\\.js.*"
-urlPattern=".*example\\.com/api/v1\\.0.*"
-
-// ✅ SIMPLE (dots rarely cause false matches)
-urlRegex=".*bdms_1.0.1.19_fix.js.*"
-urlPattern=".*example.com/api/v1.0.*"
-```
-
-**Rule**: Only escape when ambiguity matters. `file.js` won't match `fileXjs`.
 
 ### Breakpoints
 
@@ -489,14 +328,12 @@ set_breakpoint(urlRegex=".*target.js.*", lineNumber=1, columnNumber=12345)
 
 ### ⚠️ Pausing Breakpoint = Human Triggers
 
-After setting a pausing breakpoint, **DO NOT** call `navigate_page`/`evaluate_script`/`click` to trigger it → MCP blocks waiting = DEADLOCK.
+After setting a pausing breakpoint, **DO NOT** call `navigate_page`/`evaluate_script`/`click` to trigger it → DEADLOCK.
 
 ```
 ✅ set_breakpoint → ASK human to refresh/click → WAIT → get_debugger_status
 ❌ set_breakpoint → navigate_page(type="reload") → 💀 DEADLOCK
 ```
-
-**Safe to execute**: Log breakpoints (`condition='..., false'`), already-paused stepping.
 
 ### When Paused
 
@@ -515,27 +352,14 @@ list_console_messages(types=["log", "error"], pageSize=50)
 list_console_messages(savePath="/absolute/path/raw/console.txt")
 ```
 
-### Script Replacement (Modify JS Before Execution)
-
-Intercept and modify scripts on page refresh. Changes persist until removed.
+### Script Replacement
 
 ```javascript
-// Replace code snippet in matching script (takes effect after refresh)
 replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
-
-// List active replacement rules
 list_script_replacements()
-
-// Remove specific rule
 remove_script_replacement(ruleId="rule-123")
-
-// Clear all rules
 clear_script_replacements()
 ```
-
-**Use cases**: Remove anti-debug, inject logging, bypass checks.
-
-⚠️ **Requires page refresh** to take effect. Rule persists across refreshes.
 
 ### Cleanup (MANDATORY)
 
@@ -549,9 +373,9 @@ resume_execution()
 ## HUMAN INTERACTION
 
 **STOP and ask human:**
-- Visual CAPTCHA → Build OpenCV tool (`tests/`), human solves, AI verifies params
+- Visual CAPTCHA → Build OpenCV tool, human solves
 - Login required → "Please login first"
-- Pausing breakpoint → "Breakpoint set. Please refresh/click, then tell me."
+- Pausing breakpoint set → "Please refresh/click, then tell me"
 
 ---
 
@@ -565,7 +389,7 @@ artifacts/jsrev/{domain}/
 ├── scripts/         # AST transform scripts
 ├── lib/             # Algorithm implementations
 ├── repro/           # Request reproduction
-├── tests/           # Test cases + interactive tools
+├── tests/           # Test cases
 ├── notes/           # Analysis notes
 └── raw/             # Raw samples
 ```
@@ -579,23 +403,6 @@ artifacts/jsrev/{domain}/
 - ✅ Algorithm reproduced in pure Python (`lib/*.py`)
 - ✅ Works with fresh inputs, not just captured values
 - ❌ "Algorithm identified" without working code
-
----
-
-## 🤝 HUMAN-IN-THE-LOOP
-
-For visual tasks (CAPTCHA click/slide/rotate):
-
-```python
-# tests/captcha_tool.py - AI builds, human operates
-import cv2
-cv2.imshow("Task", image)
-cv2.setMouseCallback("Task", on_mouse)  # Capture clicks/drags
-```
-
-**Flow**: AI builds tool → Human interacts → AI collects coords → AI tests API
-
-**Response**: `status: success` = encryption correct (coords may still be wrong)
 
 ---
 
