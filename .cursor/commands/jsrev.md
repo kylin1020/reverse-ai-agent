@@ -8,7 +8,41 @@
 
 ---
 
-## � SEbLF-CHECK: STOP ON THESE PHRASES
+## ⚠️ CORE: CALL STACK FIRST
+
+**Have a target request? → Trace call stack FIRST. Search is auxiliary.**
+
+### Workflow
+
+```
+1. list_network_requests → find request with target param
+2. set_breakpoint on request URL → human triggers → paused
+3. get_debugger_status(maxCallStackFrames=20) → read stack
+4. Stack frame shows: file + line + function → THAT'S YOUR TARGET
+5. get_scope_variables(frameIndex=N) → inspect generation logic
+6. Step through → extract algorithm → implement Python
+```
+
+### Search = Auxiliary (After Stack Trace)
+
+Use `rg` to locate code AFTER you know function/variable names from call stack:
+
+```bash
+# ✅ Search with context from stack trace
+rg -M 200 -o ".{0,80}functionNameFromStack.{0,80}" source/*.js
+
+# ❌ Blind search without stack context
+rg "sign|token|encrypt" source/*.js  # Too generic, wastes time
+```
+
+| Method | When to Use |
+|--------|-------------|
+| Call stack trace | **ALWAYS FIRST** - gives exact location |
+| Code search | After stack trace - find related code |
+
+---
+
+## 🛑 SELF-CHECK: STOP ON THESE PHRASES
 
 | Forbidden | Action |
 |-----------|--------|
@@ -106,7 +140,6 @@ rg "keyword" file.js | head -20  # head -n won't help!
 | Pattern | Skill |
 |---------|-------|
 | `_0x`, `\x`, `atob(` | `skills/js_deobfuscation.md` |
-| `while(1){switch`, VM | `skills/jsvmp_analysis.md` |
 | webpack, `__webpack_require__` | `skills/js_extraction.md` |
 
 ---
@@ -152,16 +185,13 @@ B) [alternative]
 Which direction?
 ```
 
-### "Exhausted" Means
+### "Exhausted" Means (IN ORDER)
 
-| # | Action |
-|---|--------|
-| 1 | Search 5+ keyword patterns |
-| 2 | Hook key APIs (XHR, fetch, crypto) |
-| 3 | Trace 3+ stack frames |
-| 4 | Search bitwise ops (`>>>`, `^`, `&`) |
-| 5 | Search encoding (`btoa`, `charCodeAt`) |
-| 6 | Document in `notes/` |
+1. Trace call stack from target request
+2. Step through stack frames, inspect variables
+3. Search code using names from stack trace
+4. Hook key APIs (XHR, fetch, crypto)
+5. Document in `notes/`
 
 ---
 
@@ -174,6 +204,30 @@ evaluate_script(function="() => targetFunc.toString().slice(0, 2000)")
 // Explore object keys
 evaluate_script(function="() => JSON.stringify(Object.keys(obj)).slice(0,1000)")
 ```
+
+### 🛡️ Infinite Debugger Bypass
+
+**Flow**: Page triggers debugger → Read call stack → `replace_script` → Reload verify
+
+```javascript
+// 1. Already paused at debugger, check call stack
+get_debugger_status(contextLines=5)
+// 2. Find source from stack, replace anti-debug code
+replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
+// 3. Reload with short timeout (will pause again if not bypassed)
+navigate_page(type="reload", timeout=3000)
+```
+
+**❌ Forbidden**: Guessing location, searching "debugger" blindly, analyzing without stack
+**✅ Required**: Call stack = truth, replace exact code from stack trace
+
+**常见反调试模式**:
+| 模式 | 替换策略 |
+|------|----------|
+| `debugger;` | 直接删除 |
+| `setInterval(()=>{debugger},100)` | 删除整个 setInterval |
+| `constructor("debugger")()` | 替换为空函数 |
+| `Function("debugger")()` | 替换为空函数 |
 
 ### ⚠️ evaluate_script Truncation Workaround
 
@@ -191,20 +245,30 @@ list_console_messages(savePath="/absolute/path/raw/data.txt")
 
 ## P2: HOOK STRATEGIES
 
-`evaluate_script` hooks don't survive reload. Use these alternatives:
+### ❌ `evaluate_script` Cannot Survive Refresh
+Runtime hooks live in page memory → refresh clears all → hook gone. **No workaround.**
 
-**Option 1: Log breakpoint (recommended)**
+⚠️ `persistent=true` does NOT help — it only auto-runs on NEW navigations, not refreshes of current page.
+
+### ✅ Refresh-Safe Alternatives
+
+**Option 1: Log breakpoint (best)**
 ```javascript
-// Logs value without pausing - ", false" is CRITICAL
-set_breakpoint(urlRegex=".*target.js.*", lineNumber=1, columnNumber=12345,
+// CDP-level, survives refresh
+set_breakpoint(urlRegex=".*target.js.*", lineNumber=1, columnNumber=123,
     condition='console.log("VAR:", someVar), false')
 ```
 
-**Option 2: Re-inject after reload**
+**Option 2: Script replacement (modify source)**
 ```javascript
-// After navigate_page(type="reload"), re-run evaluate_script to set up hooks
-evaluate_script(function="() => { window.__hook = ...; }")
+// Intercepts script load, injects code into source itself
+replace_script(urlPattern=".*target.js.*",
+    oldCode="function sign(data)",
+    newCode="function sign(data){console.log('SIGN:',data);")
+// Refresh → modified script loads → hook active
 ```
+
+**Rule**: Need hook after refresh? Use `set_breakpoint` or `replace_script`. Never `evaluate_script`.
 
 ---
 
@@ -246,12 +310,15 @@ uv run python tests/test.py
 
 ---
 
-## P6: LOCAL-FIRST ANALYSIS
+## P6: ANALYSIS WORKFLOW
 
-1. READ LOCAL: `output/*_formatted.js` → understand logic
-2. GET LINE FROM SOURCE: `rg -M 200 -n --column` in `source/*.js`
-3. DEBUG BROWSER: `set_breakpoint` with SOURCE line:column
-4. COMPARE: Local + Browser → confirm
+```
+1. Call stack trace → get file + line + function
+2. Save source file, read locally
+3. Search related code using names from stack
+4. Set breakpoint, step through
+5. Implement in Python
+```
 
 ⚠️ Formatted files have DIFFERENT line numbers than source!
 
@@ -262,11 +329,9 @@ uv run python tests/test.py
 ### ⚠️ ABSOLUTE PATH REQUIRED
 
 ```javascript
-// ❌ WRONG
-save_static_resource(reqid=23, filePath="source/main.js")
 
 // ✅ CORRECT
-save_static_resource(reqid=23, filePath="/Users/kylin/project/artifacts/jsrev/example.com/source/main.js")
+save_static_resource(reqid=23, filePath="artifacts/jsrev/example.com/source/main.js")
 ```
 
 ### Network
@@ -329,6 +394,28 @@ resume_execution()
 list_console_messages(types=["log", "error"], pageSize=50)
 list_console_messages(savePath="/absolute/path/raw/console.txt")
 ```
+
+### Script Replacement (Modify JS Before Execution)
+
+Intercept and modify scripts on page refresh. Changes persist until removed.
+
+```javascript
+// Replace code snippet in matching script (takes effect after refresh)
+replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
+
+// List active replacement rules
+list_script_replacements()
+
+// Remove specific rule
+remove_script_replacement(ruleId="rule-123")
+
+// Clear all rules
+clear_script_replacements()
+```
+
+**Use cases**: Remove anti-debug, inject logging, bypass checks.
+
+⚠️ **Requires page refresh** to take effect. Rule persists across refreshes.
 
 ### Cleanup (MANDATORY)
 
