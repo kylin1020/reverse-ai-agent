@@ -1,6 +1,6 @@
 # JavaScript Deobfuscation Skill
 
-> **Trigger**: `_0x` vars, hex strings, large string arrays, anti-debug loops  
+> **Trigger**: `_0x` vars, hex strings, large string arrays, anti-debug loops
 > **Output**: Save deobfuscated code to `source/<name>_clean.js`
 
 ---

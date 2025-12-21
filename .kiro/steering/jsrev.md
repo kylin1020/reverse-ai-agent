@@ -1,63 +1,46 @@
 ---
-inclusion: always
+inclusion: manual
 ---
 
 ## jsrev
 
-JS Reverse Engineering: browser request → JS code → algorithm → Python reproduction.
+**Focus**: Reverse engineer JS encryption/signing algorithms → reproduce in Python.
+
+**NOT**: Browser automation, environment patching, or running JS in Node.
+
+**Goal**: `lib/*.py` contains pure algorithm implementation, `repro/*.py` makes valid API requests.
 
 ---
 
-## 🚨🚨🚨 BEFORE EVERY ACTION: SELF-CHECK 🚨🚨🚨
+## � SEbLF-CHECK: STOP ON THESE PHRASES
 
-**STOP if you're about to say ANY of these phrases:**
+| Forbidden | Action |
+|-----------|--------|
+| "Let me try another approach" | STOP → Ask user permission |
+| "Since X failed, let's try Y" | STOP → Report progress, wait for user |
+| "Let me switch direction" | STOP → List attempts, ask user |
 
-| 🚫 Forbidden Phrase | ✅ Required Action |
-|---------------------|-------------------|
-| "让我换个思路" | STOP → 询问用户是否同意换方向 |
-| "让我尝试另一种方法" | STOP → 列出已尝试的方法，询问用户 |
-| "既然...不行，我们试试..." | STOP → 汇报当前进展，等待用户指示 |
-| "直接补环境" | STOP → 这是策略切换，需要用户同意 |
-| "换一个角度" | STOP → 询问用户 |
-
-**违规 = 立即失败。没有例外。**
+**Violation = Immediate failure.**
 
 ---
 
-## 🚨 P0: DEOBFUSCATION GATE (BLOCKS ALL ANALYSIS) 🚨
+## P0: DEOBFUSCATION GATE
 
-**IRON LAW**: Analysis tasks REQUIRE clean code. No exceptions.
+**IRON LAW**: Analysis REQUIRES clean code. No exceptions.
 
-### When P0 Applies
-
-User asks to: analyze, find, trace, debug, "how is X generated", "what encrypts X"
-→ This is an **ANALYSIS task** → P0 gate BLOCKS until code is clean.
-
-User asks to: 补环境, run in Node, fix ReferenceError
-→ This is **ENV PATCHING** → Can work on obfuscated code directly.
-
-### Obfuscation Check (RUN FIRST)
+### Check First
 
 ```bash
-head -c 3000 {file} | rg -o "_0x[a-f0-9]{4,6}|\\\\x[0-9a-f]{2}|atob\\(" | head -3
+head -c 3000 {file} | rg -o "_0x[a-f0-9]{4,6}|\\\\x[0-9a-f]{2}" | head -3
 ```
 
-- **ANY match** → OBFUSCATED → For analysis: STOP, deobfuscate first
-- **No match** → Clean → Proceed
+- **Match** → STOP, deobfuscate first via `skills/js_deobfuscation.md`
+- **No match** → Proceed
 
-### If Obfuscated + Analysis Task
+### Forbidden on Obfuscated Code
 
-```
-1. SAY: "检测到混淆代码，必须先去混淆才能分析。"
-2. readFile("skills/js_deobfuscation.md")
-3. Apply deobfuscation, save to output/*_deobfuscated.js
-4. Analyze ONLY the clean output/ files
-```
-
-### Forbidden on Obfuscated Code (Analysis Tasks)
-
-- ❌ Setting breakpoints, searching patterns, tracing execution
-- ❌ "Despite the obfuscation...", "I can see _0x..."
+- ❌ Setting breakpoints, searching patterns, tracing
+- ❌ "Despite obfuscation, I can see..."
 
 **Why**: Obfuscated analysis = 100% failure. Deobfuscation takes 5 min, failed analysis wastes hours.
 
@@ -122,14 +105,13 @@ rg "keyword" file.js | head -20  # head -n won't help!
 
 ---
 
-## 🚀 RULE TWO: SKILL LOADING
+## SKILL LOADING
 
-| Pattern | Skill | Blocks Analysis? |
-|---------|-------|------------------|
-| `_0x`, `\x`, `atob(` | `skills/js_deobfuscation.md` | 🔴 YES (for analysis tasks) |
-| 补环境, ReferenceError | `skills/js_env_patching.md` | No |
-| `while(1){switch`, VM | `skills/jsvmp_analysis.md` | No |
-| webpack, `__webpack_require__` | `skills/js_extraction.md` | No |
+| Pattern | Skill |
+|---------|-------|
+| `_0x`, `\x`, `atob(` | `skills/js_deobfuscation.md` |
+| `while(1){switch`, VM | `skills/jsvmp_analysis.md` |
+| webpack, `__webpack_require__` | `skills/js_extraction.md` |
 
 ---
 
@@ -143,90 +125,47 @@ If source/ has obfuscated JS but no output/*_deobfuscated.js → Deobfuscate fir
 
 ---
 
-## 🚫🚫🚫 P1: NO RETREAT — 禁止自行换思路 🚫🚫🚫
+## P1: NO RETREAT
 
-**这是 IRON LAW，优先级等同于 P0。**
-
-### 🔴 核心规则：策略切换 = 必须询问用户
+**Strategy switch = MUST ask user first.**
 
 ```
-遇到困难 → 继续当前方向深挖 → 穷尽所有手段 → 汇报 → 询问用户 → 等待回复 → 执行
-                                                    ↑
-                                              绝对不能跳过这一步
+Stuck → Exhaust all options → Report → Ask user → Wait → Execute
+                                         ↑
+                                   Never skip this
 ```
 
-### 禁止行为 (HARD BLOCK)
+### Forbidden
 
-- ❌ "让我换个思路" → 然后自行切换方案
-- ❌ "既然找不到，我们试试补环境"
-- ❌ 分析任务中途转为 Node.js 补环境执行
-- ❌ 一次搜索没结果就放弃当前方向
-- ❌ 遇到 undefined/error 就改变策略
+- ❌ Switching approach without asking
+- ❌ Abandoning direction after one failed search
+- ❌ Changing strategy on first error
 
-### 强制行为 (MUST DO)
-
-- ✅ 穷尽当前方向的所有手段后，才能考虑换方向
-- ✅ 换方向前 **必须停下来询问用户**
-- ✅ 使用这个模板：
+### Required Template
 
 ```
-📊 当前进展：
-- 已尝试：[列出具体尝试]
-- 发现：[列出发现]
-- 卡点：[具体问题]
+📊 Progress:
+- Tried: [list attempts]
+- Found: [findings]
+- Blocked: [specific issue]
 
-🔀 建议方向：
-A) [继续当前方向的具体下一步]
-B) [备选方案]
+🔀 Options:
+A) [continue current direction]
+B) [alternative]
 
-请问选择哪个方向？
+Which direction?
 ```
 
-- ✅ **等待用户回复后才能继续**
+### "Exhausted" Means
 
-### 穷尽手段的定义
-
-在声称"找不到"之前，必须完成以下全部：
-
-| # | 手段 | 示例 |
-|---|------|------|
-| 1 | 搜索 5+ 种关键词模式 | 函数名、参数名、返回值特征、魔法常量、位运算 |
-| 2 | Hook 关键 API | `XMLHttpRequest`, `fetch`, `crypto`, `JSON.stringify` |
-| 3 | 断点追踪 3+ 层调用栈 | 从请求发起点向上/向下追踪 |
-| 4 | 检查参数变异 | 函数调用前后，参数是否被修改 |
-| 5 | 搜索位运算特征 | `>>> 0`, `& 0xff`, `^ key`, `<< 8` |
-| 6 | 搜索编码特征 | `btoa`, `atob`, `charCodeAt`, `fromCharCode` |
-| 7 | 记录所有发现 | 写入 `notes/` 目录 |
-
-### 空结果 ≠ 死路
-
-- `cryptoFuncs: []` → 可能是自定义实现，继续追踪数据流
-- 没找到标准 API → 搜索位运算、循环、数组操作
-- 函数名混淆 → 通过调用关系和返回值类型定位
-- `undefined.apply` 错误 → 检查 VM 状态初始化，不是换思路的理由
-
-### 违规示例
-
-```
-❌ AI: "X4 可能是 undefined，让我换个思路 - 直接从浏览器导出..."
-   → 违规：未询问用户，遇到一个错误就换方向
-
-❌ AI: "cryptoFuncs 为空，让我换个思路，直接补环境跑..."
-   → 违规：未询问用户，未穷尽手段
-
-✅ AI: "📊 当前进展：
-        - 已尝试：1) 搜索 crypto API - 无结果 2) Hook fetch - 找到请求点 
-          3) 追踪 3 层调用栈 - 数据在第 2 层被加密
-        - 发现：XOR 操作存在但未确认关联
-        - 卡点：无法确定 XOR 操作与目标参数的关系
-        
-        🔀 建议方向：
-        A) 继续深入 XOR 函数，设置断点观察输入输出
-        B) 尝试补环境执行
-        
-        请问选择哪个方向？"
-   → 正确：汇报进展，列出选项，等待用户决定
-```
+| # | Action |
+|---|--------|
+| 1 | Search 5+ keyword patterns |
+| 2 | Hook key APIs (XHR, fetch, crypto) |
+| 3 | Trace 3+ stack frames |
+| 4 | Search bitwise ops (`>>>`, `^`, `&`) |
+| 5 | Search encoding (`btoa`, `charCodeAt`) |
+| 6 | Document in `notes/` |
 
 ---
 
@@ -432,11 +371,11 @@ artifacts/jsrev/{domain}/
 
 ## 🎯 COMPLETION CRITERIA
 
-**Goal**: `repro/*.py` → server returns valid response.
+**Goal**: `repro/*.py` makes valid API requests with dynamically generated params.
 
-- ✅ Encrypted params match browser values, dynamic generation works
+- ✅ Algorithm reproduced in pure Python (`lib/*.py`)
+- ✅ Works with fresh inputs, not just captured values
 - ❌ "Algorithm identified" without working code
-- ❌ Works with captured values but not fresh ones
 
 ---
 
