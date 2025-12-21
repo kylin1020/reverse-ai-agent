@@ -195,20 +195,30 @@ list_console_messages(savePath="/absolute/path/raw/data.txt")
 
 ## P2: HOOK STRATEGIES
 
-`evaluate_script` hooks don't survive reload. Use these alternatives:
+### ❌ `evaluate_script` Cannot Survive Refresh
+Runtime hooks live in page memory → refresh clears all → hook gone. **No workaround.**
 
-**Option 1: Log breakpoint (recommended)**
+⚠️ `persistent=true` does NOT help — it only auto-runs on NEW navigations, not refreshes of current page.
+
+### ✅ Refresh-Safe Alternatives
+
+**Option 1: Log breakpoint (best)**
 ```javascript
-// Logs value without pausing - ", false" is CRITICAL
-set_breakpoint(urlRegex=".*target.js.*", lineNumber=1, columnNumber=12345,
+// CDP-level, survives refresh
+set_breakpoint(urlRegex=".*target.js.*", lineNumber=1, columnNumber=123,
     condition='console.log("VAR:", someVar), false')
 ```
 
-**Option 2: Re-inject after reload**
+**Option 2: Script replacement (modify source)**
 ```javascript
-// After navigate_page(type="reload"), re-run evaluate_script to set up hooks
-evaluate_script(function="() => { window.__hook = ...; }")
+// Intercepts script load, injects code into source itself
+replace_script(urlPattern=".*target.js.*",
+    oldCode="function sign(data)",
+    newCode="function sign(data){console.log('SIGN:',data);")
+// Refresh → modified script loads → hook active
 ```
+
+**Rule**: Need hook after refresh? Use `set_breakpoint` or `replace_script`. Never `evaluate_script`.
 
 ---
 
