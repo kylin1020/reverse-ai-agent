@@ -1,159 +1,170 @@
-# JSVMP Analysis Skill
+# Advanced JSVMP Reverse Engineering Skill
 
-> **Trigger**: `while(true) { switch(op) {...} }` VM dispatcher with stack operations  
-> **Goal**: Recover algorithm from VM bytecode via breakpoint instrumentation  
-> **Related**: `skills/js_deobfuscation.md` (for non-VM obfuscation)
-
----
-
-## ⚠️ CORE METHODOLOGY: Trace → Reverse → Verify
-
-**JSVMP is a black box. The ONLY way to understand it:**
-
-```
-1. INSTRUMENT → Set breakpoints at VM dispatcher
-2. TRACE      → Capture runtime execution logs  
-3. REVERSE    → Analyze trace to deduce algorithm logic
-4. VERIFY     → Set targeted breakpoints to confirm hypothesis
-5. IMPLEMENT  → Reproduce in Python
-```
-
-**Static analysis is USELESS.** You cannot read bytecode. You can only observe execution.
+> **Trigger**: Infinite Loop Logic (any syntax) + Bytecode Array + Virtual Instruction Pointer (VIP)  
+> **Goal**: Map Virtual Opcodes to Real Logic & Reconstruct Algorithms  
+> **Core Concept**: JSVMP is a **State Machine**. Focus on **Data Flow** (Stack/Context changes) rather than **Control Flow** (Loop syntax).
 
 ---
 
-## ⚠️ RULE ZERO: NO PLAINTEXT SEARCH
+## ⚠️ Core Concept: The 3 Forms of Dispatchers
 
-**JSVMP compiles ALL logic into bytecode. Plaintext keywords DO NOT EXIST.**
+Do not limit your search to `switch` statements. A VM Dispatcher is simply a mechanism mapping `Opcode -> Handler`. There are three common implementations:
 
-```bash
-# ❌ FORBIDDEN - POINTLESS in JSVMP:
-rg "btoa|atob|base64|MD5|SHA|encrypt|sign" source/vm.js
-rg "fromCharCode|charCodeAt" source/vm.js
-
-# ✅ CORRECT - Identify algorithm from TRACE:
-# - Runtime constants: 0x67452301 = MD5 IV, 0x6a09e667 = SHA256 IV
-# - Operation patterns: XOR chains, bit rotations, S-Box lookups
-# - Output format: 32-char hex = MD5, 64-char = SHA256
-```
-
-**VIOLATION = WASTED EFFORT.**
+1.  **Switch-Case (Classic)**:
+    *   **Pattern**: `switch(op) { case 1: ... case 2: ... }`
+    *   **Weakness**: Structurally obvious; easily reconstructed via AST.
+2.  **If-Else Chain (Flattened)**:
+    *   **Pattern**: `if(op == 1) ... else if(op == 2) ...` (often nested or using binary search).
+    *   **Weakness**: High code volume, lower execution efficiency, but functionality is identical to switch.
+3.  **Direct Threading / Lookup Table (Advanced)**:
+    *   **Pattern**: `handlers[op](context)` or `funcs[instruction & 255].apply(...)`.
+    *   **Stealth**: No `switch`, no `if`. Just a single array access and function call.
+    *   **Weakness**: Requires maintaining a large function array in memory.
 
 ---
 
-## Phase 1: Locate VM Dispatcher & Set Golden Breakpoints
+## Phase 1: Locate the VM Core (The "CPU")
 
-**Task**: Find instrumentation points. Accuracy prevents log noise.
+**Do not search for keywords.** Locate the VM based on **Runtime Behavior**.
 
-1. **VM Entry**: Just before `while(true)` → Capture bytecode array, keys, env
-2. **Fetch-Decode (Golden BP)**: First line in loop where `op = bytecode[pc++]` → Primary trace point
-3. **External Bridge**: `apply`/`call` handler → Detect native JS calls
-4. **Memory Pool**: Variable storage array (not stack) → Track persistent data
+**Feature 1: Massive Instruction Set (Bytecode)**
+*   Look for unusually long `Strings` (Base64) or `Integer Arrays` (Hex) in the source code.
+
+**Feature 2: Virtual Instruction Pointer (VIP/PC)**
+*   Inside a loop, identify a variable that strictly increments or jumps (e.g., `pc++`, `pc += 3`, `pc = target`).
+
+**Feature 3: Virtual Stack/Register Context**
+*   An array defined *outside* the loop that is frequently accessed *inside* the loop using `push`, `pop`, or `stack[sp--]`.
+
+**Universal Location Strategy (Timeline Analysis)**:
+1.  Record a session in the Chrome DevTools **Performance** tab.
+2.  Find the function with the longest "Self Time" (usually a solid yellow bar).
+3.  Dive into that function and look for the **innermost loop structure** (whether it's `for`, `while`, `do-while`, or recursive calls).
 
 ---
 
-## Phase 2: Instrumentation
+## Phase 2: Instrumentation Strategy
 
-**Template** (replace vars with actual minified names):
-```javascript
-console.log(`[T] PC:${PC}|OP:${OP}|STK:${JSON.stringify(STK.slice(-5))}`), false
-```
+The injection point depends on the Dispatcher structure.
 
----
-
-## Phase 3: Trace Collection & Mining
+### Scenario A: Classic Switch or If-Else
+**Point**: Inside the loop, immediately after the Opcode is fetched.
 
 ```javascript
-// Save logs to file (avoid context overflow)
-list_console_messages(savePath="vm_trace.txt", types=["log"])
+// Pseudo-code
+while (true) { // or for(;;)
+    var op = bytecode[pc++]; // <--- GOLDEN POINT: Fetch
+    // INJECT HERE: log(pc, op, stack_snapshot)
+    
+    if (op == 1) { ... }
+    else if (op == 2) { ... }
+}
 ```
 
-```bash
-# ✅ SAFE - Use -o with context or -M to cap output
-rg -o ".{0,50}OP:42.{0,100}" vm_trace.txt | head -50
-rg -M 200 "your_input" vm_trace.txt | head -30
-awk -F'|' '{print $1,$2}' vm_trace.txt | head -100
+### Scenario B: Function Array (Lookup Table)
+**Point**: Hook the function call or the array access.
 
-# ❌ FORBIDDEN - context explosion
-rg "pattern" vm_trace.txt    # No limit = disaster
-```
-
----
-
-## Phase 4: Reverse Algorithm from Trace
-
-**From trace logs, deduce:**
-
-1. **Opcode Mapping**: `[10,20]→[30]` = ADD, `[10,20]→[200]` = MUL, etc.
-2. **Constants**: `0x67452301` = MD5, `0x6a09e667` = SHA256, 256-byte array = S-Box
-3. **Differential Analysis**: Compare trace_a (input "AAA") vs trace_b (input "AAB") → find divergence point
-
-**Then VERIFY hypothesis with targeted breakpoint:**
 ```javascript
-// Pause at suspected crypto round to inspect values
-set_breakpoint(urlRegex=".*vm\.js.*", lineNumber=1, columnNumber=XXXX)
-// Check: get_scope_variables(), evaluate_on_call_frame()
+// Pseudo-code
+var op = bytecode[pc++];
+
+// Original: handlers[op](ctx);
+
+// INJECTED:
+(function(){
+    console.log(`[VM] PC:${pc-1} OP:${op} Stack:${ctx.stack.slice(-5)}`);
+    return handlers[op](ctx); 
+})();
 ```
 
----
+### Scenario C: Arithmetic Hooking (The "Nuclear Option")
+If the Dispatcher is heavily obfuscated, hook JavaScript's primitive operations to reveal the algorithm (e.g., MD5/AES logic) directly.
 
-## Phase 4.5: Arithmetic Operation Tracing (Magic Constant Discovery)
-
-**When standard trace is insufficient, instrument arithmetic operations (+, -, *, /, %, ^, &, |, >>).**
-
-⚠️ **Warning**: Produces MASSIVE logs. Use only when algorithm structure is unclear.
-
-**Why it works:**
-- Crypto algorithms use magic constants in arithmetic: `0x5A827999` (SHA1), `0x61C88647` (TEA)
-- Bit rotation patterns reveal algorithm type: `>>> 7, >>> 18` = SHA256 sigma
-- Multiplication/modulo constants identify hash rounds
-
-**Instrumentation template:**
 ```javascript
-// At arithmetic operation handler in VM
-console.log(`[ARITH] ${a} ${op} ${b} = ${result}`), false
-
-// Example output reveals algorithm structure:
-// [ARITH] 0x67452301 + 0xd76aa478 = 0x3EB1C779  ← MD5 round constant!
-// [ARITH] x >>> 7 = y                            ← SHA256 sigma pattern
-// [ARITH] x * 0x61C88647 = y                     ← TEA delta constant
+// Example: Hooking toString or valueOf for implicit conversions
+// Or use Proxy on the Environment Object if accessible.
 ```
-
-**Mining arithmetic logs:**
-```bash
-# Find magic constants (hex patterns)
-rg -o "0x[0-9a-fA-F]{6,8}" arith_trace.txt | sort | uniq -c | sort -rn | head -20
-
-# Find rotation patterns
-rg -o ">>> [0-9]+" arith_trace.txt | sort | uniq -c | sort -rn
-
-# Find repeated multiplication constants
-rg -o "\* 0x[0-9a-fA-F]+" arith_trace.txt | sort | uniq -c | sort -rn | head -10
-```
-
-**Known magic constants:**
-| Constant | Algorithm |
-|----------|-----------|
-| `0x67452301, 0xEFCDAB89` | MD5 IV |
-| `0x6A09E667, 0xBB67AE85` | SHA256 IV |
-| `0x5A827999, 0x6ED9EBA1` | SHA1 round constants |
-| `0x61C88647` | TEA delta |
-| `0x9E3779B9` | Golden ratio (TEA, many hashes) |
 
 ---
 
-## Phase 5: Deliverables
+## Phase 3: Smart Tracing & Analysis
 
-1. **Component Map**: PC, Stack, Bytecode, Opcode variable names
-2. **Opcode Table**: `0x01: PUSH, 0x02: ADD, 0x03: XOR...`
-3. **Algorithm Pseudo-code**: High-level logic reconstruction
-4. **Python Implementation**: Functional reproduction
+Logging simple Opcodes is often insufficient. You must record **Side Effects**.
+
+**Recommended Log Format**:
+```json
+{
+  "PC": 1024,
+  "OP": 35,
+  "Stack_Top": [10, 20], 
+  "Action": "Unknown" 
+}
+```
+
+**Technique: Differential Analysis**
+1.  Input `AAAA` -> Run -> Save `trace_A.log`
+2.  Input `AAAB` -> Run -> Save `trace_B.log`
+3.  **Compare**: The first line where the logs diverge is exactly where the **input is read** and **processed**.
 
 ---
 
-## Troubleshooting
+## Phase 4: Reconstruction (Reverse -> Implement)
 
-- **Noisy logs?** Filter: `OP === 0x25 && console.log(...)`
-- **Missing data?** Check for secondary stack or accumulator register
-- **Undefined vars?** Wrong scope → use `get_scope_variables` to verify
-- **Anti-debug?** Look for `Date.now()` / `performance.now()` timing checks
+### 1. Identify Control Flow (Jumps)
+In a VM, `if-else` logic usually manifests as manipulating the `PC`.
+*   **JUMP**: `PC` changes abruptly (not `+1` or `+instruction_length`).
+*   **CONDITIONAL JUMP (JZ/JNZ)**: `if (Stack.pop() == true) PC = target`.
+
+### 2. Identify Cryptography (Bitwise Signatures)
+Standard crypto algorithms rely on bitwise operations. Search your logs for:
+*   **Hash Signatures**: `>>> 0` (Unsigned Right Shift), `& 0xFFFFFFFF`.
+*   **Encryption (AES/DES)**: Frequent `XOR` operations and S-Box lookups (manifests as `Array[Index]` reads).
+
+### 3. Handling Nested VMs
+Advanced protectors (e.g., Akamai) may nest VMs.
+*   **Symptom**: The decoded Opcode instruction seems to be manipulating *another* Bytecode array.
+*   **Solution**: Ignore the outer interpreter. Focus on the data flow of the **inner** VM.
+
+---
+
+## Phase 5: Deliverable (Python Implementation)
+
+Your goal is to write a Python emulator, not to beautify the JS.
+
+```python
+class SimpleVM:
+    def __init__(self, bytecode):
+        self.pc = 0
+        self.bytecode = bytecode
+        self.stack = []
+
+    def step(self):
+        op = self.bytecode[self.pc]
+        self.pc += 1
+        
+        if op == 0x01: # PUSH
+            val = self.bytecode[self.pc]
+            self.stack.append(val)
+            self.pc += 1
+        elif op == 0x02: # ADD
+            b = self.stack.pop()
+            a = self.stack.pop()
+            self.stack.append(a + b)
+        elif op == 0x03: # JNZ (Jump if Not Zero)
+            target = self.bytecode[self.pc]
+            cond = self.stack.pop()
+            if cond != 0:
+                self.pc = target
+            else:
+                self.pc += 1
+```
+
+---
+
+## Summary: The Modern JSVMP Methodology
+
+1.  **Find the Loop**: Locate the "hottest" loop via Performance tools (ignore specific syntax).
+2.  **Map the Trinity**: Identify **PC**, **Stack**, and **Bytecode**.
+3.  **Instrument**: Log `PC` and `Stack` state at the "Fetch" stage.
+4.  **Diff**: Change inputs to find the "Fork Point" in the execution trace.
+5.  **Reconstruct**: Identify bitwise math and jumps to rebuild logic in Python.

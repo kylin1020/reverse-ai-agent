@@ -266,11 +266,9 @@ uv run python tests/test.py
 ### ⚠️ ABSOLUTE PATH REQUIRED
 
 ```javascript
-// ❌ WRONG
-save_static_resource(reqid=23, filePath="source/main.js")
 
 // ✅ CORRECT
-save_static_resource(reqid=23, filePath="/Users/kylin/project/artifacts/jsrev/example.com/source/main.js")
+save_static_resource(reqid=23, filePath="artifacts/jsrev/example.com/source/main.js")
 ```
 
 ### Network
