@@ -225,6 +225,37 @@ describe('debugger', () => {
                 assert.ok(response.responseLines.some(line => line.includes('already disabled')), 'Should indicate debugger is already disabled');
             });
         });
+        it('should remain disabled after page refresh', async () => {
+            server.addRoute('/disable-persist-test.js', (_req, res) => {
+                res.setHeader('Content-Type', 'application/javascript');
+                res.statusCode = 200;
+                res.end('const x = 1;');
+            });
+            server.addHtmlRoute('/disable-persist-page', html `<script src="/disable-persist-test.js"></script>`);
+            await withMcpContext(async (response, context) => {
+                const page = context.getSelectedPage();
+                await page.goto(server.getRoute('/disable-persist-page'), { waitUntil: 'networkidle0' });
+                // First enable by setting a breakpoint
+                await setBreakpoint.handler({
+                    params: {
+                        urlRegex: '.*disable-persist-test\\.js.*',
+                        lineNumber: 1,
+                    },
+                }, response, context);
+                response.resetResponseLineForTesting();
+                // Disable the debugger
+                await disableDebugger.handler({ params: {} }, response, context);
+                assert.ok(response.responseLines.some(line => line.includes('Debugger disabled')), 'Should confirm debugger was disabled');
+                // Refresh the page
+                await page.reload({ waitUntil: 'networkidle0' });
+                // Wait a bit for any async operations
+                await new Promise(resolve => setTimeout(resolve, 100));
+                response.resetResponseLineForTesting();
+                // Try to disable again - should still be disabled
+                await disableDebugger.handler({ params: {} }, response, context);
+                assert.ok(response.responseLines.some(line => line.includes('already disabled')), 'Debugger should remain disabled after page refresh');
+            });
+        });
     });
 });
 //# sourceMappingURL=debugger.test.js.map

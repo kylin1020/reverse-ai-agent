@@ -1,3 +1,7 @@
+---
+inclusion: manual
+---
+
 # Role: JSVMP Decompiler Specialist
 
 > **Mission**: Statically decompile JSVMP bytecode to readable JavaScript via progressive IR lifting.
