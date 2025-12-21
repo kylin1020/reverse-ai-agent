@@ -332,6 +332,28 @@ list_console_messages(types=["log", "error"], pageSize=50)
 list_console_messages(savePath="/absolute/path/raw/console.txt")
 ```
 
+### Script Replacement (Modify JS Before Execution)
+
+Intercept and modify scripts on page refresh. Changes persist until removed.
+
+```javascript
+// Replace code snippet in matching script (takes effect after refresh)
+replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
+
+// List active replacement rules
+list_script_replacements()
+
+// Remove specific rule
+remove_script_replacement(ruleId="rule-123")
+
+// Clear all rules
+clear_script_replacements()
+```
+
+**Use cases**: Remove anti-debug, inject logging, bypass checks.
+
+⚠️ **Requires page refresh** to take effect. Rule persists across refreshes.
+
 ### Cleanup (MANDATORY)
 
 ```javascript
