@@ -110,7 +110,6 @@ rg "keyword" file.js | head -20  # head -n won't help!
 | Pattern | Skill |
 |---------|-------|
 | `_0x`, `\x`, `atob(` | `skills/js_deobfuscation.md` |
-| `while(1){switch`, VM | `skills/jsvmp_analysis.md` |
 | webpack, `__webpack_require__` | `skills/js_extraction.md` |
 
 ---
