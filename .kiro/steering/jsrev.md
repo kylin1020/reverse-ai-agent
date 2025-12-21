@@ -124,6 +124,83 @@ If source/ has obfuscated JS but no output/*_deobfuscated.js → Deobfuscate fir
 
 ---
 
+## 🎯 P0.8: CALL STACK FIRST (IRON LAW)
+
+**CRITICAL**: When you have a target request, ALWAYS trace from call stack. NEVER search blindly.
+
+### The Only Correct Flow
+
+```
+1. Identify target request (XHR/fetch with target param)
+2. Set XHR/fetch breakpoint → trigger request → PAUSE
+3. Read call stack → find param generation frame
+4. Step through that frame → extract algorithm
+```
+
+### ❌ FORBIDDEN Approach (Wastes Hours)
+
+```
+❌ rg "paramName" *.js           # Blind search = noise
+❌ rg "sign|encrypt|token" *.js  # Generic patterns = 100+ matches
+❌ Guessing which function generates param
+❌ Reading random code hoping to find logic
+```
+
+### ✅ REQUIRED Approach (5-10 min)
+
+```javascript
+// Step 1: Set breakpoint on XHR/fetch send
+set_breakpoint(urlRegex=".*", lineNumber=1, 
+    condition='console.log("XHR:", arguments), false')
+// OR use Network panel → find request → right-click → "Break on..."
+
+// Step 2: Human triggers request, debugger pauses
+
+// Step 3: Read call stack - THIS IS THE GOLD
+get_debugger_status(maxCallStackFrames=20)
+// Call stack shows EXACT path: 
+//   frame 0: fetch/XHR.send
+//   frame 1: makeRequest(url, params)  ← params already built
+//   frame 2: buildParams(data)         ← PARAM GENERATION HERE
+//   frame 3: handleClick()
+
+// Step 4: Jump to param generation frame
+get_debugger_status(frameIndex=2)  // buildParams frame
+get_scope_variables(frameIndex=2)  // See local vars
+
+// Step 5: Now you know EXACT file + line + function
+// Set breakpoint there, step through, extract algorithm
+```
+
+### Why Call Stack > Search
+
+| Method | Time | Accuracy | Noise |
+|--------|------|----------|-------|
+| Call stack trace | 5 min | 100% | Zero |
+| Keyword search | 30+ min | ~20% | Massive |
+| Random code reading | Hours | ~5% | Infinite |
+
+**The call stack is TRUTH. It shows the EXACT execution path. No guessing.**
+
+### Quick Reference: Breakpoint Strategies
+
+| Goal | Breakpoint |
+|------|------------|
+| Catch all XHR | `set_breakpoint` on `XMLHttpRequest.prototype.send` |
+| Catch all fetch | `set_breakpoint` on `fetch` wrapper |
+| Catch specific URL | `set_breakpoint(urlRegex=".*api/target.*", ...)` |
+| Catch param assignment | After finding frame, breakpoint on that line |
+
+### After Finding Generation Frame
+
+1. Note file + line number from call stack
+2. Save that JS file: `save_static_resource(reqid=X, filePath="...")`
+3. Read the function in local file
+4. Set precise breakpoint, step through
+5. Extract algorithm → implement in Python
+
+---
+
 ## P1: NO RETREAT
 
 **Strategy switch = MUST ask user first.**
@@ -155,16 +232,19 @@ B) [alternative]
 Which direction?
 ```
 
-### "Exhausted" Means
+### "Exhausted" Means (IN ORDER)
 
-| # | Action |
-|---|--------|
-| 1 | Search 5+ keyword patterns |
-| 2 | Hook key APIs (XHR, fetch, crypto) |
-| 3 | Trace 3+ stack frames |
-| 4 | Search bitwise ops (`>>>`, `^`, `&`) |
-| 5 | Search encoding (`btoa`, `charCodeAt`) |
-| 6 | Document in `notes/` |
+| # | Action | Priority |
+|---|--------|----------|
+| 1 | Trace call stack from target request | **FIRST** |
+| 2 | Step through 5+ stack frames | **FIRST** |
+| 3 | Inspect scope variables at each frame | **FIRST** |
+| 4 | Hook key APIs (XHR, fetch, crypto) | Backup |
+| 5 | Search bitwise ops (`>>>`, `^`, `&`) | Last resort |
+| 6 | Search encoding (`btoa`, `charCodeAt`) | Last resort |
+| 7 | Document in `notes/` | Always |
+
+**Call stack tracing is NOT optional. It's step 1.**
 
 ---
 
@@ -283,7 +363,20 @@ uv run python tests/test.py
 
 ---
 
-## P6: LOCAL-FIRST ANALYSIS
+## P6: ANALYSIS WORKFLOW
+
+### 🎯 Primary Method: Call Stack Trace (ALWAYS FIRST)
+
+```
+1. INTERCEPT: Set breakpoint on target request
+2. TRIGGER: Human triggers the action
+3. TRACE: Read call stack → find param generation frame
+4. LOCATE: Get exact file + line + function
+5. ANALYZE: Step through, extract algorithm
+6. IMPLEMENT: Reproduce in Python
+```
+
+### Backup Method: Local Code Analysis (Only After Call Stack)
 
 1. READ LOCAL: `output/*_formatted.js` → understand logic
 2. GET LINE FROM SOURCE: `rg -M 200 -n --column` in `source/*.js`
@@ -291,6 +384,8 @@ uv run python tests/test.py
 4. COMPARE: Local + Browser → confirm
 
 ⚠️ Formatted files have DIFFERENT line numbers than source!
+
+**NEVER skip call stack tracing to jump directly to code search.**
 
 ---
 
