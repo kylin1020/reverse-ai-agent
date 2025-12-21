@@ -26,14 +26,40 @@ If source/ has obfuscated JS but no output/*_deobfuscated.js → Deobfuscate fir
 
 **IRON LAW**: Analysis REQUIRES clean code. No exceptions.
 
-### Check First
+### Step 1: Beautify First
 
 ```bash
-head -c 3000 {file} | rg -o "_0x[a-f0-9]{4,6}|\\\\x[0-9a-f]{2}" | head -3
+npx js-beautify -f {file} -o {output_file}
 ```
 
-- **Match** → STOP, deobfuscate first via `skills/js_deobfuscation.md`
-- **No match** → Proceed
+### Step 2: Multi-Pattern Detection
+
+Run ALL checks — any match = obfuscated:
+
+```bash
+# 1. Hex variable names: _0x4a3b, _0xabc123
+head -c 5000 {file} | rg -c "_0x[a-f0-9]{3,}" | xargs -I{} test {} -gt 3 && echo "OBFUSCATED: hex vars"
+
+# 2. Hex/Unicode escapes: \x48\x65, \u0048
+head -c 5000 {file} | rg -c "\\\\x[0-9a-f]{2}|\\\\u[0-9a-f]{4}" | xargs -I{} test {} -gt 5 && echo "OBFUSCATED: hex escapes"
+
+# 3. Large string array at top (obfuscator signature)
+head -c 3000 {file} | rg -q "var \w+=\[\"[^\"]{0,50}\"(,\"[^\"]{0,50}\"){10,}\]" && echo "OBFUSCATED: string array"
+
+# 4. Control flow flattening: while(true){switch...case}
+head -c 10000 {file} | rg -q "while\s*\(\s*!{0,2}\s*(true|1|!!)\s*\)\s*\{?\s*switch" && echo "OBFUSCATED: control flow"
+
+# 5. Comma expression abuse: (a=1,b=2,c())
+head -c 5000 {file} | rg -c "\([^()]*=[^()]*,[^()]*=[^()]*,[^()]*\)" | xargs -I{} test {} -gt 5 && echo "OBFUSCATED: comma expr"
+
+# 6. Anti-debug patterns
+head -c 10000 {file} | rg -q "debugger|Function\([\"']debugger" && echo "OBFUSCATED: anti-debug"
+```
+
+| Result | Action |
+|--------|--------|
+| Any "OBFUSCATED" | STOP → `skills/js_deobfuscation.md` |
+| All clear | Proceed |
 
 ### Forbidden on Obfuscated Code
 
@@ -41,14 +67,7 @@ head -c 3000 {file} | rg -o "_0x[a-f0-9]{4,6}|\\\\x[0-9a-f]{2}" | head -3
 - ❌ "Despite obfuscation, I can see..."
 - ❌ Analyzing variable names like `_0x4a3b2c`
 
-**Why**: Obfuscated analysis = 100% failure. Deobfuscation takes 5 min, failed analysis wastes hours.
-
-### Deobfuscation Benefits
-
-After deobfuscation, you get:
-- Readable function/variable names → Easy keyword search
-- Clear algorithm structure → Pattern recognition
-- Meaningful call stacks → Faster tracing
+**Why**: Obfuscated analysis = 100% failure rate.
 
 ---
 
@@ -216,8 +235,9 @@ readFile("file.js", start_line=1, end_line=100)
 
 | Pattern | Skill |
 |---------|-------|
-| `_0x`, `\x`, `atob(` | `skills/js_deobfuscation.md` |
+| P0 detection match | `skills/js_deobfuscation.md` |
 | webpack, `__webpack_require__` | `skills/js_extraction.md` |
+| `while(true){switch}` + state machine | `skills/jsvmp_analysis.md` |
 
 ---
 
