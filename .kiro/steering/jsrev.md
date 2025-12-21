@@ -179,6 +179,30 @@ evaluate_script(function="() => targetFunc.toString().slice(0, 2000)")
 evaluate_script(function="() => JSON.stringify(Object.keys(obj)).slice(0,1000)")
 ```
 
+### 🛡️ Infinite Debugger Bypass
+
+**Flow**: Page triggers debugger → Read call stack → `replace_script` → Reload verify
+
+```javascript
+// 1. Already paused at debugger, check call stack
+get_debugger_status(contextLines=5)
+// 2. Find source from stack, replace anti-debug code
+replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
+// 3. Reload with short timeout (will pause again if not bypassed)
+navigate_page(type="reload", timeout=3000)
+```
+
+**❌ Forbidden**: Guessing location, searching "debugger" blindly, analyzing without stack
+**✅ Required**: Call stack = truth, replace exact code from stack trace
+
+**常见反调试模式**:
+| 模式 | 替换策略 |
+|------|----------|
+| `debugger;` | 直接删除 |
+| `setInterval(()=>{debugger},100)` | 删除整个 setInterval |
+| `constructor("debugger")()` | 替换为空函数 |
+| `Function("debugger")()` | 替换为空函数 |
+
 ### ⚠️ evaluate_script Truncation Workaround
 
 `evaluate_script` return values get truncated. For large data, log to console then save:
