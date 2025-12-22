@@ -11,7 +11,7 @@
 
 **FORBIDDEN** while in this skill: searching parameters, analyzing logic, setting analysis breakpoints, monitoring requests.
 
-**ALLOWED**: capturing decoder outputs, building AST transforms, producing deobfuscated file.
+**ALLOWED**: static AST extraction, building transforms, producing deobfuscated file.
 
 ---
 
@@ -20,7 +20,7 @@
 ```
 Code obfuscated?
 ├─ Anti-debugging (debugger loop)? → §1 Bypass first
-├─ String array + decoder function? → §2 Decode strings
+├─ String array + decoder function? → §2 Static extraction (sg/Babel)
 ├─ `_0x` vars, hex literals? → §3 AST transforms
 ├─ `while(true){switch}` + stack? → SWITCH TO: skills/jsvmp_analysis.md
 └─ Readable enough? → Skip this skill
@@ -62,16 +62,39 @@ var _0xabc = ["str1", "str2"];
 var _0xdef = function(idx) { return atob(_0xabc[idx - 0x100]); };
 ```
 
-### 2.2 Extracting Large Arrays
+### 2.2 Static Extraction (PREFERRED)
 
-**⛔ NEVER read large string arrays directly — use code/commands to extract.**
+**⚠️ ALWAYS try static analysis FIRST — browser extraction is LAST RESORT.**
+
+#### Method 1: ast-grep (sg) — Fastest
 
 ```bash
-# Locate array
-rg -n "var _0x[a-f0-9]+ *= *\[" source/file.js | head -3
+# Find string array declarations
+sg -p 'var $_NAME = [$$$ELEMENTS]' source/file.js --json | jq '.[] | .metaVariables'
+
+# Extract array with specific pattern (_0x prefix)
+sg -p 'var $NAME = [$$$]' source/file.js -r '$NAME: [$$$]' 
+
+# Complex: extract IIFE-wrapped arrays
+sg -p '(function($ARR, $_){while(--$_)$ARR.push($ARR.shift())})($NAME, $_)' source/file.js
 ```
 
-**Option A: Babel AST (recommended)**
+#### Method 2: ripgrep + jq — Quick extraction
+
+```bash
+# Locate array position
+rg -n "var _0x[a-f0-9]+ *= *\[" source/file.js | head -3
+
+# Extract array content (if single line)
+rg -o '\[("[^"]*",?\s*)+\]' source/file.js | head -1 > strings_raw.json
+
+# For multi-line arrays, use sed range
+sed -n '/var _0x[a-f0-9]* *= *\[/,/\];/p' source/file.js > array_block.js
+```
+
+
+#### Method 3: Babel AST — Most reliable
+
 ```javascript
 const fs = require('fs');
 const parser = require('@babel/parser');
@@ -83,7 +106,7 @@ traverse(ast, {
         if (path.node.id.name?.match(/^_0x[a-f0-9]+$/) && 
             path.node.init?.type === 'ArrayExpression') {
             const strings = path.node.init.elements.map(e => e?.value ?? null);
-            fs.writeFileSync('strings_raw.json', JSON.stringify(strings));
+            fs.writeFileSync('strings_raw.json', JSON.stringify(strings, null, 2));
             console.log(`Extracted ${strings.length} strings`);
             path.stop();
         }
@@ -91,23 +114,57 @@ traverse(ast, {
 });
 ```
 
-**Option B: Browser runtime (if shuffled)**
+#### Method 4: Node.js eval (static, no browser)
+
+```bash
+# If array is self-contained, extract and eval locally
+node -e "
+const code = require('fs').readFileSync('source/file.js', 'utf-8');
+const match = code.match(/var (_0x[a-f0-9]+)\s*=\s*(\[[^\]]+\])/);
+if (match) {
+    const arr = eval(match[2]);
+    require('fs').writeFileSync('strings_raw.json', JSON.stringify(arr, null, 2));
+    console.log('Extracted', arr.length, 'strings');
+}
+"
+```
+
+### 2.3 Handling Shuffled Arrays
+
+**If array is shuffled by IIFE, extract the shuffler logic statically:**
+
+```bash
+# Find shuffler pattern
+sg -p '(function($A,$B){while(--$B)$A.push($A.shift())})($_,$_)' source/file.js
+
+# Extract shuffle count
+rg -o '\)\(_0x[a-f0-9]+,\s*(0x[a-f0-9]+)\)' source/file.js
+```
+
 ```javascript
+// Apply shuffle locally (no browser needed)
+const raw = require('./strings_raw.json');
+const shuffleCount = 0x123; // extracted value
+for (let i = 0; i < shuffleCount; i++) raw.push(raw.shift());
+fs.writeFileSync('strings_shuffled.json', JSON.stringify(raw, null, 2));
+```
+
+### 2.4 Browser Extraction (LAST RESORT)
+
+**Only use when:**
+- Array depends on runtime DOM/environment
+- Decoder uses complex runtime state
+- Static analysis fails after multiple attempts
+
+```javascript
+// Capture array state after shuffler executes
 evaluate_script(function=`() => JSON.stringify(window._0xabc)`)
 ```
 
-### 2.3 Verify Decoder
+### 2.5 Common Decoders (Static Implementation)
 
 ```javascript
-// Sample verification before AST replacement
-set_breakpoint(urlRegex=".*target\.js.*", lineNumber=XX,
-    condition='console.log("VERIFY:", _0xdef(0x1a2), _0xdef(0x1a5)), false')
-```
-
-### 2.4 Common Decoders
-
-```javascript
-// RC4
+// RC4 - implement locally, no browser needed
 function rc4(str, key) {
     let s = [...Array(256).keys()], j = 0;
     for (let i = 0; i < 256; i++) {
@@ -124,8 +181,14 @@ function rc4(str, key) {
 }
 
 // Base64 + XOR
-const decode = (enc, key) => [...atob(enc)].map((c, i) => 
-    String.fromCharCode(c.charCodeAt(0) ^ key.charCodeAt(i % key.length))).join('');
+const decode = (enc, key) => Buffer.from(enc, 'base64').toString()
+    .split('').map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ key.charCodeAt(i % key.length))).join('');
+
+// Base64 + rotation
+const decodeRotate = (enc, offset) => {
+    const decoded = Buffer.from(enc, 'base64').toString();
+    return decoded.split('').map(c => String.fromCharCode(c.charCodeAt(0) - offset)).join('');
+};
 ```
 
 ---
@@ -189,9 +252,9 @@ CallExpression(path) {
 
 ## 4. Transform Order
 
-1. Anti-debug bypass → 2. String decode → 3. Hex restore → 4. Property cleanup → 5. Constant fold
+1. Anti-debug bypass → 2. Static string extraction → 3. Hex restore → 4. Property cleanup → 5. Constant fold
 
-**After EACH**: `node --check output.js` + browser verify
+**After EACH**: `node --check output.js` to verify syntax
 
 ---
 
@@ -199,9 +262,10 @@ CallExpression(path) {
 
 | Issue | Solution |
 |-------|----------|
-| Wrong array state | Capture AFTER shuffler |
-| Decoder mismatch | Re-analyze offset/algorithm |
-| Constant fold fails | Skip, keep original |
+| sg pattern not matching | Try simpler pattern, check escaping |
+| Array extraction incomplete | Use Babel AST instead of regex |
+| Shuffler logic complex | Extract shuffle count, apply locally |
+| Decoder uses runtime state | ONLY THEN use browser extraction |
 
 ---
 

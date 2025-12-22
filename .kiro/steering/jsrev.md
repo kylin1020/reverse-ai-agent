@@ -195,6 +195,7 @@ sg run -p 'function sign($$$) { $$$B }' source/main.js --json | jq '.[0].range.s
 set_breakpoint(urlRegex=".*main.js.*", lineNumber=1234)
 ```
 
+
 ### Strategy A: Logger Hook (Non-Stopping)
 
 ```javascript
@@ -264,62 +265,25 @@ uv run python repro.py
 
 ---
 
-## 🔍 AST-GREP (sg) — REFERENCE
+## 🔍 AST-GREP (sg) — QUICK REF
 
-### When to use
+**sg** is for static AST analysis on local files. Use MCP tools for browser-loaded scripts.
 
-| Scenario | Use `sg` | Use MCP |
-|----------|----------|---------|
-| File on disk (source/, output/) | ✅ | ❌ |
-| Browser-loaded script only | ❌ | ✅ |
-| Need exact line number | ✅ | ❌ |
-| Need runtime values | ❌ | ✅ |
-| **Extract string array content** | ✅ | ❌ |
-| **Find full code block from snippet** | ✅ | ❌ |
-
-### Key Use Cases
-
-1. **Extract string arrays** (for deobfuscation):
-```bash
-sg run -p 'var _0x$A = [$$$]' source/main.js --json | jq '.[0].text'
-```
-
-2. **Find complete function from partial match**:
-```bash
-# You see "abc123" in code, want the full function containing it
-sg run -p 'function $_NAME($$$) { $$$BODY }' file.js --json | \
-  jq '[.[] | select(.text | contains("abc123"))] | .[0].text'
-```
-
-3. **Get line number for breakpoint**:
-```bash
-sg run -p 'function sign($$$) { $$$B }' file.js --json | jq '.[0].range.start.line'
-```
-
-### Common Patterns
-
-| Target | Pattern |
-|--------|---------|
-| String array | `var $_NAME = [$$$]` |
-| Hex string array | `var _0x$A = [$$$]` |
-| Decoder function | `function $_NAME($_ARG) { $$$BODY }` |
-| IIFE wrapper | `(function($_ARGS) { $$$BODY })($$$)` |
-| Function call | `$_FN($$$)` |
-| Method call | `$_OBJ.$_METHOD($$$)` |
-
-### Examples
+| Scenario | Tool |
+|----------|------|
+| Local file analysis | `sg` |
+| Browser script | MCP `search_script_content` |
+| Runtime values | MCP `evaluate_script` |
 
 ```bash
-# Get line number
-sg run -p 'function _0x$A($_B) { $$$C }' file.js --json | jq '.[0].range.start.line'
+# Find function, get line number
+sg run -p 'function $NAME($$$) { $$$B }' file.js --json | jq '.[0].range.start.line'
 
-# Filter by name
-sg run -p 'function $NAME($$$) { $$$B }' file.js --json | \
-  jq '[.[] | select(.text | test("sign|encrypt"; "i"))]'
-
-# Count matches
-sg run -p 'var _0x$A = [$$$]' file.js --json | jq 'length'
+# Search by keyword
+sg run -p '$_FN($$$)' file.js --json | jq '[.[] | select(.text | test("sign|encrypt"; "i"))]'
 ```
+
+**For deobfuscation** (string arrays, decoders, static extraction): see `skills/js_deobfuscation.md`
 
 ---
 
@@ -368,7 +332,7 @@ Use `head`, `sg`, `rg`, or line-range reads instead of `read_file` / `readFile` 
 When entering Phase 2 (Deobfuscation), **MUST read** the relevant skill file:
 
 ```
-skills/js_deobfuscation.md  → String array decoding, control flow unflattening
+skills/js_deobfuscation.md  → String array decoding, static extraction, AST transforms
 ```
 
 **Action**: At Phase 2 start, run `read_file("skills/js_deobfuscation.md")` to load techniques.
