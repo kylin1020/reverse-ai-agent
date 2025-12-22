@@ -100,6 +100,14 @@ Read the code content directly and identify obfuscation type:
 
 **Action**: If obfuscation detected, update TODO.md with specific Phase 2 tasks immediately.
 
+### Step 2: Beautify Minified JS
+
+If code is minified/packed (single-line mega code), beautify before analysis:
+
+```bash
+npx js-beautify -f source/main.js -o source/main_beautified.js
+```
+
 ---
 
 ## P1: LOCATE ALGORITHM (⚠️ Phase 2 must be complete!)
