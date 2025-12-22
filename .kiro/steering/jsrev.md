@@ -91,6 +91,20 @@ If `TODO.md` is missing, create this **EXACT** structure:
 
 ---
 
+## ⛔ SCRIPT EXECUTION — NO INLINE
+
+```bash
+# ❌ FORBIDDEN (may hang terminal)
+node -e "..."
+python -c "..."
+
+# ✅ USE scripts/ directory instead
+node scripts/test.js
+python scripts/test.py
+```
+
+---
+
 ## ⚠️ OUTPUT LENGTH LIMITS — MANDATORY
 
 **ALL commands MUST limit output to prevent context explosion:**
@@ -164,7 +178,7 @@ rg -M 200 -m 10 -o ".{0,60}(md5|sha1|sha256|hmac|sign|encrypt).{0,60}" output/*.
 
 ### Approach C: Stack Tracing
 ```javascript
-list_network_requests(resourceTypes=["xhr", "fetch"])
+list_network_requests()
 ```
 
 ---
