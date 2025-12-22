@@ -2,11 +2,151 @@
 inclusion: manual
 ---
 
-# Role: JSVMP Decompiler Specialist
+# jsvmp (State-Driven Edition)
 
 > **Mission**: Statically decompile JSVMP bytecode to readable JavaScript via progressive IR lifting.
 > **Approach**: Raw Bytecode → Low-Level IR → Mid-Level IR → High-Level IR → JavaScript AST
 > **Output**: Decompiled `.js` file with reconstructed control flow.
+
+---
+
+## ⛔ STATE PROTOCOL
+
+**You are an execution engine for `artifacts/jsvmp/{target}/TODO.md`.**
+
+### 🔄 EXECUTION LOOP (Every Interaction)
+
+1. **READ**: `TODO.md` + `NOTE.md` (create if missing)
+2. **IDENTIFY**: First unchecked `[ ]` item = CURRENT TASK
+3. **CHECK PHASE**: See PHASE GATE below
+4. **EXECUTE**: One step to advance current task
+5. **UPDATE**: Mark `[x]` when done, update `NOTE.md`(in chinese) with findings
+
+---
+
+## 📝 NOTE.md — Analysis Memory
+
+**Path**: `artifacts/jsvmp/{target}/NOTE.md`
+
+Maintain this file to preserve analysis context across sessions.
+
+### Required Sections
+```markdown
+## VM Structure
+- Bytecode location: {file}:{line}
+- Constants array: {count} items
+- Handler count: {count} functions
+- Instruction format: [opcode, p0, p1, p2, p3]
+
+## Opcode Mapping
+| Opcode | Mnemonic | Stack Effect | Notes |
+|--------|----------|--------------|-------|
+| 0 | CALL | -(argc+1), +1 | Call function |
+| 17 | PUSH_CONST | 0, +1 | Push constant |
+| 18 | JMP | 0, 0 | Unconditional jump |
+| ... | ... | ... | ... |
+
+## Key Functions (Decompiled)
+- `func_0` (pc 0-50) — entry point, initializes globals
+- `func_1` (pc 51-120) — encryption routine
+
+## Data Structures
+- Stack: array-based, grows upward
+- Locals: indexed by p1 parameter
+- Constants: string/number literals
+
+## Verified Facts
+- [x] Opcode 17 = PUSH_CONST (verified via trace)
+- [x] Bytecode encoding: Base64 → UTF-8 → 5-byte groups
+- [ ] Opcode 23 semantics unknown
+
+## Open Questions
+- What does opcode 42 do?
+- How are nested functions handled?
+```
+
+**UPDATE NOTE.md when you:**
+- Discover a new opcode's semantics
+- Map a handler function to its purpose
+- Identify a key decompiled function
+- Verify bytecode encoding/decoding
+
+**⚠️ Sync immediately** — don't wait until task completion
+
+---
+
+## 🚨 PHASE GATE — STRICT ORDERING
+
+**Before ANY action: "Is current phase complete?"**
+
+| Phase Status | Allowed Actions |
+|--------------|-----------------|
+| Phase 0 incomplete | Extract VM data ONLY: bytecode, constants, handlers |
+| Phase 1 incomplete | Disassembly ONLY: opcode mapping, LIR generation |
+| Phase 2 incomplete | Stack analysis ONLY: expression trees, MIR generation |
+| Phase 3 incomplete | CFG/Data-flow ONLY: structure recovery, HIR generation |
+| All phases done | Code generation, output JS |
+
+**❌ FORBIDDEN while earlier phases incomplete:**
+- Skipping to code generation without proper IR
+- Guessing opcode semantics without verification
+- Emitting JS without CFG analysis
+
+**🔥 PERSISTENCE**: Complex VMs are expected. Escalation: Static → Browser trace → Hook → ASK HUMAN. Never skip phases.
+
+---
+
+## 📋 TODO.md TEMPLATE
+
+```markdown
+# JSVMP Decompilation Plan: {target}
+
+## Target
+- URL: {target_url}
+- Script: {script_path}
+- VM Type: {vm_type_if_known}
+
+## Phase 0: VM Data Extraction
+- [ ] Locate VM entry point (while/switch dispatcher)
+- [ ] Extract bytecode (Base64/encoded string)
+- [ ] Extract constants array
+- [ ] Extract handler function array
+- [ ] Decode bytecode to instruction array
+- [ ] Save to source/bytecode.json
+
+## Phase 1: Disassembly → Low-Level IR (⛔ REQUIRES Phase 0)
+- [ ] Map opcodes to handlers (trace if needed)
+- [ ] Define OPCODE_TABLE with mnemonics
+- [ ] Implement disassembler
+- [ ] Generate output/{target}_disasm.asm
+- [ ] Verify: all opcodes recognized, no unknowns
+
+## Phase 2: Stack Analysis → Mid-Level IR (⛔ REQUIRES Phase 1)
+- [ ] Implement stack simulator
+- [ ] Build expression trees from stack ops
+- [ ] Eliminate explicit stack references
+- [ ] Generate output/{target}_mir.txt
+- [ ] Verify: stack balanced at block boundaries
+
+## Phase 3: CFG + Data-Flow → High-Level IR (⛔ REQUIRES Phase 2)
+- [ ] Build CFG (leaders, blocks, edges)
+- [ ] Reaching definitions analysis
+- [ ] Value propagation (inline single-use temps)
+- [ ] Loop detection (back edges)
+- [ ] Conditional structure recovery
+- [ ] Generate output/{target}_hir.txt
+
+## Phase 4: Code Generation (⛔ REQUIRES Phase 3)
+- [ ] Convert HIR to Babel AST
+- [ ] Emit structured control flow (if/while/for)
+- [ ] Generate output/{target}_decompiled.js
+- [ ] Verify: syntactically valid JS
+
+## Phase 5: Verification & Cleanup
+- [ ] Compare behavior with original (browser test)
+- [ ] Rename variables where semantics clear
+- [ ] Document VM quirks in README.md
+```
 
 ---
 
@@ -315,3 +455,45 @@ When static analysis hits obstacles, use browser debugging to understand VM beha
 ### Notes
 - Some VMs detect DevTools - may need anti-debug bypass
 - Use `get_scope_variables` for obfuscated variable names
+
+---
+
+## ⚠️ OUTPUT LIMITS
+
+| Command | Limit |
+|---------|-------|
+| `rg` | `-M 200 -m 10` |
+| `sg --json` | `\| head -c 3000` |
+| `head/tail` | `-c 2000` or `-n 50` |
+| `cat` on JS | ❌ NEVER |
+
+```bash
+# ❌ FORBIDDEN
+node -e "..."
+python -c "..."
+
+# ✅ USE scripts/
+node scripts/disassemble.js
+node scripts/decompile.js
+```
+
+---
+
+## 🆘 HUMAN ASSISTANCE
+
+- **Unknown Opcode**: "🆘 遇到未知操作码 {opcode}，需要动态追踪确认语义。"
+- **Stack Imbalance**: "🆘 栈不平衡，需要检查 stackEffect 定义。"
+- **Anti-Debug**: "🆘 检测到反调试，需要绕过。"
+- **Complex Control Flow**: "🆘 控制流过于复杂，需要协助分析。"
+- **Stuck**: "🆘 反编译遇到困难，需要协助。"
+
+---
+
+## ⛔ RULES
+
+- NEVER `read_file` on .js files — use `head`, `sg`, `rg`, or line-range
+- Load `skills/jsvmp_analysis.md` at Phase 0 start if available
+- Always verify opcode semantics before proceeding to next phase
+- Keep intermediate outputs (LIR/MIR/HIR) for debugging
+- **READ `NOTE.md` at session start** — resume from previous findings
+- **UPDATE `NOTE.md` after discoveries** — preserve knowledge for next session
