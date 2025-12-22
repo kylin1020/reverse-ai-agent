@@ -253,6 +253,7 @@ replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
 ## ⛔ RULES
 
 - NEVER `read_file` on .js files — use `head`, `sg`, `rg`, or line-range
+- NEVER use `python -c` or `node -e` inline scripts — causes terminal hang
 - Load `skills/js_deobfuscation.md` at Phase 2 start
 - **READ `NOTE.md` at session start** — resume from previous findings
 - **UPDATE `NOTE.md` after discoveries** — preserve knowledge for next session
