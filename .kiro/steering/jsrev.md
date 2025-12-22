@@ -1,208 +1,197 @@
 ---
-inclusion: manual
+inclusion: always
 ---
 
-# jsrev
+# jsrev (State-Driven Edition)
 
-## ⛔ STOP: READ THIS FIRST
+## ⛔ STOP: READ THIS FIRST — STATE PROTOCOL
+
+**You are NOT a stateless chatbot.** You are an execution engine for `artifacts/jsrev/{domain}/TODO.md`.
+
+### 🔄 THE EXECUTION LOOP (MANDATORY)
+
+At the start of **EVERY** interaction, execute these checks:
+
+1.  **READ STATE**: read_file(artifacts/jsrev/{domain}/TODO.md)
+    *   *Missing?* → Create it using the **Template** below.
+2.  **IDENTIFY TASK**: Read the first **unchecked** `[ ]` item. This is your **CURRENT TASK**.
+3.  **CHECK PHASE**:
+    *   Is Current Task = "Deobfuscate"? → **LOCKDOWN MODE**.
+        *   ❌ FORBIDDEN: searching `sign`, `api`, setting logic breakpoints.
+        *   ✅ ALLOWED: `skills/js_deobfuscation.md`, dumping strings.
+4.  **EXECUTE**: Perform **one** step to advance the Current Task.
+5.  **UPDATE**: Mark `[x]` when done. Add new `[ ]` sub-tasks if complexities arise.
+
+---
+
+## 📋 TODO.md TEMPLATE
+
+If `TODO.md` is missing, create this **EXACT** structure:
+
+```markdown
+# JS Reverse Engineering Plan: {domain}
+
+## Phase 1: Discovery & Detection
+- [ ] Initialize environment (dirs, network check)
+- [ ] Locate main logic file (source/main.js)
+- [ ] **OBFUSCATION AUDIT**: Check first 2000 chars for arrays/hex
+    - *Constraint*: If found, insert "Phase 2: Deobfuscation" tasks immediately.
+
+## Phase 2: Deobfuscation (⛔ BLOCKS ANALYSIS)
+- [ ] (Waiting for Detection...)
+- [ ] *Dynamic Task*: Extract decoder function
+- [ ] *Dynamic Task*: Generate output/*_deobfuscated.js
+
+## Phase 3: Analysis (⛔ LOCKED until Phase 2 Complete)
+- [ ] Necessity Check (Is param actually required?)
+- [ ] Locate algorithm entry point (keyword search in _deobfuscated.js)
+- [ ] Breakpoint Analysis (Trace parameter construction)
+
+## Phase 4: Implementation
+- [ ] Python Reproduction (lib/*.py)
+```
+
+---
+
+## 🚨 DEOBFUSCATION GATE — NO EXCEPTIONS
 
 ```
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║  DEOBFUSCATION BEFORE RUNTIME ANALYSIS — NO EXCEPTIONS                       ║
+║                    🚨 STATE CHECK: DEOBFUSCATION PENDING?                    ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║  IF `TODO.md` has unchecked items in "Phase 2: Deobfuscation":               ║
 ║                                                                              ║
-║  When you see obfuscated code, you MUST deobfuscate FIRST.                   ║
-║  DO NOT use breakpoints, call stacks, or runtime analysis on obfuscated JS.  ║
+║  ❌ STRICTLY FORBIDDEN ACTIONS:                                              ║
+║     • Searching for "sign", "token", "api", "getUA"                          ║
+║     • Setting breakpoints to trace "logic flow"                              ║
+║     • Monitoring network to "find parameters"                                ║
 ║                                                                              ║
-║  "Obfuscation is complex, let me try runtime analysis" = FORBIDDEN           ║
-║  "Let me set a breakpoint to capture params" = FORBIDDEN                     ║
-║  "Despite obfuscation, I can trace..." = FORBIDDEN                           ║
-║                                                                              ║
-║  CORRECT: Deobfuscate strings/functions → THEN analyze with breakpoints      ║
+║  ✅ THE ONLY VALID ACTIONS:                                                  ║
+║     • Capturing decoder outputs (e.g. `window.decoder(0x1)`)                 ║
+║     • Inlining strings                                                       ║
+║     • Writing `output/*_deobfuscated.js`                                     ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 ```
 
-### What "Deobfuscation" Means Here
+### 🧠 SELF-CHECK Before Any Action
 
-You do NOT need to fully reverse ALL obfuscation, but **string deobfuscation is CRITICAL** — it enables keyword search to locate core code quickly.
+Ask yourself: **"Does `TODO.md` show Phase 2 is complete?"**
+*   **NO** → You MUST work on Deobfuscation.
+*   **YES** → You may proceed to P1/P2/P3.
 
-| MUST Deobfuscate | Can Skip |
-|------------------|----------|
-| String decryption (XOR, base64, string array) | Variable renaming |
-| String array rotation/shuffling | Dead code removal |
-| Encoded function calls | Comment injection |
+---
+
+## P0: DETECTION & SETUP
+
+### Step 1: Detect
+```bash
+head -c 2000 {file}
+```
+*   **Action**: If you see `var _0x...` or hex strings, **UPDATE TODO.md** immediately to include specific deobfuscation steps.
+
+---
+
+## P1: LOCATE ALGORITHM (⚠️ REQUIRES DEOBFUSCATION COMPLETE)
+
+**PREREQUISITE**: `TODO.md` Phase 2 is checked `[x]`.
+
+### Approach A: Keyword Search (on deobfuscated code ONLY)
+```bash
+rg -M 200 -o ".{0,60}(md5|sha1|sha256|hmac|sign|encrypt).{0,60}" output/*.js
+```
+
+### Approach B: Stack Tracing
+```javascript
+list_network_requests(resourceTypes=["xhr", "fetch"])
+// Use results to find URL patterns for breakpoints
+```
+
+---
+
+## P2: BREAKPOINT STRATEGIES (⚠️ CRITICAL SKILLS)
+
+**Use these tools ONLY when `TODO.md` indicates "Analysis" Phase.**
+
+### Tool Selection Guide
+
+| Task | Tool |
+|------|------|
+| Search code (text/regex) | `search_script_content` |
+| Search code (AST structure) | `sg run -p 'pattern' file.js` |
+| Find string arrays | `sg run -p 'var $_NAME = [$$$]'` |
+| Hook function | `set_breakpoint` with condition |
+| Modify code | `replace_script` |
+| Trace flow | `set_breakpoint` + `get_debugger_status` |
+| Read variables | `get_scope_variables` |
+| Call decoder | `evaluate_script` |
+
+### 🎯 Strategy A: The Logger Hook (Non-Stopping)
+Use this to collect data without interrupting the flow.
 
 ```javascript
-// ❌ BEFORE: Cannot understand what this does
-_0x4a3b(_0x5c2d[0x1f], _0x5c2d[0x23])
-
-// ✅ AFTER: Strings decoded, logic visible
-_0x4a3b("sign", "md5")  // Now I can analyze!
+// Log arguments of a suspicious function
+set_breakpoint(
+    urlRegex=".*target.js.*", 
+    lineNumber=123,
+    condition='console.log("Called sign with:", arguments), false' 
+    // ^ Returning false prevents pausing
+)
 ```
 
-### Why Runtime Analysis on Obfuscated Code FAILS
-
-| You Try | What Happens |
-|---------|--------------|
-| Set breakpoint, inspect variables | See `_0x4a3b2c = "encrypted_garbage"` — meaningless |
-| Trace call stack | Function names are `_0x1234`, `_0x5678` — can't follow |
-| Search for parameter name | Strings are encoded, search finds nothing |
-| "Capture the value at runtime" | You get the value but can't reproduce the algorithm |
-
-**Runtime analysis is ONLY useful AFTER strings are decoded.**
-
----
-
-## Focus
-
-Reverse engineer JS encryption/signing algorithms → reproduce in Python.
-
-**NOT**: Browser automation, environment patching, or running JS in Node.
-
-**Goal**: `lib/*.py` contains pure algorithm implementation, `repro/*.py` makes valid API requests.
-
----
-
-## 🚀 SESSION START
-
-```bash
-ls artifacts/jsrev/{domain}/ 2>/dev/null && readFile("artifacts/jsrev/{domain}/PROGRESS.md")
-```
-
-If source/ has obfuscated JS but no output/*_deobfuscated.js → Deobfuscate first.
-
----
-
-## P0: DEOBFUSCATION GATE
-
-### Step 1: Beautify
-
-```bash
-npx js-beautify -f {file} -o {output_file}
-```
-
-### Step 2: Detect Obfuscation
-
-```bash
-head -c 3000 {file}
-```
-
-| Pattern | Example | Type |
-|---------|---------|------|
-| Hex variable names | `_0x4a3b`, `_0xabc123` | obfuscator-io |
-| Hex/Unicode escapes | `\x48\x65`, `\u0048` | String encoding |
-| Large string array | `var a=["str1","str2",...]` | String table |
-| Control flow flattening | `while(true){switch(x){...}}` | CFG obfuscation |
-
-### Step 3: Decision
-
-| Assessment | Action |
-|------------|--------|
-| Has encoded strings/string arrays | 🛑 STOP → `skills/js_deobfuscation.md` → decode strings → return |
-| Clean/minified only | ✅ Proceed to P1 |
-
-### ⛔ FORBIDDEN Until Strings Are Decoded
-
-- `set_breakpoint()` on obfuscated code
-- `search_script_content()` for encoded strings
-- `get_scope_variables()` expecting readable values
-- "Let me trace the call stack to understand"
-- "Runtime analysis will be faster"
-
----
-
-## P0.5: NECESSITY CHECK
-
-Before analyzing cookie/param generation, verify it's required:
-
-```bash
-curl -v 'URL' -H 'Cookie: other_only' 2>&1 | head -c 3000
-```
-
-| Response | Action |
-|----------|--------|
-| 200 + valid | Skip — param not required |
-| 403/blocked | Proceed with analysis |
-
----
-
-## P1: LOCATE ALGORITHM (After P0)
-
-### Approach A: Keyword Search
-
-```bash
-rg -M 200 -o ".{0,60}(md5|sha1|sha256|hmac|sign|encrypt).{0,60}" output/*.js | head -30
-```
-
-### Approach B: Call Stack Tracing
+### 🎯 Strategy B: The Value Sniffer
+Use this to verify what a specific variable holds at a specific line.
 
 ```javascript
-list_network_requests(resourceTypes=["xhr", "fetch"], pageSize=50)
-set_breakpoint(urlRegex=".*api/endpoint.*", lineNumber=1)
-// Tell user to trigger request
-get_debugger_status(maxCallStackFrames=30)
+set_breakpoint(
+    urlRegex=".*target.js.*", 
+    lineNumber=456,
+    condition='console.log("X-Auth-Token:", _0xabc123), false'
+)
 ```
 
----
-
-## P2: BREAKPOINT VERIFICATION
+### 🎯 Strategy C: The Injection (Heavy Duty)
+Use this when you need to export internal functions or bypass debugger loops.
 
 ```javascript
-set_breakpoint(urlRegex=".*target.js.*", lineNumber=1234)
-// Tell user: "Please refresh/trigger request"
-get_debugger_status(contextLines=5)
-get_scope_variables(frameIndex=0, pageSize=20)
+// Export an internal decoder to window
+replace_script(
+    urlPattern=".*obfuscated.js.*",
+    oldCode="function _0x123(x){return x^2}",
+    newCode="window.myDecoder = function _0x123(x){return x^2};"
+)
 ```
 
----
-
-## 🛡️ OUTPUT LIMITS
-
-| Command | Safe | Forbidden |
-|---------|------|-----------|
-| `rg` | `rg -M 200 -o ".{0,80}pattern.{0,80}"` | `rg "pattern" file.js` |
-| `cat` | `head -c 10000 file.js` | `cat file.js` |
-| `head` | `head -c 5000` | `head -n 50` on minified |
-
----
-
-## SKILL LOADING
-
-| Pattern | Skill |
-|---------|-------|
-| String encoding detected | `skills/js_deobfuscation.md` |
-| webpack bundle | `skills/js_extraction.md` |
-| `while(true){switch}` VM | `skills/jsvmp_analysis.md` |
-
----
-
-## P4: BROWSER RUNTIME
+### 🎯 Strategy D: Infinite Debugger Bypass
 
 ```javascript
-evaluate_script(function="() => targetFunc.toString().slice(0, 2000)")
-```
-
-### Infinite Debugger Bypass
-
-```javascript
-get_debugger_status(contextLines=5)
 replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
 navigate_page(type="reload", timeout=3000)
 ```
 
 ---
 
-## P5: HOOK STRATEGIES
+## P4: BROWSER RUNTIME — EXECUTION FLOW
 
-```javascript
-// Log breakpoint (no pause)
-set_breakpoint(urlRegex=".*target.js.*", lineNumber=1, columnNumber=12345,
-    condition='console.log("VAR:", someVar), false')
+When `TODO.md` says `[ ] Trace Algorithm`:
 
-// Script replacement
-replace_script(urlPattern=".*target.js.*",
-    oldCode="function sign(data)",
-    newCode="function sign(data){console.log('SIGN:',data);")
-```
+1.  **Set Breakpoint**: `set_breakpoint(...)`
+2.  **Trigger**: Ask Human "Please click X" or trigger via `evaluate_script`.
+3.  **Inspect**:
+    ```javascript
+    get_debugger_status(maxCallStackFrames=10)
+    get_scope_variables(frameIndex=0)
+    ```
+4.  **Step**: `step_over()` or `resume_execution()`.
+
+---
+
+## 🆘 HUMAN ASSISTANCE
+
+AI focuses on **code**, human handles **interaction**.
+
+*   **CAPTCHA/Slider**: "🆘 遇到验证码，请手动完成并告诉我。"
+*   **Login**: "🆘 请登录账号，然后告诉我继续。"
+*   **Trigger**: "🆘 请点击按钮触发请求，以便断点生效。"
 
 ---
 
@@ -215,26 +204,80 @@ uv run python repro.py
 
 ---
 
+## 🔍 AST-GREP (sg) — STRUCTURAL CODE SEARCH
+
+`ast-grep` is ideal for finding obfuscation patterns, string arrays, and decoder functions by AST structure rather than text.
+
+### Basic Syntax
+```bash
+sg run -p 'pattern' [file_path]
+```
+
+### Common Patterns for JS Reverse Engineering
+
+| Target | Pattern |
+|--------|---------|
+| String array declaration | `var $_NAME = [$$$]` |
+| Hex string array | `var _0x$A = [$$$]` |
+| Decoder function | `function $_NAME($_ARG) { $$$BODY }` |
+| IIFE wrapper | `(function($_ARGS) { $$$BODY })($$$)` |
+| Array access decoder | `$_ARR[$_IDX]` |
+
+### Usage Examples
+
+```bash
+# Find string arrays in a specific file
+sg run -p 'var $_NAME = [$$$]' source/main.js
+
+# Find decoder-like functions (with context)
+sg run -p 'function $_NAME($_A) { $$$B }' -C 3 source/main.js
+
+# Get precise location info (JSON output for scripting)
+sg run -p 'var _0x$A = [$$$]' --json source/main.js
+
+# Search with text filter (find nodes containing "decode")
+sg run -p '$ANY' --filter 'decode' source/main.js
+
+# Limit output for minified files
+sg run -p 'pattern' source/main.js | head -n 20
+sg run -p 'pattern' source/main.js | cut -c 1-100
+
+# Paginated view for large results
+sg run -p 'pattern' source/main.js --color=always | less -R
+```
+
+### JSON Output for Precise Location
+```bash
+sg run -p 'var _0x$A = [$$$]' --json source/main.js | jq '.[0].range'
+# Returns: { "start": { "line": 1, "column": 0 }, "end": { "line": 1, "column": 500 } }
+```
+
+### Truncate Long Matches (for minified code)
+```bash
+sg run -p 'pattern' source/main.js --json | \
+  jq 'map(.text = (if (.text | length) > 80 then (.text[0:80] + "...") else .text end))'
+```
+
+---
+
 ## MCP TOOLS QUICK REF
 
-### Network
+### ⚠️ REGEX: NO ESCAPING NEEDED
+MCP tools handle escaping automatically. Write patterns as plain text.
+
+| Search for | Pattern (NO backslashes!) |
+|------------|---------------------------|
+| `arr[idx[0]]` | `arr[idx[0]]` |
+| `foo.bar()` | `foo.bar()` |
+
+### Search Script Content
 ```javascript
-list_network_requests(resourceTypes=["xhr", "fetch"], pageSize=50)
-save_static_resource(reqid=23, filePath="/absolute/path/source/main.js")
+search_script_content(pattern="myFunc", urlPattern=".*target.*")
 ```
 
 ### Breakpoints
 ```javascript
 set_breakpoint(urlRegex=".*target.js.*", lineNumber=1234)
-// ⚠️ After setting pausing breakpoint, ASK human to trigger — don't navigate yourself
-```
-
-### When Paused
-```javascript
-get_debugger_status(frameIndex=0)
-get_scope_variables(frameIndex=0, pageSize=20)
-step_over() | step_into() | step_out()
-resume_execution()
 ```
 
 ### Cleanup
@@ -245,31 +288,9 @@ resume_execution()
 
 ---
 
-## OUTPUT STRUCTURE
+## 🚀 START SESSION
 
-```
-artifacts/jsrev/{domain}/
-├── PROGRESS.md
-├── source/          # Original JS
-├── output/          # Deobfuscated
-├── lib/             # Python algorithms
-├── repro/           # Request reproduction
-└── raw/             # Samples
-```
-
----
-
-## ALGORITHM SIGNATURES
-
-| Output | Algorithm |
-|--------|-----------|
-| 32-char hex | MD5 |
-| 64-char hex | SHA-256 |
-| `0x67452301` | MD5 IV |
-| `0x6a09e667` | SHA-256 IV |
-
----
-
-## ⚠️ Legal Disclaimer
-
-For authorized security research, API compatibility, and educational purposes only.
+**Action Required Now:**
+1.  Check `artifacts/jsrev/{domain}/TODO.md`.
+2.  If it exists, read it and execute the first unchecked item.
+3.  If it does not exist, create it using the **Template** and begin Phase 1.

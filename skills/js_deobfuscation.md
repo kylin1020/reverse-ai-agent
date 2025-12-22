@@ -1,7 +1,17 @@
 # JavaScript Deobfuscation Skill
 
 > **Trigger**: `_0x` vars, hex strings, large string arrays, anti-debug loops
-> **Output**: Save deobfuscated code to `source/<name>_clean.js`
+> **Output**: `output/<name>_deobfuscated.js` — MANDATORY before returning to jsrev.md
+
+---
+
+## ⛔ COMPLETION GATE
+
+**EXIT CONDITION**: `output/*_deobfuscated.js` MUST exist before returning to algorithm analysis.
+
+**FORBIDDEN** while in this skill: searching parameters, analyzing logic, setting analysis breakpoints, monitoring requests.
+
+**ALLOWED**: capturing decoder outputs, building AST transforms, producing deobfuscated file.
 
 ---
 
@@ -20,19 +30,14 @@ Code obfuscated?
 
 ## 1. Anti-Debugging Bypass
 
-### Quick Bypasses
-
 | Pattern | Solution |
 |---------|----------|
 | `debugger` statement | DevTools: Ctrl+F8 (deactivate breakpoints) |
-| `Function("debugger")` | Hook constructor (see below) |
+| `Function("debugger")` | Hook constructor (below) |
 | Timing check (`Date.now`) | Hook with fake values |
 
-### Function.constructor Hook
-
-Run in DevTools Snippets BEFORE page load:
-
 ```javascript
+// Function.constructor Hook - run BEFORE page load
 const _orig = Function.prototype.constructor;
 Function.prototype.constructor = function() {
     if (arguments[0]?.includes?.("debugger")) return function(){};
@@ -57,40 +62,49 @@ var _0xabc = ["str1", "str2"];
 var _0xdef = function(idx) { return atob(_0xabc[idx - 0x100]); };
 ```
 
-### 2.2 Capture Final Array State
+### 2.2 Extracting Large Arrays
 
-**CRITICAL**: Array may be shuffled during init. Capture AFTER init completes.
+**⛔ NEVER read large string arrays directly — use code/commands to extract.**
 
-```javascript
-// Set breakpoint AFTER shuffler IIFE
-// ⚠️ urlRegex: Use SINGLE backslash (MCP handles JSON escaping)
-set_breakpoint(
-    breakpointId="capture_array",
-    urlRegex=".*obfuscated\.js.*",
-    lineNumber=XX,  // After init
-    condition='console.log("Array:", JSON.stringify(_0xabc.slice(0,20))), false'
-)
+```bash
+# Locate array
+rg -n "var _0x[a-f0-9]+ *= *\[" source/file.js | head -3
 ```
 
-### 2.3 Decode & Verify
-
+**Option A: Babel AST (recommended)**
 ```javascript
-// Sample verification (MANDATORY before AST replacement)
-// ⚠️ urlRegex: Use SINGLE backslash
-set_breakpoint(
-    breakpointId="verify",
-    urlRegex=".*target\.js.*",
-    lineNumber=XX,
-    condition='console.log("VERIFY:", JSON.stringify({
-        "0x1a2": _0xdef(0x1a2),
-        "0x1a5": _0xdef(0x1a5)
-    })), false'
-)
+const fs = require('fs');
+const parser = require('@babel/parser');
+const traverse = require('@babel/traverse').default;
+const ast = parser.parse(fs.readFileSync('source/file.js', 'utf-8'));
+
+traverse(ast, {
+    VariableDeclarator(path) {
+        if (path.node.id.name?.match(/^_0x[a-f0-9]+$/) && 
+            path.node.init?.type === 'ArrayExpression') {
+            const strings = path.node.init.elements.map(e => e?.value ?? null);
+            fs.writeFileSync('strings_raw.json', JSON.stringify(strings));
+            console.log(`Extracted ${strings.length} strings`);
+            path.stop();
+        }
+    }
+});
 ```
 
-Compare browser output with local decoder. **100% match required** before proceeding.
+**Option B: Browser runtime (if shuffled)**
+```javascript
+evaluate_script(function=`() => JSON.stringify(window._0xabc)`)
+```
 
-### 2.4 Common Decoder Algorithms
+### 2.3 Verify Decoder
+
+```javascript
+// Sample verification before AST replacement
+set_breakpoint(urlRegex=".*target\.js.*", lineNumber=XX,
+    condition='console.log("VERIFY:", _0xdef(0x1a2), _0xdef(0x1a5)), false')
+```
+
+### 2.4 Common Decoders
 
 ```javascript
 // RC4
@@ -111,8 +125,7 @@ function rc4(str, key) {
 
 // Base64 + XOR
 const decode = (enc, key) => [...atob(enc)].map((c, i) => 
-    String.fromCharCode(c.charCodeAt(0) ^ key.charCodeAt(i % key.length))
-).join('');
+    String.fromCharCode(c.charCodeAt(0) ^ key.charCodeAt(i % key.length))).join('');
 ```
 
 ---
@@ -134,27 +147,18 @@ const traverse = require('@babel/traverse').default;
 const t = require('@babel/types');
 const generator = require('@babel/generator').default;
 
-const code = fs.readFileSync('input.js', 'utf-8');
-const ast = parser.parse(code);
-
-traverse(ast, {
-    // Add visitors here
-});
-
+const ast = parser.parse(fs.readFileSync('input.js', 'utf-8'));
+traverse(ast, { /* visitors */ });
 fs.writeFileSync('output.js', generator(ast, { compact: false }).code);
 ```
 
 ### 3.3 Common Transforms
 
-**Hex/Unicode Literals → Readable**
 ```javascript
-'NumericLiteral|StringLiteral'(path) {
-    delete path.node.extra;  // 0x1a2b → 6699, "\x48" → "H"
-}
-```
+// Hex/Unicode → Readable
+'NumericLiteral|StringLiteral'(path) { delete path.node.extra; }
 
-**Computed Property → Dot Notation**
-```javascript
+// Computed → Dot notation
 MemberExpression(path) {
     const { property, computed } = path.node;
     if (computed && t.isStringLiteral(property) && /^[a-zA-Z_$][\w$]*$/.test(property.value)) {
@@ -162,39 +166,21 @@ MemberExpression(path) {
         path.node.computed = false;
     }
 }
-```
 
-**Constant Folding**
-```javascript
-'BinaryExpression|UnaryExpression|ConditionalExpression'(path) {
+// Constant folding
+'BinaryExpression|UnaryExpression'(path) {
     const { confident, value } = path.evaluate();
-    if (confident && typeof value !== 'object') {
-        path.replaceWith(t.valueToNode(value));
-    }
+    if (confident && typeof value !== 'object') path.replaceWith(t.valueToNode(value));
 }
-```
 
-**String Decoder Replacement**
-```javascript
-const decoded = require('./strings_decoded.json');  // From §2
-
+// String decoder replacement
+const strings = require('./strings_raw.json');
+const OFFSET = 0x100;
 CallExpression(path) {
     const { callee, arguments: args } = path.node;
-    if (t.isIdentifier(callee, { name: '_0xdef' }) && t.isNumericLiteral(args[0])) {
-        const key = '0x' + args[0].value.toString(16);
-        if (decoded[key]) path.replaceWith(t.stringLiteral(decoded[key]));
-    }
-}
-```
-
-**Dead Code Removal**
-```javascript
-IfStatement(path) {
-    const { confident, value } = path.get('test').evaluate();
-    if (confident) {
-        value ? path.replaceWithMultiple(path.node.consequent.body || [path.node.consequent])
-              : path.node.alternate ? path.replaceWithMultiple(path.node.alternate.body || [path.node.alternate])
-              : path.remove();
+    if (t.isIdentifier(callee) && callee.name.match(/^_0x/) && t.isNumericLiteral(args[0])) {
+        const decoded = strings[args[0].value - OFFSET];
+        if (decoded) path.replaceWith(t.stringLiteral(decoded));
     }
 }
 ```
@@ -203,44 +189,26 @@ IfStatement(path) {
 
 ## 4. Transform Order
 
-Apply ONE at a time. Verify after each step.
+1. Anti-debug bypass → 2. String decode → 3. Hex restore → 4. Property cleanup → 5. Constant fold
 
-1. Anti-debug bypass (§1)
-2. String array decode (§2)
-3. Hex/Unicode restore (§3.3)
-4. Property access cleanup (§3.3)
-5. Constant folding (§3.3)
-6. Dead code removal (§3.3)
-
-**After EACH transform**:
-- `node --check output.js` (syntax valid)
-- Browser verify key values
-- Compare logic with original
+**After EACH**: `node --check output.js` + browser verify
 
 ---
 
 ## 5. Troubleshooting
 
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| String array wrong | Captured before init | Capture AFTER shuffler |
-| Decoder mismatch | Wrong offset/algorithm | Re-analyze decoder logic |
-| `ReferenceError` | Scope error | Use `path.scope.rename()` |
-| Constant folding fails | Runtime-dependent | Skip, keep original |
+| Issue | Solution |
+|-------|----------|
+| Wrong array state | Capture AFTER shuffler |
+| Decoder mismatch | Re-analyze offset/algorithm |
+| Constant fold fails | Skip, keep original |
 
 ---
 
-## MCP Quick Reference
+## ⛔ EXIT CHECKLIST
 
-```javascript
-// Logging breakpoint (capture values)
-// ⚠️ urlRegex: Use SINGLE backslash (MCP handles JSON escaping)
-set_breakpoint(breakpointId, urlRegex=".*target\.js.*", lineNumber,
-    condition='console.log("VAL:", expr), false')
+- [ ] `output/*_deobfuscated.js` exists
+- [ ] All decoder calls replaced with strings
+- [ ] Keywords searchable (sign, encrypt, md5)
 
-// Retrieve logs
-list_console_messages(types=["log"])
-
-// Read global (ONLY for window.* globals)
-evaluate_script(function="() => window._decoder(0x123)")
-```
+**Not complete? Continue deobfuscation. Do NOT return to jsrev.md.**
