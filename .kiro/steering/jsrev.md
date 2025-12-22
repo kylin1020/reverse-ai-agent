@@ -302,7 +302,8 @@ Create `README.md`: algorithm overview, key code snippets, data flow
 | Hook function | `set_breakpoint` with condition | 4️⃣ LAST RESORT |
 | Modify code | `replace_script` | When needed |
 | Read variables | `get_scope_variables` | Runtime only |
-| Call decoder | `evaluate_script` | Runtime only |
+| Run JS in page | `evaluate_script` | Runtime only |
+| Save script to file | `save_script_source` | When needed |
 
 ### Breakpoint Strategies
 ```javascript
