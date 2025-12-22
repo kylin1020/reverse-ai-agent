@@ -1,5 +1,5 @@
 ---
-inclusion: always
+inclusion: manual
 ---
 
 # jsrev (State-Driven Edition)
@@ -53,6 +53,13 @@ At the start of **EVERY** interaction, execute these checks:
 
 **⚠️ NO SHORTCUTS**: Even if deobfuscation seems "too hard" or "unnecessary", you MUST complete Phase 2 before moving on. If you cannot complete it, ask the human for help — do NOT skip to Phase 3.
 
+**🔥 PERSISTENCE PROTOCOL — NEVER GIVE UP**:
+- Heavy obfuscation is EXPECTED. This is the job. Do NOT switch methods just because it's "complex".
+- If one approach fails, try the NEXT technique in sequence — do NOT abandon the current step.
+- Allowed escalation path: Static analysis → Browser evaluation → Hook injection → ASK HUMAN.
+- **FORBIDDEN**: Saying "这太复杂了，让我们换个方法" or skipping to dynamic analysis prematurely.
+- You are an execution engine, not a suggestion bot. PUSH THROUGH the difficulty.
+
 ---
 
 ## 📋 TODO.md TEMPLATE
@@ -81,6 +88,29 @@ If `TODO.md` is missing, create this **EXACT** structure:
 ## Phase 4: Implementation
 - [ ] Python Reproduction (lib/*.py)
 ```
+
+---
+
+## ⚠️ OUTPUT LENGTH LIMITS — MANDATORY
+
+**ALL commands MUST limit output to prevent context explosion:**
+
+```bash
+# ✅ REQUIRED — always limit output
+rg -M 200 -m 10 "pattern" file.js          # Max 200 chars/line, max 10 matches
+rg -M 200 -m 5 -C 2 "pattern" file.js      # With 2 lines context
+sg run -p 'pattern' file.js --json | head -c 3000   # Limit JSON output
+head -c 2000 file.js                        # First 2KB only
+tail -c 2000 file.js                        # Last 2KB only
+```
+
+**Limits by command type:**
+| Command | Limit |
+|---------|-------|
+| `rg` | `-M 200 -m 10` (200 chars/line, 10 matches max) |
+| `sg --json` | `\| head -c 3000` or `\| jq '.[0:5]'` |
+| `head/tail` | `-c 2000` or `-n 50` |
+| `cat` | ❌ NEVER use on JS files |
 
 ---
 
@@ -128,7 +158,8 @@ sg run -p 'function $NAME($$$) { $$$B }' output/*_deobfuscated.js --json | \
 
 ### Approach B: Keyword Search (fallback)
 ```bash
-rg -M 200 -o ".{0,60}(md5|sha1|sha256|hmac|sign|encrypt).{0,60}" output/*.js
+# Always limit output!
+rg -M 200 -m 10 -o ".{0,60}(md5|sha1|sha256|hmac|sign|encrypt).{0,60}" output/*.js
 ```
 
 ### Approach C: Stack Tracing
@@ -305,6 +336,14 @@ set_breakpoint(urlRegex=".*target.js.*", lineNumber=1234)
 clear_all_breakpoints()
 resume_execution()
 ```
+
+### Browser Page Management
+
+Before creating new pages, check existing pages first:
+1. `list_pages` → Check if target URL already open
+2. If not → `new_page` to create
+
+Avoid redundant `new_page` calls for URLs already loaded.
 
 ---
 
