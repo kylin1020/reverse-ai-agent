@@ -437,6 +437,19 @@ When static analysis hits obstacles, use browser debugging to understand VM beha
 | `search_script_content` | Search loaded scripts |
 | `save_static_resource` | Save script to local file |
 
+### evaluate_script Tips
+
+`evaluate_script` works like DevTools Console. Just type a function name to see its declaration and source location:
+
+```javascript
+myFunction
+// Response:
+// function _0x1b01d3(){var _0xfd6122=_0x86a7ea,...}
+// 📍 VM24:1:37477
+```
+
+Invaluable for locating function definitions without grepping minified code.
+
 ### Workflow
 
 1. **Locate VM Entry**: `search_script_content` for "while"/"switch" → `set_breakpoint` at dispatcher
