@@ -307,3 +307,21 @@ resume_execution()
 2.  Find the first unchecked `[ ]` item.
 3.  **Check Phase Gate**: Is Phase 2 complete? If not, work on Phase 2 ONLY.
 4.  Execute one step for the current task.
+
+---
+
+## ⛔ NEVER read entire JS files
+
+Use `head`, `sg`, `rg`, or line-range reads instead of `read_file` / `readFile` on .js files.
+
+---
+
+## 📚 SKILL FILES — LOAD WHEN NEEDED
+
+When entering Phase 2 (Deobfuscation), **MUST read** the relevant skill file:
+
+```
+skills/js_deobfuscation.md  → String array decoding, control flow unflattening
+```
+
+**Action**: At Phase 2 start, run `read_file("skills/js_deobfuscation.md")` to load techniques.
