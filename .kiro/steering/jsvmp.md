@@ -21,7 +21,7 @@ inclusion: manual
 ## ⛔ CRITICAL RULES
 
 ### Code Reading
-**MUST use `read_code_robust` tool instead of `read_file` for all code files.**
+**MUST use `read_code_smart` tool instead of `read_file` for all code files.**
 - Handles long lines intelligently (truncates with line numbers preserved)
 - Prevents context overflow from minified/beautified JS
 

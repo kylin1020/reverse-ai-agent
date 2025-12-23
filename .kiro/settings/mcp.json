@@ -64,15 +64,8 @@
       "disabled": false
     },
     "smart-fs": {
-      "type": "stdio",
-      "command": "uv",
-      "args": [
-        "run",
-        "./mcp/smart_fs/server.py"
-      ],
-      "autoApprove": [
-        "read_code_robust"
-      ]
+      "command": "npx",
+      "args": ["@reverse-craft/smart-fs"]
     }
   }
 }
