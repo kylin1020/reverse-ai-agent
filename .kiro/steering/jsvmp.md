@@ -154,7 +154,12 @@ get_debugger_status(maxCallStackFrames=20)
 // ⚠️ ALWAYS limit output length
 evaluate_script(script="targetFunc.toString().slice(0, 2000)")
 evaluate_script(script="JSON.stringify(Object.keys(obj)).slice(0, 1000)")
+
+// 💡 For large output, use savePath parameter to save directly to file
+evaluate_script(script="JSON.stringify(largeArray)", savePath="artifacts/jsvmp/{target}/raw/data.json")
 ```
+
+> `evaluate_script` works like DevTools Console, supports `savePath` to save large results directly.
 
 #### 3. Breakpoint Strategies
 ```javascript
@@ -201,10 +206,15 @@ replace_script(urlPattern=".*vm.js.*",
 
 #### 6. Large Data Output
 ```javascript
-// evaluate_script return is truncated, use console for large data
+// Option 1: Use savePath parameter (PREFERRED)
+evaluate_script(script="JSON.stringify(largeObject)", savePath="artifacts/jsvmp/{target}/raw/data.json")
+
+// Option 2: Via console + list_console_messages
 evaluate_script(script="console.log(JSON.stringify(largeObject).slice(0, 5000))")
 list_console_messages(savePath="artifacts/jsvmp/{target}/raw/data.txt")
 ```
+
+> `evaluate_script` works like DevTools Console, supports `savePath` to save large results directly.
 
 #### 7. Runtime Value Extraction
 **Prefer breakpoint over evaluate_script** — most vars/functions are NOT global:
@@ -226,7 +236,9 @@ evaluate_script("window.globalVar")
 5. **Hooks survive via set_breakpoint** — evaluate_script doesn't survive refresh
 6. **Large data via console** — evaluate_script return is truncated
 7. **Clean up** — `clear_all_breakpoints()` when done
-8. **NO EXTRA BACKSLASHES** — browser tools don't need `\` escaping, causes double-escape
+8. **NO BACKSLASH ESCAPING in urlRegex** — write `.*target.*js.*` NOT `.*target.*\\.js.*`
+   - ❌ WRONG: `"urlRegex": ".*file.*\\.js.*"` → becomes `\\\\.` = fail
+   - ✅ CORRECT: `"urlRegex": ".*file.*js.*"` or `".*file.*.js.*"`
 9. **Breakpoint for local vars** — use `set_breakpoint` + `get_scope_variables`, not `evaluate_script`
 
 ---

@@ -326,6 +326,12 @@ myFunction
 
 Invaluable for locating function definitions without grepping minified code.
 
+**For large output, use `savePath` parameter:**
+```javascript
+// Save large data directly to file
+evaluate_script(script="JSON.stringify(largeArray)", savePath="artifacts/jsrev/{domain}/raw/data.json")
+```
+
 | Save script to file | `save_script_source` | When needed |
 
 ### Breakpoint Strategies
@@ -368,7 +374,9 @@ replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
 - **LOCAL FILES FIRST**: Always check `output/*_deobfuscated.js` and `source/*_beautified.js` before using browser
 - NEVER `read_file` on .js files — use `head`, `sg`, `rg`, or line-range
 - NEVER use `python -c` or `node -e` inline scripts — causes terminal hang
-- **NO EXTRA BACKSLASHES in browser tools** — `evaluate_script`, `replace_script` etc. don't need `\` escaping, it causes double-escape issues
+- **NO BACKSLASH ESCAPING in browser tools** — especially `urlRegex` in `set_breakpoint`:
+  - ❌ WRONG: `"urlRegex": ".*file.*\\.js.*"` → becomes `\\\\.` = fail
+  - ✅ CORRECT: `"urlRegex": ".*file.*js.*"` or `".*file.*.js.*"`
 - **PHASE 2 GATE**: MUST `read_file("skills/js_deobfuscation.md")` before ANY deobfuscation task — no exceptions
 - **READ `NOTE.md` at session start** — resume from previous findings
 - **UPDATE `NOTE.md` after discoveries** — preserve knowledge for next session
