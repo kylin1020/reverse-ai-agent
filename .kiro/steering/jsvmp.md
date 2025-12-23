@@ -123,13 +123,13 @@ Maintain this file to preserve analysis context across sessions.
 - Guessing opcode semantics without verification
 - Emitting JS without CFG analysis
 
-**🔥 PERSISTENCE**: Complex VMs are expected. Escalation: Static → Browser trace → Hook → ASK HUMAN. Never skip phases.
+**🔥 PERSISTENCE**: Complex VMs are expected. Escalation: Static analysis → ASK HUMAN. Never skip phases.
 
 ---
 
-## 🎯 DEOBFUSCATED CODE PRIORITY (CRITICAL)
+## 🎯 STATIC ANALYSIS PRIORITY (CRITICAL)
 
-**⚠️ MANDATORY: When `*_deobfuscated.js` or `*_beautified.js` exists, it is your PRIMARY and PREFERRED source.**
+**⚠️ MANDATORY: Static analysis is the PRIMARY and PREFERRED approach. Browser is LAST RESORT.**
 
 ### File Priority Order
 | Priority | File Pattern | When to Use |
@@ -138,12 +138,13 @@ Maintain this file to preserve analysis context across sessions.
 | 2️⃣ HIGH | `source/*_beautified.js` | When deobfuscated not available |
 | 3️⃣ LOW | `source/*.js` (raw) | Only for extraction scripts, NOT for understanding |
 
-### Analysis Strategy
+### Static Analysis Strategy
 1. **CHECK for deobfuscated files FIRST**: `ls output/*_deobfuscated.js source/*_beautified.js`
 2. **READ deobfuscated code** — understand VM structure from clean code
-3. **Use `sg` or `rg` on local files** — NOT browser search
+3. **Use `sg` or `rg` on local files** — pattern matching and code search
 4. **Trace function calls statically** — map VM components step by step
-5. **Cross-reference with browser** — ONLY when static analysis is insufficient
+5. **Write analysis scripts** — automate extraction and transformation
+6. **Browser ONLY as last resort** — when static analysis is completely blocked
 
 ---
 
@@ -157,20 +158,20 @@ Maintain this file to preserve analysis context across sessions.
 - Script: {script_path}
 - VM Type: {vm_type_if_known}
 
-## Phase 1: 代码预处理 (美化 & 解混淆)
-- [ ] 下载目标脚本到 source/
-- [ ] **美化代码** (必须): `npx js-beautify -f source/main.js -o source/main_beautified.js`
-- [ ] **混淆审计**: 检测混淆模式
-    - 字符串数组 / 十六进制变量 (`var _0x...`)
-    - 控制流平坦化 (switch-case)
-    - 字符串编码 (XOR, Base64, 自定义)
-    - *如发现 → 添加具体的解混淆任务*
-- [ ] 识别解码函数 (如有混淆)
-- [ ] 提取字符串数组 (如有混淆)
-- [ ] 生成 output/*_deobfuscated.js (如有混淆) 或复制美化版本
+## Phase 1: Code Preprocessing (Beautify & Deobfuscate)
+- [ ] Download target script to source/
+- [ ] **Beautify code** (mandatory): `npx js-beautify -f source/main.js -o source/main_beautified.js`
+- [ ] **Obfuscation audit**: Detect obfuscation patterns
+    - String array / hex variables (`var _0x...`)
+    - Control flow flattening (switch-case)
+    - String encoding (XOR, Base64, custom)
+    - *If found → add specific deobfuscation tasks*
+- [ ] Identify decoder functions (if obfuscated)
+- [ ] Extract string arrays (if obfuscated)
+- [ ] Generate output/*_deobfuscated.js (if obfuscated) or copy beautified version
 
 ## Phase 2: VM Data Extraction (⛔ REQUIRES Phase 1)
-- [ ] Locate VM entry point (while/switch dispatcher)
+- [ ] Locate VM dispatcher (see Dispatcher Patterns below)
 - [ ] Extract bytecode (Base64/encoded string)
 - [ ] Extract constants array
 - [ ] Extract handler function array
@@ -178,7 +179,7 @@ Maintain this file to preserve analysis context across sessions.
 - [ ] Save to source/bytecode.json
 
 ## Phase 3: Disassembly → Low-Level IR (⛔ REQUIRES Phase 2)
-- [ ] Map opcodes to handlers (trace if needed)
+- [ ] Map opcodes to handlers (static analysis)
 - [ ] Define OPCODE_TABLE with mnemonics
 - [ ] Implement disassembler
 - [ ] Generate output/{target}_disasm.asm
@@ -222,43 +223,42 @@ Maintain this file to preserve analysis context across sessions.
 
 ## PHASE GUIDES
 
-### Phase 1: 代码预处理 (美化 & 解混淆)
+### Phase 1: Code Preprocessing (Beautify & Deobfuscate)
 
-**⚠️ 美化是必须步骤** — 压缩代码无法有效分析
+**⚠️ Beautification is mandatory** — minified code cannot be effectively analyzed
 
 ```bash
-# Step 1: 下载脚本
-# 使用 save_static_resource 或 curl
+# Step 1: Download script (curl or save from browser)
 
-# Step 2: 美化代码 (必须)
+# Step 2: Beautify code (mandatory)
 npx js-beautify -f source/main.js -o source/main_beautified.js
 
-# Step 3: 检查混淆类型
+# Step 3: Check obfuscation type
 head -c 2000 source/main_beautified.js
 ```
 
-**混淆检测清单:**
-| 特征 | 混淆类型 | 处理方式 |
-|------|----------|----------|
-| `var _0x...` + 大数组 | 字符串数组混淆 | 提取数组，内联字符串 |
-| `switch(state)` 循环 | 控制流平坦化 | AST 重构 |
-| `atob()`, XOR 操作 | 字符串编码 | 解码并替换 |
-| `debugger;` 语句 | 反调试 | 删除 |
-| 无明显混淆 | 仅压缩 | 美化即可 |
+**Obfuscation Detection Checklist:**
+| Pattern | Obfuscation Type | Handling |
+|---------|------------------|----------|
+| `var _0x...` + large array | String array obfuscation | Extract array, inline strings |
+| `switch(state)` loop | Control flow flattening | AST reconstruction |
+| `atob()`, XOR operations | String encoding | Decode and replace |
+| `debugger;` statements | Anti-debug | Remove |
+| No obvious obfuscation | Minified only | Beautify is sufficient |
 
-**解混淆工作流 (如需要):**
+**Deobfuscation Workflow (if needed):**
 
-**⚠️ MANDATORY**: 开始解混淆前必须先加载技能文件:
+**⚠️ MANDATORY**: Before deobfuscation, load skill file:
 ```
 read_file("skills/js_deobfuscation.md")
 ```
 
-1. 识别混淆类型
-2. 应用对应技术 (参考 skill 文件)
-3. 编写提取脚本到 `scripts/`
-4. 生成 `output/*_deobfuscated.js`
+1. Identify obfuscation type
+2. Apply corresponding technique (refer to skill file)
+3. Write extraction script to `scripts/`
+4. Generate `output/*_deobfuscated.js`
 
-**如果没有混淆:**
+**If no obfuscation:**
 ```bash
 cp source/main_beautified.js output/main_deob.js
 ```
@@ -269,7 +269,7 @@ cp source/main_beautified.js output/main_deob.js
 
 | Phase | Input | Output | Description |
 |-------|-------|--------|-------------|
-| 1 | Raw JS | `*_beautified.js` / `*_deob.js` | 美化 & 解混淆 |
+| 1 | Raw JS | `*_beautified.js` / `*_deob.js` | Beautify & deobfuscate |
 | 2 | Clean JS | bytecode, constants | Extract VM data |
 | 3 | Raw bytecode | `_disasm.asm` | Disassembly with explicit stack ops |
 | 4 | Low-Level IR | `_mir.txt` | Eliminate stack, build expression trees |
@@ -279,6 +279,160 @@ cp source/main_beautified.js output/main_deob.js
 ---
 
 ## Phase 2: Extract VM Data
+
+### ⚠️ JSVMP Core Concept: State Machine Analysis
+
+> **Trigger**: Infinite Loop Logic (any syntax) + Bytecode Array + Virtual Instruction Pointer (VIP)  
+> **Goal**: Map Virtual Opcodes to Real Logic & Reconstruct Algorithms  
+> **Core Principle**: JSVMP is a **State Machine**. Focus on **Data Flow** (Stack/Context changes) rather than **Control Flow** (Loop syntax).
+
+#### 🔑 The 3 Forms of Dispatchers
+
+Do not limit your search to `switch` statements. A VM Dispatcher is simply a mechanism mapping `Opcode -> Handler`. There are three common implementations:
+
+1. **Switch-Case (Classic)**:
+   - **Pattern**: `switch(op) { case 1: ... case 2: ... }`
+   - **Weakness**: Structurally obvious; easily reconstructed via AST.
+
+2. **If-Else Chain (Flattened)**:
+   - **Pattern**: `if(op == 1) ... else if(op == 2) ...` (often nested or using binary search).
+   - **Weakness**: High code volume, lower execution efficiency, but functionality is identical to switch.
+
+3. **Direct Threading / Lookup Table (Advanced)**:
+   - **Pattern**: `handlers[op](context)` or `funcs[instruction & 255].apply(...)`.
+   - **Stealth**: No `switch`, no `if`. Just a single array access and function call.
+   - **Weakness**: Requires maintaining a large function array in memory.
+
+#### 🎯 Locate the VM Core via Runtime Behavior
+
+**Do not search for keywords.** Locate the VM based on **Runtime Behavior**.
+
+**Feature 1: Massive Instruction Set (Bytecode)**
+- Look for unusually long `Strings` (Base64) or `Integer Arrays` (Hex) in the source code.
+
+**Feature 2: Virtual Instruction Pointer (VIP/PC)**
+- Inside a loop, identify a variable that strictly increments or jumps (e.g., `pc++`, `pc += 3`, `pc = target`).
+
+**Feature 3: Virtual Stack/Register Context**
+- An array defined *outside* the loop that is frequently accessed *inside* the loop using `push`, `pop`, or `stack[sp--]`.
+
+**Universal Location Strategy (Timeline Analysis)**:
+1. Record a session in the Chrome DevTools **Performance** tab.
+2. Find the function with the longest "Self Time" (usually a solid yellow bar).
+3. Dive into that function and look for the **innermost loop structure** (whether it's `for`, `while`, `do-while`, or recursive calls).
+
+#### 🔍 Instrumentation Strategy
+
+The injection point depends on the Dispatcher structure.
+
+**Scenario A: Classic Switch or If-Else**
+```javascript
+// Pseudo-code
+while (true) { // or for(;;)
+    var op = bytecode[pc++]; // <--- GOLDEN POINT: Fetch
+    // INJECT HERE: log(pc, op, stack_snapshot)
+    
+    if (op == 1) { ... }
+    else if (op == 2) { ... }
+}
+```
+
+**Scenario B: Function Array (Lookup Table)**
+```javascript
+// Pseudo-code
+var op = bytecode[pc++];
+
+// Original: handlers[op](ctx);
+
+// INJECTED:
+(function(){
+    console.log(`[VM] PC:${pc-1} OP:${op} Stack:${ctx.stack.slice(-5)}`);
+    return handlers[op](ctx); 
+})();
+```
+
+#### 🔍 Dispatcher Pattern Recognition
+
+**VM Dispatcher 是 JSVMP 的核心循环，负责读取 opcode 并分发到对应 handler。**
+
+#### Common Dispatcher Patterns
+
+| Pattern | Structure | Example |
+|---------|-----------|---------|
+| **while-switch** | `while(1) { switch(op) {...} }` | 经典模式 |
+| **for-switch** | `for(;;) { switch(op) {...} }` | 等价无限循环 |
+| **for-if-chain** | `for(;;) { if(op<X) {...} else {...} }` | 二分查找式 |
+| **while-if-chain** | `while(1) { if(op===0){...} else if... }` | 线性查找 |
+| **recursive** | `function d() { ... d() ... }` | 递归调度 |
+
+#### 🎯 Dispatcher 识别特征
+
+```javascript
+// Pattern 1: while-switch (经典)
+while (true) {
+    var op = bytecode[pc++];
+    switch (op) {
+        case 0: /* handler */ break;
+        case 1: /* handler */ break;
+    }
+}
+
+// Pattern 2: for-switch (等价)
+for (;;) {
+    var op = o[a++];
+    switch (op) { ... }
+}
+
+// Pattern 3: for + nested if (二分查找式，如抖音 bdms)
+for (;;) {
+    var t = o[a++];  // 读取 opcode
+    if (t < 38) {
+        if (t < 19) {
+            if (t < 9) {
+                if (t === 0) { /* handler 0 */ }
+                else if (t === 1) { /* handler 1 */ }
+                // ...
+            } else { /* t >= 9 && t < 19 */ }
+        } else { /* t >= 19 && t < 38 */ }
+    } else { /* t >= 38 */ }
+}
+
+// Pattern 4: while + if-else chain
+while (running) {
+    var op = code[ip++];
+    if (op === 0) { ... }
+    else if (op === 1) { ... }
+    else if (op === 2) { ... }
+}
+```
+
+#### 🔎 Search Patterns for Dispatcher
+
+```bash
+# 查找无限循环结构
+rg "for\s*\(\s*;;\s*\)" source/*_beautified.js -n
+rg "while\s*\(\s*(true|1|!0)\s*\)" source/*_beautified.js -n
+
+# 查找 opcode 读取模式 (数组索引递增)
+rg "\w+\[\w+\+\+\]" source/*_beautified.js -n -A 3
+
+# 查找嵌套 if 结构 (二分查找式)
+rg "if\s*\(\w+\s*<\s*\d+\)" source/*_beautified.js -n
+
+# 查找 switch 语句
+rg "switch\s*\(" source/*_beautified.js -n
+
+# AST pattern (sg) - 查找 for(;;) 循环
+sg -p 'for (;;) { $$$BODY }' source/*_beautified.js
+```
+
+#### ⚠️ Dispatcher 识别要点
+
+1. **循环类型不重要** — `while(1)`, `for(;;)`, `while(!0)` 都是无限循环
+2. **关键是 opcode 读取** — 寻找 `arr[index++]` 或 `arr[index]; index++` 模式
+3. **分发方式多样** — switch、if-else chain、嵌套 if (二分) 都是有效分发
+4. **嵌套 if 是优化** — 二分查找比线性 switch 更快，常见于大型 VM
+5. **handler 内联 vs 数组** — handler 可能内联在 dispatcher 中，或存储在函数数组中
 
 ### Identify Core Components via AST
 
@@ -318,6 +472,74 @@ const bytecode = decoded.split('').reduce((acc, char) => {
     return acc;
 }, []);
 // Result: [[opcode, p0, p1, p2, p3], ...]
+```
+
+#### 🔬 Smart Tracing & Analysis
+
+Logging simple Opcodes is often insufficient. You must record **Side Effects**.
+
+**Recommended Log Format**:
+```json
+{
+  "PC": 1024,
+  "OP": 35,
+  "Stack_Top": [10, 20], 
+  "Action": "Unknown" 
+}
+```
+
+**Technique: Differential Analysis**
+1. Input `AAAA` → Run → Save `trace_A.log`
+2. Input `AAAB` → Run → Save `trace_B.log`
+3. **Compare**: The first line where the logs diverge is exactly where the **input is read** and **processed**.
+
+#### 🔄 Reconstruction Strategy
+
+**Phase 4a: Identify Control Flow (Jumps)**
+In a VM, `if-else` logic usually manifests as manipulating the `PC`.
+- **JUMP**: `PC` changes abruptly (not `+1` or `+instruction_length`).
+- **CONDITIONAL JUMP (JZ/JNZ)**: `if (Stack.pop() == true) PC = target`.
+
+**Phase 4b: Identify Cryptography (Bitwise Signatures)**
+Standard crypto algorithms rely on bitwise operations. Search your logs for:
+- **Hash Signatures**: `>>> 0` (Unsigned Right Shift), `& 0xFFFFFFFF`.
+- **Encryption (AES/DES)**: Frequent `XOR` operations and S-Box lookups (manifests as `Array[Index]` reads).
+
+**Phase 4c: Handling Nested VMs**
+Advanced protectors (e.g., Akamai) may nest VMs.
+- **Symptom**: The decoded Opcode instruction seems to be manipulating *another* Bytecode array.
+- **Solution**: Ignore the outer interpreter. Focus on the data flow of the **inner** VM.
+
+#### 📝 Python Implementation Example
+
+Your goal is to write a Python emulator, not to beautify the JS.
+
+```python
+class SimpleVM:
+    def __init__(self, bytecode):
+        self.pc = 0
+        self.bytecode = bytecode
+        self.stack = []
+
+    def step(self):
+        op = self.bytecode[self.pc]
+        self.pc += 1
+        
+        if op == 0x01: # PUSH
+            val = self.bytecode[self.pc]
+            self.stack.append(val)
+            self.pc += 1
+        elif op == 0x02: # ADD
+            b = self.stack.pop()
+            a = self.stack.pop()
+            self.stack.append(a + b)
+        elif op == 0x03: # JNZ (Jump if Not Zero)
+            target = self.bytecode[self.pc]
+            cond = self.stack.pop()
+            if cond != 0:
+                self.pc = target
+            else:
+                self.pc += 1
 ```
 
 ---
@@ -527,61 +749,11 @@ class CodeGenerator {
 | Minified code | 1 | Run js-beautify first |
 | String array obfuscation | 1 | Extract array, inline strings |
 | Control flow flattening | 1 | AST reconstruction |
-| Unknown opcode | 3 | Add to OPCODE_TABLE, trace with breakpoint |
+| Unknown opcode | 3 | Analyze handler function statically, compare with known patterns |
 | Stack imbalance | 4 | Check stackEffect definitions |
 | Wrong CFG edges | 5 | Verify jump target resolution |
 | Missing variables | 5 | Check def-use chain construction |
 | Nested functions | 3-6 | Recursively process with bytecode slice |
-
----
-
-## Browser Dynamic Analysis (Chrome DevTools MCP)
-
-When static analysis hits obstacles, use browser debugging to understand VM behavior.
-
-### Available Tools
-
-| Tool | Purpose |
-|------|---------|
-| `navigate_page` | Navigate to target page |
-| `set_breakpoint` | Set breakpoint at line |
-| `get_debugger_status` | View call stack and variables |
-| `step_over/step_into/step_out` | Single-step debugging |
-| `evaluate_script` | Execute JS in page context |
-| `search_script_content` | Search loaded scripts |
-| `save_static_resource` | Save script to local file |
-
-### evaluate_script Tips
-
-`evaluate_script` works like DevTools Console. Just type a function name to see its declaration and source location:
-
-```javascript
-myFunction
-// Response:
-// function _0x1b01d3(){var _0xfd6122=_0x86a7ea,...}
-// 📍 VM24:1:37477
-```
-
-Invaluable for locating function definitions without grepping minified code.
-
-### Workflow
-
-1. **Locate VM Entry**: `search_script_content` for "while"/"switch" → `set_breakpoint` at dispatcher
-2. **Trace Opcodes**: Inject logging via `evaluate_script` at `bytecode[pc]`
-3. **Extract Data**: `get_scope_variables` → `save_scope_variables` to JSON
-4. **Differential Analysis**: Compare traces with different inputs to find divergence
-
-### Breakpoint Strategy
-
-| Scenario | Location |
-|----------|----------|
-| Find VM entry | `handlers[` or `switch` |
-| Trace opcodes | `pc++` or `bytecode[pc]` |
-| Capture result | `return` or before network request |
-
-### Notes
-- Some VMs detect DevTools - may need anti-debug bypass
-- Use `get_scope_variables` for obfuscated variable names
 
 ---
 
@@ -608,12 +780,11 @@ node scripts/decompile.js
 
 ## 🆘 HUMAN ASSISTANCE
 
-- **Unknown Opcode**: "🆘 遇到未知操作码 {opcode}，需要动态追踪确认语义。"
-- **Stack Imbalance**: "🆘 栈不平衡，需要检查 stackEffect 定义。"
-- **Anti-Debug**: "🆘 检测到反调试，需要绕过。"
-- **Complex Control Flow**: "🆘 控制流过于复杂，需要协助分析。"
-- **Heavy Obfuscation**: "🆘 混淆过于复杂，需要协助解混淆。"
-- **Stuck**: "🆘 反编译遇到困难，需要协助。"
+- **Unknown Opcode**: "🆘 Unknown opcode {opcode}, need to analyze handler function."
+- **Stack Imbalance**: "🆘 Stack imbalance, need to check stackEffect definitions."
+- **Complex Control Flow**: "🆘 Control flow too complex, need assistance."
+- **Heavy Obfuscation**: "🆘 Obfuscation too complex, need assistance."
+- **Stuck**: "🆘 Decompilation blocked, need assistance."
 
 ---
 
@@ -621,36 +792,39 @@ node scripts/decompile.js
 
 | Task | Tool | Priority |
 |------|------|----------|
-| **Code search** | `sg`, `rg` on local files | 1️⃣ FIRST |
-| **Read function** | `rg -A 30` or `head` on deobfuscated | 1️⃣ FIRST |
-| **Beautify code** | `npx js-beautify` | Phase 1 必须 |
-| Hook function | `set_breakpoint` with condition | When needed |
-| Modify code | `replace_script` | When needed |
-| Read variables | `get_scope_variables` | Runtime only |
-| Run JS in page | `evaluate_script` | Runtime only |
-| Save script to file | `save_script_source` | When needed |
+| **Code search** | `sg`, `rg` on local files | 1️⃣ PRIMARY |
+| **Read function** | `rg -A 30` or `head` on deobfuscated | 1️⃣ PRIMARY |
+| **Beautify code** | `npx js-beautify` | Phase 1 mandatory |
+| **AST analysis** | Write script with `@babel/parser` | Phase 2+ |
+| **Pattern matching** | `sg` with AST patterns | All phases |
 
-### Code Understanding Workflow
+### Static Analysis Workflow
 ```
 Download → Beautify → Check obfuscation → Deobfuscate (if needed)
                                               ↓
                       sg/rg search → Trace VM structure → Extract bytecode
                                                               ↓
-                                            Browser (ONLY if static fails)
+                                    Write scripts → Disassemble → Decompile
 ```
 
 ---
 
 ## ⛔ RULES
 
-- **LOCAL FILES FIRST**: Always check `output/*_deobfuscated.js` and `source/*_beautified.js` before using browser
+- **STATIC ANALYSIS FIRST**: Always use local file analysis before any browser interaction
+- **LOCAL FILES FIRST**: Always check `output/*_deobfuscated.js` and `source/*_beautified.js`
 - **BEAUTIFY FIRST**: Never analyze minified code — run js-beautify as Phase 1 first step
 - NEVER `read_file` on .js files — use `head`, `sg`, `rg`, or line-range
 - **PHASE 1 GATE**: If obfuscation detected, MUST `read_file("skills/js_deobfuscation.md")` before deobfuscation
-- Load `skills/jsvmp_analysis.md` at Phase 2 start if available
+- **Load JSVMP Analysis at Phase 2**: Read `skills/jsvmp_analysis.md` at Phase 2 start to understand VM methodology
+- **VM is a State Machine**: Focus on data flow (Stack/Context changes), not control flow syntax
+- **Dispatcher is Key**: Locate via Performance tools, not keywords. Can be switch/if-else/lookup table
+- **Differential Analysis**: Compare traces with different inputs to find fork points
+- **Verify Opcode Semantics**: Never guess — use tracing and differential analysis
 - Always verify opcode semantics before proceeding to next phase
 - Keep intermediate outputs (LIR/MIR/HIR) for debugging
 - **READ `NOTE.md` at session start** — resume from previous findings
 - **UPDATE `NOTE.md` after discoveries** — preserve knowledge for next session
 - **ALWAYS include file:line references** — future sessions depend on this
 - **LOG every session** — append to Session Log section
+- **MINIMIZE BROWSER USE** — browser is last resort, not primary tool
