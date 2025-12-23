@@ -20,32 +20,40 @@ inclusion: manual
 
 ## ⛔ CRITICAL RULES
 
-### Code Reading
-**MUST use `read_code_smart` tool instead of `read_file` for all code files.**
-- Handles long lines intelligently (truncates with line numbers preserved)
-- Prevents context overflow from minified/beautified JS
+### 1. Smart Code Access (JS Files Only)
+**NEVER use `read_file`, `cat`, `head`, or `rg` on `.js` files.**
+- **Read**: Use `read_code_smart`. It auto-beautifies and maps lines to the ORIGINAL source (X-Ray Mode).
+- **Search**: Use `search_code_smart`. It supports Regex and returns Original Line Numbers (`[Src L:C]`).
+- **Trace**: Use `find_usage_smart`. It finds variable Definitions & References using AST analysis.
+- **Transform**: Use `apply_custom_transform`. It handles deobfuscation while preserving Source Maps.
 
-### String Length Limits
-**NEVER output or read long strings from JS code:**
-- `evaluate_script` results: limit to 2000 chars (`.slice(0, 2000)`)
-- `console.log` output: limit to 500 chars per value
-- When reading files: use line ranges, never full file
-- Large data: save to file, then grep/search
+### 2. Standard File Access (Non-JS Files)
+For `.json`, `.txt`, `.asm`, `.md`:
+- Use `read_file` (with start/end lines).
+- Use `rg` (ripgrep) for searching.
 
-### Tool Output Limits
-| Tool | Limit |
-|------|-------|
-| `rg` | `-M 200 -m 10` |
-| `sg --json` | `\| head -c 3000` |
-| `head/tail` | `-c 2000` or `-n 50` |
-| `cat` on JS | ❌ NEVER |
-| `evaluate_script` return | `.slice(0, 2000)` |
+### 3. String Length Limits
+**NEVER output or read long strings:**
+- `read_code_smart` handles truncation automatically.
+- `evaluate_script` results: limit to 2000 chars (`.slice(0, 2000)`).
+- `console.log` output: limit to 500 chars per value.
+- Large data: save to file via `savePath` or `fs` tools.
 
-### Analysis Priority
-1. **Static analysis is PRIMARY** — browser is auxiliary only
-2. **File priority**: `output/*_deobfuscated.js` > `source/*_beautified.js` > raw
-3. **Beautify is mandatory** — never analyze minified code
-4. **Phase gates are strict** — complete each phase before next
+---
+
+## 🛠️ SMART-FS TOOLKIT (Virtual Filesystem)
+
+**Concept**: You are working with a **Virtual View**.
+- You read `source/main.js` (Minified) -> Tool shows **Virtual Beautified View**.
+- The `[Src L:C]` column in output ALWAYS points to the **Original Minified File**.
+- **Rule**: NEVER look for `main.beautified.js`. It does not exist for you. Just read `main.js`.
+
+| Action | Tool | Usage |
+|--------|------|-------|
+| **Read Code** | `read_code_smart` | `file="source/main.js", start=1, end=50` |
+| **Search Text** | `search_code_smart` | `file="source/main.js", query="debugger"` |
+| **Trace Var** | `find_usage_smart` | `file="...", identifier="_0xabc", line=105` |
+| **Deobfuscate** | `apply_custom_transform` | `target="...", script="transforms/fix.js"` |
 
 ---
 
@@ -54,23 +62,21 @@ inclusion: manual
 **You are an execution engine for `artifacts/jsvmp/{target}/TODO.md`.**
 
 ### Execution Loop
-1. **READ**: `TODO.md` + `NOTE.md` (create if missing)
-2. **IDENTIFY**: First unchecked `[ ]` = current task
-3. **CHECK**: Is current phase complete? (see Phase Gate)
-4. **EXECUTE**: One step to advance
-5. **UPDATE**: Mark `[x]` when done, update `NOTE.md` with findings
+1. **READ**: `TODO.md` + `NOTE.md` (create if missing).
+2. **IDENTIFY**: First unchecked `[ ]` = current task.
+3. **CHECK**: Is current phase complete? (see Phase Gate).
+4. **EXECUTE**: One step to advance (Use Smart Tools for JS).
+5. **UPDATE**: Mark `[x]` when done, update `NOTE.md`.
 
 ### Phase Gate
 | Phase Status | Allowed Actions |
 |--------------|-----------------|
-| Phase 1 incomplete | Beautify/Deobfuscate ONLY |
+| Phase 1 incomplete | `read_code_smart` / `apply_custom_transform` ONLY |
 | Phase 2 incomplete | Extract VM data ONLY |
 | Phase 3 incomplete | Disassembly ONLY |
 | Phase 4 incomplete | Stack analysis ONLY |
 | Phase 5 incomplete | CFG/Data-flow ONLY |
 | All phases done | Code generation |
-
-**❌ FORBIDDEN**: Skipping phases, guessing opcode semantics, emitting JS without CFG analysis
 
 ---
 
@@ -81,36 +87,21 @@ inclusion: manual
 ```markdown
 ## Session Log
 ### [YYYY-MM-DD HH:MM] Session Summary
-**Task**: 当前任务
-**Files Analyzed**:
-- `path/to/file.js` (lines X-Y) — 发现内容
-**Actions**: 执行的操作 → 结果
-**Next**: 下一步
+**Task**: Current Task
+**Files**: `source/main.js` (Virtual Lines 10-20)
+**Findings**:
+- Found dispatcher at `[Src L1:5024]` (Virtual Line 15)
+- Variable `_0x123` is the VM Stack.
 
 ## File Index
-| File | Purpose | Key Lines | Status |
-|------|---------|-----------|--------|
-| `source/main.js` | Raw | - | ✅ |
-| `output/main_deob.js` | Deobfuscated | - | ✅ |
+| File | Type | Status |
+|------|------|--------|
+| `source/main.js` | Raw (Virtual View) | ✅ |
+| `source/main_deob.js` | Deobfuscated | ⏳ |
 
 ## VM Structure
-- Bytecode: {file}:{line}
-- Constants: {count} items
-- Handlers: {count} functions
-- Instruction format: [opcode, p0, p1, p2, p3]
-
-## Opcode Mapping
-| Opcode | Mnemonic | Stack Effect | Notes |
-|--------|----------|--------------|-------|
-| 0 | CALL | -(argc+1), +1 | 函数调用 |
-| 17 | PUSH_CONST | 0, +1 | 压入常量 |
-
-## Verified Facts
-- [x] Opcode 17 = PUSH_CONST (via trace)
-- [ ] Opcode 23 semantics unknown
-
-## Open Questions
-- What does opcode 42 do?
+- Bytecode: `source/main.js` @ [Src L1:10500]
+...
 ```
 
 ---
@@ -130,14 +121,16 @@ inclusion: manual
 
 ### Key Techniques
 
-#### 0. Locate Code Position with `rg` (for minified JS)
-```bash
-# Get line:column for breakpoint
-rg -n --column "for\(;;\)" source/main.js
-# Output: 2:15847:for(;;)
+#### 0. Locate Code Position (The Smart Way)
+**Do NOT use `rg` on minified JS.** Use `search_code_smart` to get the Chrome-compatible position.
+```javascript
+// 1. Search in Virtual View
+search_code_smart(file="source/main.js", query="for\\(;;\\)")
+// Output: 
+//   15 | [Src L1:15847] | for(;;) { ... }
 
-# Use in set_breakpoint
-set_breakpoint(urlRegex=".*main.js.*", lineNumber=2, columnNumber=15847)
+// 2. Set Breakpoint using [Src] coordinates
+set_breakpoint(urlRegex=".*main.js.*", lineNumber=1, columnNumber=15847)
 ```
 
 #### 1. Call Stack Tracing (Priority)
@@ -149,97 +142,43 @@ get_debugger_status(maxCallStackFrames=20)
 // 3. Call stack shows: file + line + function → target found
 ```
 
-#### 2. Print Function Source (with length limit!)
+#### 2. Print Function Source (Limit Output)
 ```javascript
-// ⚠️ ALWAYS limit output length
+// ⚠️ ALWAYS limit output or use savePath
 evaluate_script(script="targetFunc.toString().slice(0, 2000)")
-evaluate_script(script="JSON.stringify(Object.keys(obj)).slice(0, 1000)")
-
-// 💡 For large output, use savePath parameter to save directly to file
-evaluate_script(script="JSON.stringify(largeArray)", savePath="artifacts/jsvmp/{target}/raw/data.json")
+evaluate_script(script="JSON.stringify(largeData)", savePath="artifacts/jsvmp/{target}/raw/data.json")
 ```
-
-> `evaluate_script` works like DevTools Console, supports `savePath` to save large results directly.
 
 #### 3. Breakpoint Strategies
 ```javascript
 // Log breakpoint (no pause) — ", false" is key!
 set_breakpoint(urlRegex=".*vm.js.*", lineNumber=1, columnNumber=123,
-    condition='console.log(`PC:${pc} OP:${op} STACK:${JSON.stringify(stack.slice(-3)).slice(0,200)}`), false')
+    condition='console.log(`PC:${pc} OP:${op}`), false')
 
-// Pause breakpoint — needs human trigger
+// Pause breakpoint
 set_breakpoint(urlRegex=".*vm.js.*", lineNumber=1, columnNumber=123)
-// ⚠️ Don't call navigate_page after setting — will deadlock! Let human refresh
 ```
 
 #### 4. Anti-Debug Bypass
 ```javascript
-// 1. Paused at debugger, check call stack
+// 1. Check call stack at debugger
 get_debugger_status(contextLines=5)
-// 2. Find source file, replace anti-debug
+// 2. Replace anti-debug logic
 replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
-// 3. Reload with short timeout
+// 3. Reload
 navigate_page(type="reload", timeout=3000)
 ```
 
-| Pattern | Replace Strategy |
-|---------|------------------|
-| `debugger;` | Delete |
-| `setInterval(()=>{debugger},100)` | Delete entire setInterval |
-| `constructor("debugger")()` | Replace with empty function |
-
-#### 5. Persistent Hooks (Survive Refresh)
-```javascript
-// ❌ Wrong: evaluate_script hook lost after refresh
-evaluate_script(script="window.hook = ...")
-navigate_page(type="reload")  // Hook gone!
-
-// ✅ Correct: Use set_breakpoint (CDP level, survives refresh)
-set_breakpoint(urlRegex=".*vm.js.*", lineNumber=1, columnNumber=123,
-    condition='console.log("VAL:", someVar), false')
-
-// ✅ Correct: Use replace_script (modifies source)
-replace_script(urlPattern=".*vm.js.*",
-    oldCode="function dispatch(op)",
-    newCode="function dispatch(op){console.log('OP:',op);")
-```
-
-#### 6. Large Data Output
-```javascript
-// Option 1: Use savePath parameter (PREFERRED)
-evaluate_script(script="JSON.stringify(largeObject)", savePath="artifacts/jsvmp/{target}/raw/data.json")
-
-// Option 2: Via console + list_console_messages
-evaluate_script(script="console.log(JSON.stringify(largeObject).slice(0, 5000))")
-list_console_messages(savePath="artifacts/jsvmp/{target}/raw/data.txt")
-```
-
-> `evaluate_script` works like DevTools Console, supports `savePath` to save large results directly.
-
-#### 7. Runtime Value Extraction
+#### 5. Runtime Value Extraction
 **Prefer breakpoint over evaluate_script** — most vars/functions are NOT global:
 ```javascript
 // ✅ PREFERRED: Breakpoint near target, then inspect scope
-rg -n --column "targetArray" source/*.js  // Find location
-set_breakpoint(...)  // Break nearby
-get_scope_variables()  // Access local scope
-
-// ⚠️ Only for confirmed globals
-evaluate_script("window.globalVar")
+// Use find_usage_smart to locate where to break
+find_usage_smart(file="source/main.js", identifier="targetVar", line=100)
+// -> Definition at [Src L1:5000]
+set_breakpoint(..., lineNumber=1, columnNumber=5000)
+get_scope_variables()
 ```
-
-### Browser Rules
-1. **Static analysis first** — browser is auxiliary
-2. **Call stack is truth** — don't blindly search, check call stack first
-3. **Log breakpoints preferred** — use log breakpoints over pause breakpoints
-4. **Pause breakpoints need human** — don't auto-refresh after setting
-5. **Hooks survive via set_breakpoint** — evaluate_script doesn't survive refresh
-6. **Large data via console** — evaluate_script return is truncated
-7. **Clean up** — `clear_all_breakpoints()` when done
-8. **NO BACKSLASH ESCAPING in urlRegex** — write `.*target.*js.*` NOT `.*target.*\\.js.*`
-   - ❌ WRONG: `"urlRegex": ".*file.*\\.js.*"` → becomes `\\\\.` = fail
-   - ✅ CORRECT: `"urlRegex": ".*file.*js.*"` or `".*file.*.js.*"`
-9. **Breakpoint for local vars** — use `set_breakpoint` + `get_scope_variables`, not `evaluate_script`
 
 ---
 
@@ -248,92 +187,57 @@ evaluate_script("window.globalVar")
 ```markdown
 # JSVMP 反编译计划: {target}
 
-## 目标
-- URL: {target_url}
-- 脚本: {script_path}
-
 ## 阶段 1: 代码预处理
 - [ ] 下载脚本到 source/
-- [ ] 美化: `npx js-beautify -f source/main.js -o source/main_beautified.js`
-- [ ] 混淆检测: 字符串数组 / 控制流平坦化 / 字符串编码
-- [ ] 去混淆 (如需要) → output/*_deobfuscated.js
+- [ ] 智能阅读: `read_code_smart` 检查混淆类型 (Virtual View)
+- [ ] 编写去混淆脚本 (Babel Visitor)
+- [ ] 应用去混淆: `apply_custom_transform` → output/*_deob.js
 
 ## 阶段 2: VM 数据提取 (⛔ 需完成阶段 1)
-- [ ] 定位 VM dispatcher
+- [ ] 定位 VM dispatcher (`search_code_smart` / Profiler)
 - [ ] 提取字节码
 - [ ] 提取常量数组
 - [ ] 提取 handler 函数
-- [ ] 解码字节码 → source/bytecode.json
 
-## 阶段 3: 反汇编 → LIR (⛔ 需完成阶段 2)
-- [ ] 映射 opcode → handler
-- [ ] 定义 OPCODE_TABLE
-- [ ] 生成 output/{target}_disasm.asm
-
-## 阶段 4: 栈分析 → MIR (⛔ 需完成阶段 3)
-- [ ] 实现栈模拟器
-- [ ] 构建表达式树
-- [ ] 生成 output/{target}_mir.txt
-
-## 阶段 5: CFG + 数据流 → HIR (⛔ 需完成阶段 4)
-- [ ] 构建 CFG
-- [ ] 数据流分析
-- [ ] 结构恢复
-- [ ] 生成 output/{target}_hir.txt
-
-## 阶段 6: 代码生成 (⛔ 需完成阶段 5)
-- [ ] HIR → Babel AST
-- [ ] 生成 output/{target}_decompiled.js
+... (后续阶段保持不变)
 ```
 
 ---
 
 ## PHASE GUIDES
 
-### Phase 1: Preprocessing
+### Phase 1: Preprocessing (Smart Mode)
 
-```bash
-# Beautify (mandatory)
-npx js-beautify -f source/main.js -o source/main_beautified.js
+**DO NOT use `head` or `cat`.**
 
-# Check obfuscation
-head -c 2000 source/main_beautified.js
-```
+1.  **Inspect**:
+    ```javascript
+    read_code_smart(file_path="source/main.js", start_line=1, end_line=50)
+    ```
+    *Check output for: `var _0x...`, flattened control flow, etc.*
 
-| Pattern | Type | Handling |
-|---------|------|----------|
-| `var _0x...` + large array | String array | Extract array, inline |
-| `switch(state)` loop | Control flow flattening | AST reconstruction |
-| `atob()`, XOR | String encoding | Decode and replace |
+2.  **Search**:
+    ```javascript
+    search_code_smart(file_path="source/main.js", query="debugger")
+    ```
 
-**If obfuscation detected**: `read_file("skills/js_deobfuscation.md")` first
+3.  **Deobfuscate (If needed)**:
+    *   Create transform script: `artifacts/jsvmp/{target}/transforms/fix_strings.js`
+    *   Apply:
+        ```javascript
+        apply_custom_transform(target_file="source/main.js", script_path="transforms/fix_strings.js")
+        ```
+    *   Verify: `read_code_smart("source/main_deob.js")`
 
 ### Phase 2: VM Data Extraction
 
-#### JSVMP Core Concept
-> **Trigger**: Infinite Loop + Bytecode Array + Virtual Instruction Pointer (VIP)
-> **Core**: JSVMP is a **State Machine**. Focus on **Data Flow** (Stack/Context), not control flow syntax.
+#### Locate Dispatcher
+1.  **Static**: `search_code_smart(query="while\\s*\\(\\s*true")` or `search_code_smart(query="switch\\s*\\(")`
+2.  **Dynamic**: Record Performance Profile -> Find longest function.
 
-#### Dispatcher Forms
-| Form | Pattern | Note |
-|------|---------|------|
-| Switch-Case | `switch(op) { case 1: ... }` | Classic |
-| If-Else Chain | `if(op == 1) ... else if...` | Flattened |
-| Lookup Table | `handlers[op](ctx)` | Advanced, no switch/if |
-
-#### Locate via Runtime Behavior
-1. **Performance tab** → Record → Find longest Self Time function
-2. Look for: long Base64 strings (bytecode), incrementing index (`pc++`), stack array
-
-#### Search Patterns
-```bash
-# Infinite loops
-rg "for\s*\(\s*;;\s*\)" source/*_beautified.js -n
-rg "while\s*\(\s*(true|1|!0)\s*\)" source/*_beautified.js -n
-
-# Opcode read pattern
-rg "\w+\[\w+\+\+\]" source/*_beautified.js -n -A 3
-```
+#### Extract Data
+*   Use `find_usage_smart` to trace where Bytecode Array is defined.
+*   Use `evaluate_script(..., savePath="...")` to dump arrays from browser memory.
 
 ### Phase 3-6: IR Pipeline
 
@@ -344,37 +248,16 @@ rg "\w+\[\w+\+\+\]" source/*_beautified.js -n -A 3
 | 5 (HIR) | MIR | `_hir.txt` | CFG + structure |
 | 6 (JS) | HIR | `_decompiled.js` | Readable code |
 
-#### LIR Example
-```
-0000: PUSH_CONST    #0          ; "window"
-0001: GET_GLOBAL                ; stack: [window]
-0002: JZ            @0015       ; if falsy, jump
-```
-
-#### MIR Example
-```
-[0000-0003] t0 = window.document
-[0004]      if (!t0) goto @0015
-```
-
-#### HIR Example
-```
-func_0():
-    t0 = window.document
-    if (t0) { return "found" }
-    else { return "not found" }
-```
-
 ---
 
 ## Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
-| Minified code | Run js-beautify first |
-| Unknown opcode | Analyze handler statically, use tracing |
-| Stack imbalance | Check stackEffect definitions |
-| Wrong CFG edges | Verify jump target resolution |
+| **File too big** | `read_code_smart` handles this. Do NOT use `read_file`. |
+| **Variable soup** | Use `find_usage_smart(..., line=X)` to trace specific scope. |
+| **Line mismatch** | Trust the `[Src L:C]` column in Smart Tool output. |
+| **Unknown opcode** | Trace handler using `set_breakpoint` at `[Src]` location. |
 
 ---
 
