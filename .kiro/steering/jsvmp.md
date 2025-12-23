@@ -306,68 +306,68 @@ set_breakpoint(urlRegex=".*vm.js.*", lineNumber=1, columnNumber=XXX,
 
 ---
 
-## 📋 TODO.md TEMPLATE
+## 📋 TODO.md 模板
 
 ```markdown
-# JSVMP Decompilation Plan: {target}
+# JSVMP 反编译计划: {target}
 
-## Target
+## 目标
 - URL: {target_url}
-- Script: {script_path}
-- VM Type: {vm_type_if_known}
+- 脚本: {script_path}
+- VM 类型: {vm_type_if_known}
 
-## Phase 1: Code Preprocessing (Beautify & Deobfuscate)
-- [ ] Download target script to source/
-- [ ] **Beautify code** (mandatory): `npx js-beautify -f source/main.js -o source/main_beautified.js`
-- [ ] **Obfuscation audit**: Detect obfuscation patterns
-    - String array / hex variables (`var _0x...`)
-    - Control flow flattening (switch-case)
-    - String encoding (XOR, Base64, custom)
-    - *If found → add specific deobfuscation tasks*
-- [ ] Identify decoder functions (if obfuscated)
-- [ ] Extract string arrays (if obfuscated)
-- [ ] Generate output/*_deobfuscated.js (if obfuscated) or copy beautified version
+## 阶段 1: 代码预处理 (美化 & 去混淆)
+- [ ] 下载目标脚本到 source/
+- [ ] **美化代码** (必须): `npx js-beautify -f source/main.js -o source/main_beautified.js`
+- [ ] **混淆审计**: 检测混淆模式
+    - 字符串数组 / 十六进制变量 (`var _0x...`)
+    - 控制流平坦化 (switch-case)
+    - 字符串编码 (XOR, Base64, 自定义)
+    - *如发现 → 添加具体去混淆任务*
+- [ ] 识别解码函数 (如有混淆)
+- [ ] 提取字符串数组 (如有混淆)
+- [ ] 生成 output/*_deobfuscated.js (如有混淆) 或复制美化版本
 
-## Phase 2: VM Data Extraction (⛔ REQUIRES Phase 1)
-- [ ] Locate VM dispatcher (see Dispatcher Patterns below)
-- [ ] Extract bytecode (Base64/encoded string)
-- [ ] Extract constants array
-- [ ] Extract handler function array
-- [ ] Decode bytecode to instruction array
-- [ ] Save to source/bytecode.json
+## 阶段 2: VM 数据提取 (⛔ 需完成阶段 1)
+- [ ] 定位 VM dispatcher (参见下方 Dispatcher 模式)
+- [ ] 提取字节码 (Base64/编码字符串)
+- [ ] 提取常量数组
+- [ ] 提取 handler 函数数组
+- [ ] 解码字节码为指令数组
+- [ ] 保存到 source/bytecode.json
 
-## Phase 3: Disassembly → Low-Level IR (⛔ REQUIRES Phase 2)
-- [ ] Map opcodes to handlers (static analysis)
-- [ ] Define OPCODE_TABLE with mnemonics
-- [ ] Implement disassembler
-- [ ] Generate output/{target}_disasm.asm
-- [ ] Verify: all opcodes recognized, no unknowns
+## 阶段 3: 反汇编 → 低级 IR (⛔ 需完成阶段 2)
+- [ ] 映射 opcode 到 handler (静态分析)
+- [ ] 定义 OPCODE_TABLE 及助记符
+- [ ] 实现反汇编器
+- [ ] 生成 output/{target}_disasm.asm
+- [ ] 验证: 所有 opcode 已识别，无未知项
 
-## Phase 4: Stack Analysis → Mid-Level IR (⛔ REQUIRES Phase 3)
-- [ ] Implement stack simulator
-- [ ] Build expression trees from stack ops
-- [ ] Eliminate explicit stack references
-- [ ] Generate output/{target}_mir.txt
-- [ ] Verify: stack balanced at block boundaries
+## 阶段 4: 栈分析 → 中级 IR (⛔ 需完成阶段 3)
+- [ ] 实现栈模拟器
+- [ ] 从栈操作构建表达式树
+- [ ] 消除显式栈引用
+- [ ] 生成 output/{target}_mir.txt
+- [ ] 验证: 基本块边界栈平衡
 
-## Phase 5: CFG + Data-Flow → High-Level IR (⛔ REQUIRES Phase 4)
-- [ ] Build CFG (leaders, blocks, edges)
-- [ ] Reaching definitions analysis
-- [ ] Value propagation (inline single-use temps)
-- [ ] Loop detection (back edges)
-- [ ] Conditional structure recovery
-- [ ] Generate output/{target}_hir.txt
+## 阶段 5: CFG + 数据流 → 高级 IR (⛔ 需完成阶段 4)
+- [ ] 构建 CFG (leader, 基本块, 边)
+- [ ] 到达定义分析
+- [ ] 值传播 (内联单次使用临时变量)
+- [ ] 循环检测 (回边)
+- [ ] 条件结构恢复
+- [ ] 生成 output/{target}_hir.txt
 
-## Phase 6: Code Generation (⛔ REQUIRES Phase 5)
-- [ ] Convert HIR to Babel AST
-- [ ] Emit structured control flow (if/while/for)
-- [ ] Generate output/{target}_decompiled.js
-- [ ] Verify: syntactically valid JS
+## 阶段 6: 代码生成 (⛔ 需完成阶段 5)
+- [ ] 将 HIR 转换为 Babel AST
+- [ ] 生成结构化控制流 (if/while/for)
+- [ ] 生成 output/{target}_decompiled.js
+- [ ] 验证: 语法有效的 JS
 
-## Phase 7: Verification & Cleanup
-- [ ] Compare behavior with original (browser test)
-- [ ] Rename variables where semantics clear
-- [ ] Document VM quirks in README.md
+## 阶段 7: 验证 & 清理
+- [ ] 与原始代码对比行为 (浏览器测试)
+- [ ] 语义明确处重命名变量
+- [ ] 在 README.md 中记录 VM 特性
 ```
 
 ---
