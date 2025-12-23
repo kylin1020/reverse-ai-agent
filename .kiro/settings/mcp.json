@@ -1,0 +1,78 @@
+{
+  "mcpServers": {
+    "browser": {
+      "command": "node",
+      "args": [
+        "./mcp/chrome-devtools-mcp/src/index.js"
+      ],
+      "env": {},
+      "autoApprove": [
+        "new_page",
+        "take_snapshot",
+        "list_network_requests",
+        "evaluate_script",
+        "navigate_page",
+        "search_network_requests",
+        "get_network_request",
+        "search_functions",
+        "save_static_resource",
+        "save_static_resource",
+        "search_script_content",
+        "get_possible_breakpoints",
+        "hover",
+        "click",
+        "save_network_request",
+        "save_network_request",
+        "set_breakpoint",
+        "list_console_messages",
+        "clear_all_breakpoints",
+        "get_debugger_status",
+        "get_scope_variables",
+        "resume_execution",
+        "disable_debugger",
+        "list_pages",
+        "list_breakpoints",
+        "list_pages",
+        "evaluate_on_call_frame",
+        "evaluate_on_call_frame",
+        "evaluate_on_call_frame",
+        "evaluate_on_call_frame",
+        "save_scope_variables",
+        "drag",
+        "remove_breakpoint",
+        "remove_breakpoint",
+        "step_over",
+        "wait_for",
+        "step_into",
+        "wait_for",
+        "take_screenshot",
+        "close_page",
+        "pause_on_exceptions",
+        "add_persistent_script",
+        "clear_persistent_scripts",
+        "select_page",
+        "fill",
+        "list_persistent_scripts",
+        "step_out",
+        "clear_cookies",
+        "press_key",
+        "replace_script",
+        "list_script_replacements",
+        "replace_script",
+        "replace_script"
+      ],
+      "disabled": false
+    },
+    "smart-fs": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "./mcp/smart_fs/server.py"
+      ],
+      "autoApprove": [
+        "read_code_robust"
+      ]
+    }
+  }
+}
