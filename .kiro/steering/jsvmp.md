@@ -129,7 +129,7 @@ Maintain this file to preserve analysis context across sessions.
 
 ## 🎯 STATIC ANALYSIS PRIORITY (CRITICAL)
 
-**⚠️ MANDATORY: Static analysis is the PRIMARY and PREFERRED approach. Browser is LAST RESORT.**
+**⚠️ MANDATORY: Static analysis is the PRIMARY and PREFERRED approach. Browser is AUXILIARY TOOL ONLY.**
 
 ### File Priority Order
 | Priority | File Pattern | When to Use |
@@ -138,13 +138,171 @@ Maintain this file to preserve analysis context across sessions.
 | 2️⃣ HIGH | `source/*_beautified.js` | When deobfuscated not available |
 | 3️⃣ LOW | `source/*.js` (raw) | Only for extraction scripts, NOT for understanding |
 
-### Static Analysis Strategy
+### Static Analysis Strategy (PRIMARY)
 1. **CHECK for deobfuscated files FIRST**: `ls output/*_deobfuscated.js source/*_beautified.js`
 2. **READ deobfuscated code** — understand VM structure from clean code
 3. **Use `sg` or `rg` on local files** — pattern matching and code search
 4. **Trace function calls statically** — map VM components step by step
 5. **Write analysis scripts** — automate extraction and transformation
-6. **Browser ONLY as last resort** — when static analysis is completely blocked
+
+---
+
+## 🌐 BROWSER AUXILIARY TOOLS
+
+**浏览器是辅助工具，用于验证静态分析结论、获取运行时值、定位难以静态分析的代码。**
+
+### 使用场景
+
+| 场景 | 工具 | 说明 |
+|------|------|------|
+| 定位 VM Dispatcher | Performance Profiler | 找到 Self Time 最长的函数 |
+| 验证 Opcode 语义 | 日志断点 | 差分分析不同输入的执行轨迹 |
+| 获取运行时值 | `get_scope_variables` | 静态无法确定的动态值 |
+| 绕过反调试 | `replace_script` | 移除 debugger 语句 |
+| 打印函数源码 | `evaluate_script` | 快速定位函数定义位置 |
+
+### 核心技巧
+
+#### 1. 调用栈追踪 (Call Stack First)
+
+**有目标请求？→ 先追踪调用栈，搜索是辅助。**
+
+```javascript
+// 1. 设置断点，让人类触发
+set_breakpoint(urlRegex=".*target.js.*", lineNumber=1, columnNumber=12345)
+// 2. 人类触发后，读取调用栈
+get_debugger_status(maxCallStackFrames=20)
+// 3. 调用栈显示: file + line + function → 这就是目标
+// 4. 检查变量
+get_scope_variables(frameIndex=N, searchTerm="key")
+```
+
+#### 2. 打印函数源码 (快速定位)
+
+```javascript
+// 直接输入函数名查看定义和位置
+evaluate_script(script="targetFunc")
+// Response: function _0x1b01d3(){...}  📍 VM24:1:37477
+
+// 打印函数源码 (限制长度)
+evaluate_script(script="targetFunc.toString().slice(0, 2000)")
+
+// 探索对象结构
+evaluate_script(script="JSON.stringify(Object.keys(vmContext)).slice(0,1000)")
+```
+
+#### 3. 断点策略
+
+```javascript
+// 日志断点 (不暂停) — 末尾 ", false" 是关键！
+set_breakpoint(urlRegex=".*vm.js.*", lineNumber=1, columnNumber=12345,
+    condition='console.log(`[TRACE] PC:${pc} OP:${op} STACK:${JSON.stringify(stack.slice(-3))}`), false')
+
+// 暂停断点 — 需要人类触发
+set_breakpoint(urlRegex=".*vm.js.*", lineNumber=1, columnNumber=12345)
+// ⚠️ 设置后不要调用 navigate_page，会死锁！让人类刷新页面
+```
+
+#### 4. 深度函数追踪
+
+```javascript
+// Hook 函数获取调用栈和参数
+evaluate_script(script=`
+    const orig = window.targetFunc;
+    window.targetFunc = function(...args) {
+        console.log('[HOOK] args:', JSON.stringify(args).slice(0,500));
+        console.log('[HOOK] stack:', new Error().stack);
+        return orig.apply(this, args);
+    };
+    'hooked'
+`)
+
+// 从调用栈找到内层函数 → 打印其源码
+evaluate_script(script="innerFunc.toString().slice(0, 2000)")
+```
+
+#### 5. 反调试绕过
+
+```javascript
+// 1. 已暂停在 debugger，查看调用栈
+get_debugger_status(contextLines=5)
+
+// 2. 从调用栈找到源文件，替换反调试代码
+replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
+
+// 3. 刷新验证 (用短超时，如果没绕过会再次暂停)
+navigate_page(type="reload", timeout=3000)
+```
+
+**常见反调试模式**:
+| 模式 | 替换策略 |
+|------|----------|
+| `debugger;` | 直接删除 |
+| `setInterval(()=>{debugger},100)` | 删除整个 setInterval |
+| `constructor("debugger")()` | 替换为空函数 |
+
+#### 6. 持久化 Hook (跨刷新存活)
+
+**⚠️ `evaluate_script` 注入的 Hook 不能跨刷新存活！**
+
+```javascript
+// ❌ 错误: evaluate_script hook 刷新后丢失
+evaluate_script(script="window.hook = ...") 
+navigate_page(type="reload")  // Hook 没了！
+
+// ✅ 正确: 使用 set_breakpoint (CDP 级别，跨刷新存活)
+set_breakpoint(urlRegex=".*vm.js.*", lineNumber=1, columnNumber=123,
+    condition='console.log("VAL:", someVar), false')
+
+// ✅ 正确: 使用 replace_script (修改源码本身)
+replace_script(urlPattern=".*vm.js.*",
+    oldCode="function dispatch(op)",
+    newCode="function dispatch(op){console.log('OP:',op);")
+// 刷新后修改后的脚本加载 → hook 生效
+```
+
+#### 7. 大数据输出保存
+
+`evaluate_script` 返回值会被截断，大数据用控制台输出：
+
+```javascript
+// Step 1: 输出到控制台 (不截断)
+evaluate_script(script="console.log(JSON.stringify(largeObject))")
+
+// Step 2: 保存控制台输出到文件
+list_console_messages(savePath="artifacts/jsvmp/{target}/raw/data.txt")
+```
+
+### VM 分析专用技巧
+
+#### Dispatcher 定位 (Performance Profiler)
+
+1. Chrome DevTools → Performance → Record
+2. 触发 VM 执行
+3. 找到 Self Time 最长的函数 (通常是黄色实心条)
+4. 进入该函数，找到最内层循环结构
+
+#### Opcode 语义验证 (差分分析)
+
+```javascript
+// 1. 输入 AAAA → 运行 → 保存 trace_A.log
+// 2. 输入 AAAB → 运行 → 保存 trace_B.log
+// 3. 比较: 第一个不同的行就是输入被读取和处理的位置
+
+// 日志断点记录执行轨迹
+set_breakpoint(urlRegex=".*vm.js.*", lineNumber=1, columnNumber=XXX,
+    condition='console.log(`[TRACE] PC:${pc} OP:${bytecode[pc]} STACK:${JSON.stringify(stack.slice(-5))}`), false')
+```
+
+### ⚠️ 浏览器使用规则
+
+1. **静态分析优先** — 浏览器是辅助，不是主力
+2. **调用栈是真相** — 不要盲目搜索，先看调用栈
+3. **日志断点优先** — 能用日志断点就不用暂停断点
+4. **暂停断点需人类触发** — 设置后不要自动刷新，会死锁
+5. **Hook 跨刷新用 set_breakpoint** — evaluate_script 不能存活
+6. **大数据用控制台** — evaluate_script 返回值会截断
+7. **清理断点** — 调试完成后 `clear_all_breakpoints()`
 
 ---
 
@@ -816,7 +974,6 @@ Download → Beautify → Check obfuscation → Deobfuscate (if needed)
 - **BEAUTIFY FIRST**: Never analyze minified code — run js-beautify as Phase 1 first step
 - NEVER `read_file` on .js files — use `head`, `sg`, `rg`, or line-range
 - **PHASE 1 GATE**: If obfuscation detected, MUST `read_file("skills/js_deobfuscation.md")` before deobfuscation
-- **Load JSVMP Analysis at Phase 2**: Read `skills/jsvmp_analysis.md` at Phase 2 start to understand VM methodology
 - **VM is a State Machine**: Focus on data flow (Stack/Context changes), not control flow syntax
 - **Dispatcher is Key**: Locate via Performance tools, not keywords. Can be switch/if-else/lookup table
 - **Differential Analysis**: Compare traces with different inputs to find fork points
