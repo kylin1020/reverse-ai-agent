@@ -5,7 +5,7 @@
  */
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { listPages, newPage, closePage, selectPage, navigatePage, resizePage, handleDialog, } from '../../src/tools/pages.js';
+import { listPages, newPage, closePage, selectPage, navigatePage, } from '../../src/tools/pages.js';
 import { withMcpContext } from '../utils.js';
 describe('pages', () => {
     describe('list_pages', () => {
@@ -137,90 +137,6 @@ describe('pages', () => {
                     .at(0)
                     ?.startsWith('Unable to navigate back in the selected page:'));
                 assert.ok(response.includePages);
-            });
-        });
-    });
-    describe('resize', () => {
-        it('create a page', async () => {
-            await withMcpContext(async (response, context) => {
-                const page = context.getSelectedPage();
-                const resizePromise = page.evaluate(() => {
-                    return new Promise(resolve => {
-                        window.addEventListener('resize', resolve, { once: true });
-                    });
-                });
-                await resizePage.handler({ params: { width: 700, height: 500 } }, response, context);
-                await resizePromise;
-                const dimensions = await page.evaluate(() => {
-                    return [window.innerWidth, window.innerHeight];
-                });
-                assert.deepStrictEqual(dimensions, [700, 500]);
-            });
-        });
-    });
-    describe('dialogs', () => {
-        it('can accept dialogs', async () => {
-            await withMcpContext(async (response, context) => {
-                const page = context.getSelectedPage();
-                const dialogPromise = new Promise(resolve => {
-                    page.on('dialog', () => {
-                        resolve();
-                    });
-                });
-                page.evaluate(() => {
-                    alert('test');
-                });
-                await dialogPromise;
-                await handleDialog.handler({
-                    params: {
-                        action: 'accept',
-                    },
-                }, response, context);
-                assert.strictEqual(context.getDialog(), undefined);
-                assert.strictEqual(response.responseLines[0], 'Successfully accepted the dialog');
-            });
-        });
-        it('can dismiss dialogs', async () => {
-            await withMcpContext(async (response, context) => {
-                const page = context.getSelectedPage();
-                const dialogPromise = new Promise(resolve => {
-                    page.on('dialog', () => {
-                        resolve();
-                    });
-                });
-                page.evaluate(() => {
-                    alert('test');
-                });
-                await dialogPromise;
-                await handleDialog.handler({
-                    params: {
-                        action: 'dismiss',
-                    },
-                }, response, context);
-                assert.strictEqual(context.getDialog(), undefined);
-                assert.strictEqual(response.responseLines[0], 'Successfully dismissed the dialog');
-            });
-        });
-        it('can dismiss already dismissed dialog dialogs', async () => {
-            await withMcpContext(async (response, context) => {
-                const page = context.getSelectedPage();
-                const dialogPromise = new Promise(resolve => {
-                    page.on('dialog', dialog => {
-                        resolve(dialog);
-                    });
-                });
-                page.evaluate(() => {
-                    alert('test');
-                });
-                const dialog = await dialogPromise;
-                await dialog.dismiss();
-                await handleDialog.handler({
-                    params: {
-                        action: 'dismiss',
-                    },
-                }, response, context);
-                assert.strictEqual(context.getDialog(), undefined);
-                assert.strictEqual(response.responseLines[0], 'Successfully dismissed the dialog');
             });
         });
     });

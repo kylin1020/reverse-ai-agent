@@ -5,7 +5,8 @@
  */
 import assert from 'node:assert';
 import { describe, it, afterEach } from 'node:test';
-import { setBreakpoint, removeBreakpoint, listBreakpoints, clearAllBreakpoints, getDebuggerStatus, pauseOnExceptions, disableDebugger, } from '../../src/tools/debugger.js';
+import { setBreakpoint, removeBreakpoint, listBreakpoints, clearAllBreakpoints, getDebuggerStatus, disableDebugger, setXhrBreakpoint, removeXhrBreakpoint, listXhrBreakpoints, } from '../../src/tools/debugger.js';
+import { clearTrackedXhrBreakpoints } from '../../src/utils/debuggerUtils.js';
 import { serverHooks } from '../server.js';
 import { html, withMcpContext } from '../utils.js';
 describe('debugger', () => {
@@ -175,26 +176,6 @@ describe('debugger', () => {
             });
         });
     });
-    describe('pause_on_exceptions', () => {
-        it('should set pause on exceptions to all', async () => {
-            await withMcpContext(async (response, context) => {
-                await pauseOnExceptions.handler({ params: { state: 'all' } }, response, context);
-                assert.ok(response.responseLines.some(line => line.includes('Exception pausing set to: all')), 'Should confirm exception pausing was set');
-            });
-        });
-        it('should set pause on exceptions to uncaught', async () => {
-            await withMcpContext(async (response, context) => {
-                await pauseOnExceptions.handler({ params: { state: 'uncaught' } }, response, context);
-                assert.ok(response.responseLines.some(line => line.includes('Exception pausing set to: uncaught')), 'Should confirm exception pausing was set');
-            });
-        });
-        it('should set pause on exceptions to none', async () => {
-            await withMcpContext(async (response, context) => {
-                await pauseOnExceptions.handler({ params: { state: 'none' } }, response, context);
-                assert.ok(response.responseLines.some(line => line.includes('Exception pausing set to: none')), 'Should confirm exception pausing was set');
-            });
-        });
-    });
     describe('disable_debugger', () => {
         it('should disable the debugger', async () => {
             server.addRoute('/disable-test.js', (_req, res) => {
@@ -254,6 +235,145 @@ describe('debugger', () => {
                 // Try to disable again - should still be disabled
                 await disableDebugger.handler({ params: {} }, response, context);
                 assert.ok(response.responseLines.some(line => line.includes('already disabled')), 'Debugger should remain disabled after page refresh');
+            });
+        });
+    });
+    describe('set_xhr_breakpoint', () => {
+        afterEach(async () => {
+            // Clean up XHR breakpoints after each test
+            await withMcpContext(async (response, context) => {
+                const page = context.getSelectedPage();
+                clearTrackedXhrBreakpoints(page);
+            });
+        });
+        it('should set an XHR breakpoint with URL pattern', async () => {
+            await withMcpContext(async (response, context) => {
+                await setXhrBreakpoint.handler({
+                    params: {
+                        urlPattern: 'api/users',
+                    },
+                }, response, context);
+                assert.ok(response.responseLines.some(line => line.includes('XHR breakpoint set successfully')), 'Should confirm XHR breakpoint was set');
+                assert.ok(response.responseLines.some(line => line.includes('api/users')), 'Should show the URL pattern');
+            });
+        });
+        it('should set an XHR breakpoint with empty string pattern (all requests)', async () => {
+            await withMcpContext(async (response, context) => {
+                await setXhrBreakpoint.handler({
+                    params: {
+                        urlPattern: '',
+                    },
+                }, response, context);
+                assert.ok(response.responseLines.some(line => line.includes('XHR breakpoint set successfully')), 'Should confirm XHR breakpoint was set');
+                assert.ok(response.responseLines.some(line => line.includes('all requests')), 'Should indicate breakpoint applies to all requests');
+            });
+        });
+    });
+    describe('remove_xhr_breakpoint', () => {
+        afterEach(async () => {
+            // Clean up XHR breakpoints after each test
+            await withMcpContext(async (response, context) => {
+                const page = context.getSelectedPage();
+                clearTrackedXhrBreakpoints(page);
+            });
+        });
+        it('should remove an XHR breakpoint by URL pattern', async () => {
+            await withMcpContext(async (response, context) => {
+                // First set a breakpoint
+                await setXhrBreakpoint.handler({
+                    params: {
+                        urlPattern: 'api/data',
+                    },
+                }, response, context);
+                response.resetResponseLineForTesting();
+                // Remove the breakpoint
+                await removeXhrBreakpoint.handler({
+                    params: {
+                        urlPattern: 'api/data',
+                    },
+                }, response, context);
+                assert.ok(response.responseLines.some(line => line.includes('Removed XHR breakpoint')), 'Should confirm XHR breakpoint was removed');
+                assert.ok(response.responseLines.some(line => line.includes('api/data')), 'Should show the removed URL pattern');
+            });
+        });
+        it('should handle removing non-existent XHR breakpoint gracefully', async () => {
+            await withMcpContext(async (response, context) => {
+                // Try to remove a breakpoint that was never set
+                await removeXhrBreakpoint.handler({
+                    params: {
+                        urlPattern: 'non-existent-pattern',
+                    },
+                }, response, context);
+                // Should either succeed (CDP doesn't error) or show a warning
+                const hasRemoved = response.responseLines.some(line => line.includes('Removed'));
+                const hasWarning = response.responseLines.some(line => line.includes('not found') || line.includes('not in our tracking'));
+                assert.ok(hasRemoved || hasWarning, 'Should either confirm removal or show warning for non-existent breakpoint');
+            });
+        });
+        it('should remove all XHR breakpoints when no pattern specified', async () => {
+            await withMcpContext(async (response, context) => {
+                // Set multiple breakpoints
+                await setXhrBreakpoint.handler({
+                    params: {
+                        urlPattern: 'api/users',
+                    },
+                }, response, context);
+                await setXhrBreakpoint.handler({
+                    params: {
+                        urlPattern: 'api/posts',
+                    },
+                }, response, context);
+                response.resetResponseLineForTesting();
+                // Remove all breakpoints
+                await removeXhrBreakpoint.handler({
+                    params: {},
+                }, response, context);
+                assert.ok(response.responseLines.some(line => line.includes('Cleared') && line.includes('XHR breakpoint')), 'Should confirm all XHR breakpoints were cleared');
+            });
+        });
+        it('should show message when no XHR breakpoints to remove', async () => {
+            await withMcpContext(async (response, context) => {
+                // Try to remove all when none exist
+                await removeXhrBreakpoint.handler({
+                    params: {},
+                }, response, context);
+                assert.ok(response.responseLines.some(line => line.includes('No XHR breakpoints to remove')), 'Should indicate no breakpoints to remove');
+            });
+        });
+    });
+    describe('list_xhr_breakpoints', () => {
+        afterEach(async () => {
+            // Clean up XHR breakpoints after each test
+            await withMcpContext(async (response, context) => {
+                const page = context.getSelectedPage();
+                clearTrackedXhrBreakpoints(page);
+            });
+        });
+        it('should list active XHR breakpoints', async () => {
+            await withMcpContext(async (response, context) => {
+                // Set some breakpoints
+                await setXhrBreakpoint.handler({
+                    params: {
+                        urlPattern: 'api/users',
+                    },
+                }, response, context);
+                await setXhrBreakpoint.handler({
+                    params: {
+                        urlPattern: 'api/posts',
+                    },
+                }, response, context);
+                response.resetResponseLineForTesting();
+                // List breakpoints
+                await listXhrBreakpoints.handler({ params: {} }, response, context);
+                assert.ok(response.responseLines.some(line => line.includes('Active XHR breakpoints')), 'Should show active breakpoints header');
+                assert.ok(response.responseLines.some(line => line.includes('api/users')), 'Should list first breakpoint pattern');
+                assert.ok(response.responseLines.some(line => line.includes('api/posts')), 'Should list second breakpoint pattern');
+            });
+        });
+        it('should show empty message when no XHR breakpoints', async () => {
+            await withMcpContext(async (response, context) => {
+                await listXhrBreakpoints.handler({ params: {} }, response, context);
+                assert.ok(response.responseLines.some(line => line.includes('No active XHR breakpoints')), 'Should show no breakpoints message');
             });
         });
     });

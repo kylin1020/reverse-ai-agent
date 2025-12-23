@@ -105,9 +105,6 @@ entry() [file.js:100] → process() [file.js:200] → encrypt() [file.js:300]
 | All `[x]` | Proceed to Phase 3 |
 
 **❌ FORBIDDEN while Phase 2 incomplete:**
-- Keyword search for "sign", "encrypt", "token"
-- Setting breakpoints for logic tracing
-- Network monitoring for parameters
 - ANY Phase 3/4/5 actions
 
 **🔥 PERSISTENCE**: Heavy obfuscation is expected. Escalation: Static → Browser eval → Hook → ASK HUMAN. Never skip phases.
@@ -124,13 +121,7 @@ entry() [file.js:100] → process() [file.js:200] → encrypt() [file.js:300]
 | 1️⃣ HIGHEST | `output/*_deobfuscated.js` | **ALWAYS first** — cleanest, most readable |
 | 2️⃣ HIGH | `source/*_beautified.js` | When deobfuscated not available |
 | 3️⃣ LOW | `source/*.js` (raw) | Only for extraction scripts, NOT for understanding |
-| 4️⃣ LAST RESORT | Browser DevTools | Only when static analysis fails |
 
-### ❌ ANTI-PATTERN: Going to Browser First
-```
-❌ WRONG: Open browser → search_script_content → set breakpoint → analyze
-✅ RIGHT: Read deobfuscated.js → understand flow → ONLY THEN use browser if needed
-```
 
 ### Analysis Strategy
 1. **CHECK for deobfuscated files FIRST**: `ls output/*_deobfuscated.js source/*_beautified.js`
@@ -150,8 +141,6 @@ Check output/ → Read *_deobfuscated.js → sg/rg search → Trace call chain �
 - ✅ Runtime values that can't be determined statically
 - ✅ Dynamic code generation (eval, Function constructor)
 - ✅ Verifying static analysis conclusions
-- ❌ NOT for reading code that exists locally
-- ❌ NOT for searching when `sg`/`rg` can do it
 
 **🔥 REMEMBER**: Deobfuscated code is ALREADY human-readable. Don't waste time with breakpoints when you can just READ the code!
 
@@ -160,44 +149,44 @@ Check output/ → Read *_deobfuscated.js → sg/rg search → Trace call chain �
 ## 📋 TODO.md TEMPLATE
 
 ```markdown
-# JS Reverse Engineering Plan: {domain}
+# JS逆向工程计划: {domain}
 
-## Target
+## 目标
 - URL: {target_url}
 - API: {api_endpoint}
-- Parameter: {target_param}
+- 参数: {target_param}
 
-## Phase 1: Discovery & Detection
-- [ ] Initialize environment (dirs, network check)
-- [ ] Locate main logic files (source/*.js)
-- [ ] **OBFUSCATION AUDIT**: Detect patterns
-    - String arrays / hex vars (`var _0x...`)
-    - Control flow flattening (switch-case)
-    - String encoding (XOR, Base64, custom)
-    - *If found → Add specific Phase 2 tasks*
+## 阶段1: 发现与检测
+- [ ] 初始化环境 (目录结构、网络检查)
+- [ ] 定位主要逻辑文件 (source/*.js)
+- [ ] **混淆审计**: 检测混淆模式
+    - 字符串数组 / 十六进制变量 (`var _0x...`)
+    - 控制流平坦化 (switch-case)
+    - 字符串编码 (XOR, Base64, 自定义)
+    - *如发现 → 添加具体的阶段2任务*
 
-## Phase 2: Deobfuscation (⛔ BLOCKS Phase 3)
-- [ ] Beautify minified code
-- [ ] Identify decoder functions (signature, key)
-- [ ] Extract string arrays (scripts/extract_*.js)
-- [ ] Generate output/*_deobfuscated.js
+## 阶段2: 反混淆 (⛔ 阻塞阶段3)
+- [ ] 美化压缩代码
+- [ ] 识别解码函数 (签名、密钥)
+- [ ] 提取字符串数组 (scripts/extract_*.js)
+- [ ] 生成 output/*_deobfuscated.js
 
-## Phase 3: Analysis (⛔ REQUIRES Phase 2 complete)
-- [ ] Locate target param construction (keyword search)
-- [ ] Trace algorithm entry point (breakpoint)
-- [ ] Document data structure (types, lengths, encoding)
-- [ ] Identify encryption/encoding functions
+## 阶段3: 分析 (⛔ 需要阶段2完成)
+- [ ] 定位目标参数构造 (关键词搜索)
+- [ ] 追踪算法入口点 (断点调试)
+- [ ] 记录数据结构 (类型、长度、编码)
+- [ ] 识别加密/编码函数
 
-## Phase 4: Implementation
-- [ ] Python skeleton (lib/*.py)
-- [ ] Core algorithms (encoder, encryptor)
-- [ ] Parameter builder (assemble final output)
+## 阶段4: 实现
+- [ ] Python骨架代码 (lib/*.py)
+- [ ] 核心算法 (编码器、加密器)
+- [ ] 参数构建器 (组装最终输出)
 
-## Phase 5: Verification & Documentation
-- [ ] Capture real request for comparison
-- [ ] Test against live API (repro/*.py)
-- [ ] Fix discrepancies until API accepts
-- [ ] Write README.md (algorithm summary, data flow)
+## 阶段5: 验证与文档
+- [ ] 捕获真实请求用于对比
+- [ ] 对接真实API测试 (repro/*.py)
+- [ ] 修复差异直到API接受
+- [ ] 编写 README.md (算法摘要、数据流)
 ```
 
 ---
@@ -264,12 +253,10 @@ head -n 100 output/main_deobfuscated.js  # Read entry point
 rg -A 20 "function targetFunc" output/*_deobfuscated.js  # Read specific function
 ```
 
-**❌ DO NOT use `search_script_content` when deobfuscated files exist locally!**
-
-### Phase 3: Breakpoint Workflow (ONLY when static analysis fails)
+### Phase 3: Breakpoint Workflow
 1. Find line: `sg run -p 'pattern' --json | jq '.[0].range.start.line'`
 2. Set breakpoint: `set_breakpoint(urlRegex=".*main.js.*", lineNumber=123)`
-3. Trigger: Ask human or `evaluate_script`
+3. Trigger: Ask human
 4. Inspect: `get_debugger_status()`, `get_scope_variables()`
 5. Step: `step_over()` or `resume_execution()`
 
@@ -298,8 +285,7 @@ Create `README.md`: algorithm overview, key code snippets, data flow
 |------|------|----------|
 | **Code search** | `sg`, `rg` on local files | 1️⃣ FIRST |
 | **Read function** | `rg -A 30` or `head` on deobfuscated | 1️⃣ FIRST |
-| Browser script search | `search_script_content` | 4️⃣ LAST RESORT |
-| Hook function | `set_breakpoint` with condition | 4️⃣ LAST RESORT |
+| Hook function | `set_breakpoint` with condition | When needed |
 | Modify code | `replace_script` | When needed |
 | Read variables | `get_scope_variables` | Runtime only |
 | Run JS in page | `evaluate_script` | Runtime only |
@@ -352,7 +338,6 @@ replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
 ## ⛔ RULES
 
 - **LOCAL FILES FIRST**: Always check `output/*_deobfuscated.js` and `source/*_beautified.js` before using browser
-- **NO BROWSER FOR READING**: If deobfuscated code exists locally, DO NOT use `search_script_content` or breakpoints to understand it
 - NEVER `read_file` on .js files — use `head`, `sg`, `rg`, or line-range
 - NEVER use `python -c` or `node -e` inline scripts — causes terminal hang
 - **PHASE 2 GATE**: MUST `read_file("skills/js_deobfuscation.md")` before ANY deobfuscation task — no exceptions
