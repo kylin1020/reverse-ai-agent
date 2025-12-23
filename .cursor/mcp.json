@@ -3,7 +3,7 @@
     "chrome-devtools": {
       "command": "node",
       "args": [
-        "chrome-devtools-mcp/src/index.js"
+        "mcp/chrome-devtools-mcp/src/index.js"
       ]
     }
   }
