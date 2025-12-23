@@ -5,7 +5,7 @@ inclusion: manual
 # jsvmp (State-Driven Edition)
 
 > **Mission**: Statically decompile JSVMP bytecode to readable JavaScript via progressive IR lifting.
-> **Approach**: Raw Bytecode → Low-Level IR → Mid-Level IR → High-Level IR → JavaScript AST
+> **Approach**: Raw JS → Beautified → Deobfuscated → VM Extraction → IR Lifting → Decompiled JS
 > **Output**: Decompiled `.js` file with reconstructed control flow.
 
 ---
@@ -30,8 +30,35 @@ inclusion: manual
 
 Maintain this file to preserve analysis context across sessions.
 
+### ⚠️ MANDATORY: File & Action Tracking
+
+**Every NOTE.md entry MUST include:**
+1. **Source file path** — where the function/data was found
+2. **Line numbers** — exact location in file
+3. **Action taken** — what you did to discover this
+4. **Session timestamp** — when this was discovered
+
 ### Required Sections
 ```markdown
+## Session Log
+<!-- Append each session's work here -->
+### [YYYY-MM-DD HH:MM] Session Summary
+**Task**: What was being worked on
+**Files Analyzed**:
+- `path/to/file.js` (lines X-Y) — what was found
+**Actions Taken**:
+1. Action description → Result
+**Outcome**: What was accomplished
+**Next**: What should be done next
+
+## File Index
+<!-- Quick reference to all analyzed files -->
+| File | Purpose | Key Lines | Status |
+|------|---------|-----------|--------|
+| `source/main.js` | Raw script | - | ✅ Downloaded |
+| `source/main_beautified.js` | Beautified | - | ✅ Formatted |
+| `output/main_deob.js` | Deobfuscated | - | ✅ Primary |
+
 ## VM Structure
 - Bytecode location: {file}:{line}
 - Constants array: {count} items
@@ -47,8 +74,9 @@ Maintain this file to preserve analysis context across sessions.
 | ... | ... | ... | ... |
 
 ## Key Functions (Decompiled)
-- `func_0` (pc 0-50) — entry point, initializes globals
-- `func_1` (pc 51-120) — encryption routine
+- `func_0` (pc 0-50) — `output/main_deob.js:123-145`
+  - Purpose: entry point, initializes globals
+  - Discovered: [date] via [method]
 
 ## Data Structures
 - Stack: array-based, grows upward
@@ -70,6 +98,7 @@ Maintain this file to preserve analysis context across sessions.
 - Map a handler function to its purpose
 - Identify a key decompiled function
 - Verify bytecode encoding/decoding
+- Start/end a session → **add to Session Log**
 
 **⚠️ Sync immediately** — don't wait until task completion
 
@@ -81,18 +110,40 @@ Maintain this file to preserve analysis context across sessions.
 
 | Phase Status | Allowed Actions |
 |--------------|-----------------|
-| Phase 0 incomplete | Extract VM data ONLY: bytecode, constants, handlers |
-| Phase 1 incomplete | Disassembly ONLY: opcode mapping, LIR generation |
-| Phase 2 incomplete | Stack analysis ONLY: expression trees, MIR generation |
-| Phase 3 incomplete | CFG/Data-flow ONLY: structure recovery, HIR generation |
+| Phase 1 incomplete | Beautify/Deobfuscate ONLY |
+| Phase 2 incomplete | Extract VM data ONLY: bytecode, constants, handlers |
+| Phase 3 incomplete | Disassembly ONLY: opcode mapping, LIR generation |
+| Phase 4 incomplete | Stack analysis ONLY: expression trees, MIR generation |
+| Phase 5 incomplete | CFG/Data-flow ONLY: structure recovery, HIR generation |
 | All phases done | Code generation, output JS |
 
 **❌ FORBIDDEN while earlier phases incomplete:**
+- Skipping to VM extraction without beautification
 - Skipping to code generation without proper IR
 - Guessing opcode semantics without verification
 - Emitting JS without CFG analysis
 
 **🔥 PERSISTENCE**: Complex VMs are expected. Escalation: Static → Browser trace → Hook → ASK HUMAN. Never skip phases.
+
+---
+
+## 🎯 DEOBFUSCATED CODE PRIORITY (CRITICAL)
+
+**⚠️ MANDATORY: When `*_deobfuscated.js` or `*_beautified.js` exists, it is your PRIMARY and PREFERRED source.**
+
+### File Priority Order
+| Priority | File Pattern | When to Use |
+|----------|--------------|-------------|
+| 1️⃣ HIGHEST | `output/*_deobfuscated.js` | **ALWAYS first** — cleanest, most readable |
+| 2️⃣ HIGH | `source/*_beautified.js` | When deobfuscated not available |
+| 3️⃣ LOW | `source/*.js` (raw) | Only for extraction scripts, NOT for understanding |
+
+### Analysis Strategy
+1. **CHECK for deobfuscated files FIRST**: `ls output/*_deobfuscated.js source/*_beautified.js`
+2. **READ deobfuscated code** — understand VM structure from clean code
+3. **Use `sg` or `rg` on local files** — NOT browser search
+4. **Trace function calls statically** — map VM components step by step
+5. **Cross-reference with browser** — ONLY when static analysis is insufficient
 
 ---
 
@@ -106,7 +157,19 @@ Maintain this file to preserve analysis context across sessions.
 - Script: {script_path}
 - VM Type: {vm_type_if_known}
 
-## Phase 0: VM Data Extraction
+## Phase 1: 代码预处理 (美化 & 解混淆)
+- [ ] 下载目标脚本到 source/
+- [ ] **美化代码** (必须): `npx js-beautify -f source/main.js -o source/main_beautified.js`
+- [ ] **混淆审计**: 检测混淆模式
+    - 字符串数组 / 十六进制变量 (`var _0x...`)
+    - 控制流平坦化 (switch-case)
+    - 字符串编码 (XOR, Base64, 自定义)
+    - *如发现 → 添加具体的解混淆任务*
+- [ ] 识别解码函数 (如有混淆)
+- [ ] 提取字符串数组 (如有混淆)
+- [ ] 生成 output/*_deobfuscated.js (如有混淆) 或复制美化版本
+
+## Phase 2: VM Data Extraction (⛔ REQUIRES Phase 1)
 - [ ] Locate VM entry point (while/switch dispatcher)
 - [ ] Extract bytecode (Base64/encoded string)
 - [ ] Extract constants array
@@ -114,21 +177,21 @@ Maintain this file to preserve analysis context across sessions.
 - [ ] Decode bytecode to instruction array
 - [ ] Save to source/bytecode.json
 
-## Phase 1: Disassembly → Low-Level IR (⛔ REQUIRES Phase 0)
+## Phase 3: Disassembly → Low-Level IR (⛔ REQUIRES Phase 2)
 - [ ] Map opcodes to handlers (trace if needed)
 - [ ] Define OPCODE_TABLE with mnemonics
 - [ ] Implement disassembler
 - [ ] Generate output/{target}_disasm.asm
 - [ ] Verify: all opcodes recognized, no unknowns
 
-## Phase 2: Stack Analysis → Mid-Level IR (⛔ REQUIRES Phase 1)
+## Phase 4: Stack Analysis → Mid-Level IR (⛔ REQUIRES Phase 3)
 - [ ] Implement stack simulator
 - [ ] Build expression trees from stack ops
 - [ ] Eliminate explicit stack references
 - [ ] Generate output/{target}_mir.txt
 - [ ] Verify: stack balanced at block boundaries
 
-## Phase 3: CFG + Data-Flow → High-Level IR (⛔ REQUIRES Phase 2)
+## Phase 5: CFG + Data-Flow → High-Level IR (⛔ REQUIRES Phase 4)
 - [ ] Build CFG (leaders, blocks, edges)
 - [ ] Reaching definitions analysis
 - [ ] Value propagation (inline single-use temps)
@@ -136,13 +199,13 @@ Maintain this file to preserve analysis context across sessions.
 - [ ] Conditional structure recovery
 - [ ] Generate output/{target}_hir.txt
 
-## Phase 4: Code Generation (⛔ REQUIRES Phase 3)
+## Phase 6: Code Generation (⛔ REQUIRES Phase 5)
 - [ ] Convert HIR to Babel AST
 - [ ] Emit structured control flow (if/while/for)
 - [ ] Generate output/{target}_decompiled.js
 - [ ] Verify: syntactically valid JS
 
-## Phase 5: Verification & Cleanup
+## Phase 7: Verification & Cleanup
 - [ ] Compare behavior with original (browser test)
 - [ ] Rename variables where semantics clear
 - [ ] Document VM quirks in README.md
@@ -157,19 +220,65 @@ Maintain this file to preserve analysis context across sessions.
 
 ---
 
+## PHASE GUIDES
+
+### Phase 1: 代码预处理 (美化 & 解混淆)
+
+**⚠️ 美化是必须步骤** — 压缩代码无法有效分析
+
+```bash
+# Step 1: 下载脚本
+# 使用 save_static_resource 或 curl
+
+# Step 2: 美化代码 (必须)
+npx js-beautify -f source/main.js -o source/main_beautified.js
+
+# Step 3: 检查混淆类型
+head -c 2000 source/main_beautified.js
+```
+
+**混淆检测清单:**
+| 特征 | 混淆类型 | 处理方式 |
+|------|----------|----------|
+| `var _0x...` + 大数组 | 字符串数组混淆 | 提取数组，内联字符串 |
+| `switch(state)` 循环 | 控制流平坦化 | AST 重构 |
+| `atob()`, XOR 操作 | 字符串编码 | 解码并替换 |
+| `debugger;` 语句 | 反调试 | 删除 |
+| 无明显混淆 | 仅压缩 | 美化即可 |
+
+**解混淆工作流 (如需要):**
+
+**⚠️ MANDATORY**: 开始解混淆前必须先加载技能文件:
+```
+read_file("skills/js_deobfuscation.md")
+```
+
+1. 识别混淆类型
+2. 应用对应技术 (参考 skill 文件)
+3. 编写提取脚本到 `scripts/`
+4. 生成 `output/*_deobfuscated.js`
+
+**如果没有混淆:**
+```bash
+cp source/main_beautified.js output/main_deob.js
+```
+
+---
+
 ## Progressive Decompilation Pipeline
 
 | Phase | Input | Output | Description |
 |-------|-------|--------|-------------|
-| 0 | Obfuscated JS | bytecode, constants | Extract VM data |
-| 1 | Raw bytecode | `_disasm.asm` | Disassembly with explicit stack ops |
-| 2 | Low-Level IR | `_mir.txt` | Eliminate stack, build expression trees |
-| 3 | Mid-Level IR | `_hir.txt` | CFG + data-flow + structure recovery |
-| 4 | High-Level IR | `_decompiled.js` | Emit readable JavaScript |
+| 1 | Raw JS | `*_beautified.js` / `*_deob.js` | 美化 & 解混淆 |
+| 2 | Clean JS | bytecode, constants | Extract VM data |
+| 3 | Raw bytecode | `_disasm.asm` | Disassembly with explicit stack ops |
+| 4 | Low-Level IR | `_mir.txt` | Eliminate stack, build expression trees |
+| 5 | Mid-Level IR | `_hir.txt` | CFG + data-flow + structure recovery |
+| 6 | High-Level IR | `_decompiled.js` | Emit readable JavaScript |
 
 ---
 
-## Phase 0: Extract VM Data
+## Phase 2: Extract VM Data
 
 ### Identify Core Components via AST
 
@@ -213,7 +322,7 @@ const bytecode = decoded.split('').reduce((acc, char) => {
 
 ---
 
-## Phase 1: Disassembly → Low-Level IR
+## Phase 3: Disassembly → Low-Level IR
 
 Convert raw bytecode to assembly-like format with explicit stack operations.
 
@@ -260,7 +369,7 @@ const OPCODE_TABLE = {
 
 ---
 
-## Phase 2: Stack Analysis → Mid-Level IR
+## Phase 4: Stack Analysis → Mid-Level IR
 
 Eliminate stack operations, build expression trees using symbolic execution.
 
@@ -314,7 +423,7 @@ class Constant, TempVar, LocalVar, MemberExpr, CallExpr, BinaryExpr, UnaryExpr
 
 ---
 
-## Phase 3: CFG + Data-Flow → High-Level IR
+## Phase 5: CFG + Data-Flow → High-Level IR
 
 Build CFG from MIR, apply data-flow analysis, recover structured control flow.
 
@@ -366,7 +475,7 @@ class StructureRecovery {
 
 ---
 
-## Phase 4: Code Generation → JavaScript AST
+## Phase 6: Code Generation → JavaScript AST
 
 Convert structured HIR to Babel AST.
 
@@ -398,14 +507,16 @@ class CodeGenerator {
 
 ## Example: Pipeline Walkthrough
 
-**Input**: `[[17,0,5,0,0], [17,0,1,0,0], [23,0,0,0,0], [48,0,3,0,0], ...]`
+**Input**: Minified/obfuscated JS with JSVMP
 
 | Phase | Output |
 |-------|--------|
-| 1 (LIR) | `0000: PUSH_CONST #0` / `0003: JZ @6` |
-| 2 (MIR) | `t0 = window.document` / `if (!t0) goto @6` |
-| 3 (HIR) | `if (t0) { return "found" } else { return "not found" }` |
-| 4 (JS) | `function decompiled() { let t0 = window.document; if (t0) ... }` |
+| 1 (Preprocess) | `main_beautified.js` → `main_deob.js` |
+| 2 (Extract) | bytecode.json, constants, handlers |
+| 3 (LIR) | `0000: PUSH_CONST #0` / `0003: JZ @6` |
+| 4 (MIR) | `t0 = window.document` / `if (!t0) goto @6` |
+| 5 (HIR) | `if (t0) { return "found" } else { return "not found" }` |
+| 6 (JS) | `function decompiled() { let t0 = window.document; if (t0) ... }` |
 
 ---
 
@@ -413,11 +524,14 @@ class CodeGenerator {
 
 | Issue | Phase | Solution |
 |-------|-------|----------|
-| Unknown opcode | 1 | Add to OPCODE_TABLE, trace with breakpoint |
-| Stack imbalance | 2 | Check stackEffect definitions |
-| Wrong CFG edges | 3 | Verify jump target resolution |
-| Missing variables | 3 | Check def-use chain construction |
-| Nested functions | 1-4 | Recursively process with bytecode slice |
+| Minified code | 1 | Run js-beautify first |
+| String array obfuscation | 1 | Extract array, inline strings |
+| Control flow flattening | 1 | AST reconstruction |
+| Unknown opcode | 3 | Add to OPCODE_TABLE, trace with breakpoint |
+| Stack imbalance | 4 | Check stackEffect definitions |
+| Wrong CFG edges | 5 | Verify jump target resolution |
+| Missing variables | 5 | Check def-use chain construction |
+| Nested functions | 3-6 | Recursively process with bytecode slice |
 
 ---
 
@@ -498,15 +612,45 @@ node scripts/decompile.js
 - **Stack Imbalance**: "🆘 栈不平衡，需要检查 stackEffect 定义。"
 - **Anti-Debug**: "🆘 检测到反调试，需要绕过。"
 - **Complex Control Flow**: "🆘 控制流过于复杂，需要协助分析。"
+- **Heavy Obfuscation**: "🆘 混淆过于复杂，需要协助解混淆。"
 - **Stuck**: "🆘 反编译遇到困难，需要协助。"
+
+---
+
+## TOOL QUICK REF
+
+| Task | Tool | Priority |
+|------|------|----------|
+| **Code search** | `sg`, `rg` on local files | 1️⃣ FIRST |
+| **Read function** | `rg -A 30` or `head` on deobfuscated | 1️⃣ FIRST |
+| **Beautify code** | `npx js-beautify` | Phase 1 必须 |
+| Hook function | `set_breakpoint` with condition | When needed |
+| Modify code | `replace_script` | When needed |
+| Read variables | `get_scope_variables` | Runtime only |
+| Run JS in page | `evaluate_script` | Runtime only |
+| Save script to file | `save_script_source` | When needed |
+
+### Code Understanding Workflow
+```
+Download → Beautify → Check obfuscation → Deobfuscate (if needed)
+                                              ↓
+                      sg/rg search → Trace VM structure → Extract bytecode
+                                                              ↓
+                                            Browser (ONLY if static fails)
+```
 
 ---
 
 ## ⛔ RULES
 
+- **LOCAL FILES FIRST**: Always check `output/*_deobfuscated.js` and `source/*_beautified.js` before using browser
+- **BEAUTIFY FIRST**: Never analyze minified code — run js-beautify as Phase 1 first step
 - NEVER `read_file` on .js files — use `head`, `sg`, `rg`, or line-range
-- Load `skills/jsvmp_analysis.md` at Phase 0 start if available
+- **PHASE 1 GATE**: If obfuscation detected, MUST `read_file("skills/js_deobfuscation.md")` before deobfuscation
+- Load `skills/jsvmp_analysis.md` at Phase 2 start if available
 - Always verify opcode semantics before proceeding to next phase
 - Keep intermediate outputs (LIR/MIR/HIR) for debugging
 - **READ `NOTE.md` at session start** — resume from previous findings
 - **UPDATE `NOTE.md` after discoveries** — preserve knowledge for next session
+- **ALWAYS include file:line references** — future sessions depend on this
+- **LOG every session** — append to Session Log section
