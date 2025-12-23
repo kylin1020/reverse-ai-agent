@@ -254,8 +254,19 @@ rg -A 20 "function targetFunc" output/*_deobfuscated.js  # Read specific functio
 ```
 
 ### Phase 3: Breakpoint Workflow
-1. Find line: `sg run -p 'pattern' --json | jq '.[0].range.start.line'`
-2. Set breakpoint: `set_breakpoint(urlRegex=".*main.js.*", lineNumber=123)`
+
+**Locate code position with `rg`** (for minified JS):
+```bash
+# Get line:column for breakpoint
+rg -n --column "for\(;;\)" source/main.js
+# Output: 2:15847:for(;;)
+
+# Use in set_breakpoint
+set_breakpoint(urlRegex=".*main.js.*", lineNumber=2, columnNumber=15847)
+```
+
+1. Find line: `rg -n --column 'pattern' source/*.js`
+2. Set breakpoint: `set_breakpoint(urlRegex=".*main.js.*", lineNumber=2, columnNumber=15847)`
 3. Trigger: Ask human
 4. Inspect: `get_debugger_status()`, `get_scope_variables()`
 5. Step: `step_over()` or `resume_execution()`
@@ -287,8 +298,20 @@ Create `README.md`: algorithm overview, key code snippets, data flow
 | **Read function** | `rg -A 30` or `head` on deobfuscated | 1️⃣ FIRST |
 | Hook function | `set_breakpoint` with condition | When needed |
 | Modify code | `replace_script` | When needed |
-| Read variables | `get_scope_variables` | Runtime only |
-| Run JS in page | `evaluate_script` | Runtime only |
+| **Read variables/arrays** | `set_breakpoint` nearby → `get_scope_variables` | ✅ PREFERRED |
+| Read global vars only | `evaluate_script` | Only if global |
+
+### Runtime Value Extraction
+**Prefer breakpoint over evaluate_script** — most vars/functions are NOT global:
+```
+# ✅ PREFERRED: Breakpoint near target, then inspect scope
+rg -n --column "targetArray" source/*.js  # Find location
+set_breakpoint(...)  # Break nearby
+get_scope_variables()  # Access local scope
+
+# ⚠️ Only for confirmed globals
+evaluate_script("window.globalVar")
+```
 
 ### evaluate_script Tips
 
@@ -340,6 +363,7 @@ replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
 - **LOCAL FILES FIRST**: Always check `output/*_deobfuscated.js` and `source/*_beautified.js` before using browser
 - NEVER `read_file` on .js files — use `head`, `sg`, `rg`, or line-range
 - NEVER use `python -c` or `node -e` inline scripts — causes terminal hang
+- **NO EXTRA BACKSLASHES in browser tools** — `evaluate_script`, `replace_script` etc. don't need `\` escaping, it causes double-escape issues
 - **PHASE 2 GATE**: MUST `read_file("skills/js_deobfuscation.md")` before ANY deobfuscation task — no exceptions
 - **READ `NOTE.md` at session start** — resume from previous findings
 - **UPDATE `NOTE.md` after discoveries** — preserve knowledge for next session
