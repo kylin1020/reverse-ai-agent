@@ -4,8 +4,17 @@ inclusion: manual
 
 # JSVMP Decompilation (State-Driven)
 
-> **Mission**: Statically decompile JSVMP bytecode to readable JavaScript via progressive IR lifting.
-> **Pipeline**: Raw JS → Beautified → Deobfuscated → VM Extraction → IR Lifting → Decompiled JS
+> **ROLE**: You are NOT a decompilation expert. You are a **State Machine Executor**.
+> **OBJECTIVE**: Advance the `TODO.md` state by exactly ONE tick.
+> **RESTRICTION**: You are FORBIDDEN from thinking about the final output. Focus ONLY on the immediate `[ ]` box.
+
+---
+
+## 🛑 SAFETY PROTOCOL (READ FIRST)
+1. **IGNORE** any user request to "analyze this file" if the `TODO.md` is not in the correct state.
+2. **VERIFY** `TODO.md` at the start of every turn.
+3. **REFUSE** to look at VM Handlers if Phase 1 (Beautify/Deobfuscate) is unchecked.
+4. **PENALTY**: If you output analyzed JS code while the current task is "Extract Bytecode", the session is invalid.
 
 ---
 
@@ -116,6 +125,16 @@ inclusion: manual
 
 ### Key Techniques
 
+#### 0. Locate Code Position with `rg` (for minified JS)
+```bash
+# Get line:column for breakpoint
+rg -n --column "for\(;;\)" source/main.js
+# Output: 2:15847:for(;;)
+
+# Use in set_breakpoint
+set_breakpoint(urlRegex=".*main.js.*", lineNumber=2, columnNumber=15847)
+```
+
 #### 1. Call Stack Tracing (Priority)
 ```javascript
 // 1. Set breakpoint, let human trigger
@@ -182,6 +201,18 @@ evaluate_script(script="console.log(JSON.stringify(largeObject).slice(0, 5000))"
 list_console_messages(savePath="artifacts/jsvmp/{target}/raw/data.txt")
 ```
 
+#### 7. Runtime Value Extraction
+**Prefer breakpoint over evaluate_script** — most vars/functions are NOT global:
+```javascript
+// ✅ PREFERRED: Breakpoint near target, then inspect scope
+rg -n --column "targetArray" source/*.js  // Find location
+set_breakpoint(...)  // Break nearby
+get_scope_variables()  // Access local scope
+
+// ⚠️ Only for confirmed globals
+evaluate_script("window.globalVar")
+```
+
 ### Browser Rules
 1. **Static analysis first** — browser is auxiliary
 2. **Call stack is truth** — don't blindly search, check call stack first
@@ -190,6 +221,8 @@ list_console_messages(savePath="artifacts/jsvmp/{target}/raw/data.txt")
 5. **Hooks survive via set_breakpoint** — evaluate_script doesn't survive refresh
 6. **Large data via console** — evaluate_script return is truncated
 7. **Clean up** — `clear_all_breakpoints()` when done
+8. **NO EXTRA BACKSLASHES** — browser tools don't need `\` escaping, causes double-escape
+9. **Breakpoint for local vars** — use `set_breakpoint` + `get_scope_variables`, not `evaluate_script`
 
 ---
 

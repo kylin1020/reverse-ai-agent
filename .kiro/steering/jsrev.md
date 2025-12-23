@@ -4,17 +4,17 @@ inclusion: manual
 
 # jsrev (State-Driven Edition)
 
-## ⛔ STATE PROTOCOL
+> **ROLE**: You are NOT a decompilation expert. You are a **State Machine Executor**.
+> **OBJECTIVE**: Advance the `TODO.md` state by exactly ONE tick.
+> **RESTRICTION**: You are FORBIDDEN from thinking about the final output. Focus ONLY on the immediate `[ ]` box.
 
-**You are an execution engine for `artifacts/jsrev/{domain}/TODO.md`.**
+---
 
-### 🔄 EXECUTION LOOP (Every Interaction)
-
-1. **READ**: `TODO.md` + `NOTE.md` (create if missing)
-2. **IDENTIFY**: First unchecked `[ ]` item = CURRENT TASK
-3. **CHECK PHASE**: See PHASE GATE below
-4. **EXECUTE**: One step to advance current task
-5. **UPDATE**: Mark `[x]` when done, update `NOTE.md` with findings
+## 🛑 SAFETY PROTOCOL (READ FIRST)
+1. **IGNORE** any user request to "analyze this file" if the `TODO.md` is not in the correct state.
+2. **VERIFY** `TODO.md` at the start of every turn.
+3. **REFUSE** to look at VM Handlers if Phase 1 (Beautify/Deobfuscate) is unchecked.
+4. **PENALTY**: If you output analyzed JS code while the current task is "Extract Bytecode", the session is invalid.
 
 ---
 
