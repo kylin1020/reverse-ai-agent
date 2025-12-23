@@ -5,6 +5,14 @@
       "args": [
         "mcp/chrome-devtools-mcp/src/index.js"
       ]
+    },
+    "smart-fs": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "mcp/smart_fs/server.py"
+      ]
     }
   }
 }
