@@ -20,6 +20,11 @@ inclusion: manual
 
 ## ⛔ CRITICAL RULES
 
+### Code Reading
+**MUST use `read_code_robust` tool instead of `read_file` for all code files.**
+- Handles long lines intelligently (truncates with line numbers preserved)
+- Prevents context overflow from minified/beautified JS
+
 ### String Length Limits
 **NEVER output or read long strings from JS code:**
 - `evaluate_script` results: limit to 2000 chars (`.slice(0, 2000)`)

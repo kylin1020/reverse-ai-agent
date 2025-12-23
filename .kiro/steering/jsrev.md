@@ -360,6 +360,11 @@ replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
 
 ## ⛔ RULES
 
+### Code Reading
+**MUST use `read_code_robust` tool instead of `read_file` for all code files.**
+- Handles long lines intelligently (truncates with line numbers preserved)
+- Prevents context overflow from minified/beautified JS
+
 - **LOCAL FILES FIRST**: Always check `output/*_deobfuscated.js` and `source/*_beautified.js` before using browser
 - NEVER `read_file` on .js files — use `head`, `sg`, `rg`, or line-range
 - NEVER use `python -c` or `node -e` inline scripts — causes terminal hang
