@@ -253,7 +253,7 @@ get_scope_variables()
 ## 阶段 1: 代码预处理
 - [ ] 初始化工作区 (创建目录)
 - [ ] 🤖 浏览器侦察: 访问目标 URL, 捕获网络请求, 识别目标 API 和参数 → 更新 NOTE.md
-- [ ] 🤖 下载目标 JS 文件到 source/ → 更新 NOTE.md 文件列表
+- [ ] 🤖 下载所有可疑的 JS 文件和其他资源到 source/ (包括主要脚本、依赖库、静态资源等) → 更新 NOTE.md 文件列表
 - [ ] 🤖 检测混淆类型 → 更新 NOTE.md
 - [ ] 编写去混淆脚本 (Babel Visitor)
 - [ ] 应用去混淆: `apply_custom_transform` → output/*_deob.js

@@ -38,16 +38,12 @@ Usage: `apply_custom_transform(target_file="source.js", script_path="plugin.js")
 
 ## 3. Verify Deobfuscation Results
 
-After each transform, read 3 code segments to assess effectiveness:
+After each transform, sample 3 segments in parallel to assess effectiveness:
 
 ```
-# Head (lines 1-50)
+# Call these concurrently (head / middle / tail)
 read_code_smart(file_path="output.js", start_line=1, end_line=50)
-
-# Middle (e.g., lines 200-300 for 500-line file)
 read_code_smart(file_path="output.js", start_line=200, end_line=300)
-
-# Tail (last 50-100 lines)
 read_code_smart(file_path="output.js", start_line=450, end_line=500)
 ```
 
