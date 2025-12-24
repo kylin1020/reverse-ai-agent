@@ -20,7 +20,11 @@ inclusion: manual
 2. Check: Does it have 🤖 prefix?
    - YES → STOP. Call invokeSubAgent(). Do NOT proceed manually.
    - NO  → Execute the task yourself.
-3. After task completion → Update TODO.md [x] → STOP turn.
+3. After task completion:
+   a. Read NOTE.md → Check "待处理发现" section for new items
+   b. If new discoveries exist → Add corresponding tasks to TODO.md
+   c. Clear processed items from "待处理发现"
+   d. Update TODO.md [x] → STOP turn.
 ```
 
 ### 🚫 FORBIDDEN ACTIONS
@@ -119,29 +123,37 @@ For `.json`, `.txt`, `.py`, `.md`, `.asm`:
 ## 会话日志
 ### [YYYY-MM-DD HH:MM] 会话摘要
 **任务**: 正在处理什么
-**分析的文件**:
-- `source/main.js` (虚拟行 100-200) -> [Src L1:5000-6000]
-**发现**:
-- 在 `[Src L1:5050]` (虚拟行 120) 找到入口点
-**操作**:
-1. 搜索 `sign` -> 找到 3 个匹配
-2. 追踪 `_0xabc` -> 定义在第 50 行
-**下一步**: 去混淆字符串数组
+**发现**: ...
+**新增待办**: 🆕 需追踪参数 `x` / 🆕 需分析函数 `y`
+
+## 参数追踪
+| 参数名 | 生成函数 | 状态 |
+|--------|----------|------|
+| `sign` | (待分析) | 🔍 |
 
 ## 关键函数
 - `encryptFunc` — `source/main.js` @ `[Src L1:15000]`
-  - 用途: 签名 payload
-  - 参数: (payload, key)
 
-## 常量与密钥
-- API Key: `ABC...` — `source/main.js` @ `[Src L1:500]`
-
-## API 端点
-(待发现)
-
-## 混淆模式
-(待发现)
+## 待处理发现 (Pending Discoveries)
+> Main Agent: 转换为 TODO 任务后删除
+- [ ] 🆕 {description} @ [Src L:C] (来源: {task})
 ```
+
+---
+
+## 📊 DYNAMIC TODO PLANNING
+
+**TODO.md is a LIVING DOCUMENT — update it as analysis reveals new work items.**
+
+### Rule: After each `🤖` task completes
+1. Check NOTE.md "待处理发现" section
+2. Convert discoveries to new TODO tasks: `- [ ] 🤖 NEW: {task} (from: {source task})`
+3. Clear processed items from "待处理发现"
+
+### Common discoveries to add:
+- New param found → `- [ ] 🤖 Trace param: {name}`
+- New function found → `- [ ] 🤖 Analyze function: {name} @ [Src L:C]`
+- New endpoint found → `- [ ] 🤖 Analyze endpoint: {url}`
 
 ---
 
@@ -216,7 +228,7 @@ For `.json`, `.txt`, `.py`, `.md`, `.asm`:
 `curl` cannot:
 - Execute JavaScript (params are often dynamically generated)
 - Handle cookies/sessions properly
-- Capture XHR/Fetch requests
+- Capture requests
 - See the actual request parameters being sent
 
 **Correct Workflow:**
@@ -228,7 +240,6 @@ For `.json`, `.txt`, `.py`, `.md`, `.asm`:
 
 2. **🤖 Browser Recon** (Sub-Agent via `invokeSubAgent`):
    - Navigate to target URL in browser
-   - Open Network tab, filter by XHR/Fetch
    - Trigger the target action (search, login, etc.)
    - Identify:
      - Target API endpoint
@@ -302,32 +313,32 @@ uv run python repro.py
 
 ### Phase 5: Validation
 
-**⚠️ 验证是强制性的 — 绝不跳过此阶段**
+**⚠️ Validation is MANDATORY — NEVER skip this phase**
 
-1. **捕获参考值**: 子代理捕获一个已知输入/输出的真实请求
-2. **单元测试**: 使用相同输入生成签名 → 必须与参考值完全匹配
-3. **集成测试**: 发起实际 API 请求 → 必须返回 200 OK (或预期响应)
+1. **Capture Reference**: Sub-agent captures a real request with known input/output
+2. **Unit Test**: Generate signature with same input → must match reference exactly
+3. **Integration Test**: Make actual API request → must return 200 OK (or expected response)
 
-**失败处理:**
-- 单元测试失败: 算法理解错误 → 返回阶段 3 重新分析
-- 集成测试失败但单元测试通过: 缺少 headers/cookies/时间戳 → 调试请求
+**Failure Handling:**
+- Unit test fails: Algorithm misunderstanding → return to Phase 3 for re-analysis
+- Integration test fails but unit test passes: Missing headers/cookies/timestamp → debug request
 
 ### Phase 6: Verification Loop
 
-**此阶段通过迭代确保正确性:**
+**This phase ensures correctness through iteration:**
 
-1. 运行测试
-2. 通过? 
-   - 是 → 编写 README.md → 完成 ✅
-   - 否 → 调试: 哪里不同?
-     - 算法错误 → 阶段 3
-     - 实现错误 → 阶段 4
+1. Run tests
+2. Pass?
+   - Yes → Write README.md → Done ✅
+   - No → Debug: What's different?
+     - Algorithm error → Phase 3
+     - Implementation error → Phase 4
 
-**调试检查清单:**
-- [ ] 逐字节对比: 生成值 vs 期望值
-- [ ] 检查编码: UTF-8, URL 编码, Base64 填充
-- [ ] 检查字节序: 小端 vs 大端
-- [ ] 检查时间戳: 是否时间敏感?
+**Debug Checklist:**
+- [ ] Byte-by-byte comparison: generated value vs expected value
+- [ ] Check encoding: UTF-8, URL encoding, Base64 padding
+- [ ] Check byte order: little-endian vs big-endian
+- [ ] Check timestamp: is it time-sensitive?
 - [ ] 检查随机值: 是否有 nonce/salt?
 
 ---
@@ -443,23 +454,18 @@ You are a FOCUSED EXECUTOR. You must:
 - NOTE.md: artifacts/jsrev/{domain}/NOTE.md
 
 ## Instructions
-1. Read NOTE.md for existing context (if relevant to YOUR task)
-2. Execute ONLY the task stated above
-3. Write your findings to NOTE.md with:
-   - Source file paths
-   - [Src L:C] coordinates for code locations
-   - What you discovered
+1. Execute ONLY the task stated above
+2. Write findings to NOTE.md with [Src L:C] coordinates
+3. **FLAG NEW DISCOVERIES** in "待处理发现" section:
+   `- [ ] 🆕 {description} @ [Src L:C] (来源: {this task})`
 4. **STOP** — do not continue to other work
 
 ## 🚫 FORBIDDEN ACTIONS
-- Reading TODO.md (main agent handles task sequencing)
+- Reading TODO.md
 - Doing any task not explicitly stated above
-- Making suggestions about "next steps"
 - Continuing work after completing the assigned task
-- Modifying any files except NOTE.md (unless task explicitly requires it)
 
-## Output
-Write findings to NOTE.md, then STOP. Your job is done after this one task.
+Write findings to NOTE.md, then STOP.
 """,
   explanation="Delegate 🤖 task: {task summary}"
 )
@@ -500,6 +506,12 @@ Write findings to NOTE.md, then STOP. Your job is done after this one task.
 - [ ] If `🤖`: Am I calling `invokeSubAgent()`? (If not, STOP!)
 - [ ] If not `🤖`: Am I allowed to do this task myself?
 
+### After EVERY task completion, ask yourself:
+- [ ] Did I check NOTE.md for "待处理发现" section?
+- [ ] Did I convert pending discoveries to TODO.md tasks?
+- [ ] Did I clear processed items from "待处理发现"?
+- [ ] Did I mark the current task `[x]`?
+
 ### Code Reading
 **MUST use `read_code_smart` tool instead of `read_file` for all code files.**
 - Handles long lines intelligently (truncates with line numbers preserved)
@@ -507,6 +519,7 @@ Write findings to NOTE.md, then STOP. Your job is done after this one task.
 
 ### Absolute Rules
 - **🤖 = DELEGATE**: See `🤖`? Call `invokeSubAgent()`. Period.
+- **DYNAMIC PLANNING**: After each task, check for new discoveries and update TODO.md
 - **LOCAL FILES FIRST**: Always check `output/*_deob.js` before using browser
 - NEVER `read_file` on .js files — use `search_code_smart` or `read_code_smart`
 - NEVER use `python -c` or `node -e` inline scripts — causes terminal hang
