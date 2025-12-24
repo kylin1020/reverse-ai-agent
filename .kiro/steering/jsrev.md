@@ -141,7 +141,7 @@ For `.json`, `.txt`, `.py`, `.md`, `.asm`:
 
 ---
 
-## 📊 DYNAMIC TODO PLANNING
+## � DYNAMIC TODO PLANNING
 
 **TODO.md is a LIVING DOCUMENT — update it as analysis reveals new work items.**
 
@@ -157,7 +157,7 @@ For `.json`, `.txt`, `.py`, `.md`, `.asm`:
 
 ---
 
-## 🚨 PHASE GATE — STRICT ORDERING
+## �🚨 PHASE GATE — STRICT ORDERING
 
 **Before ANY action: "Is Phase 2 complete?"**
 
@@ -437,6 +437,9 @@ replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
 invokeSubAgent(
   name="general-task-execution",
   prompt="""
+## ⚠️ MANDATORY FIRST STEP
+Read `skills/sub_agent.md` — it contains critical tool usage rules you MUST follow.
+
 ## 🎯 YOUR SINGLE TASK (DO NOT DEVIATE)
 {exact task text from TODO.md}
 
@@ -454,14 +457,17 @@ You are a FOCUSED EXECUTOR. You must:
 - NOTE.md: artifacts/jsrev/{domain}/NOTE.md
 
 ## Instructions
-1. Execute ONLY the task stated above
-2. Write findings to NOTE.md with [Src L:C] coordinates
-3. **FLAG NEW DISCOVERIES** in "待处理发现" section:
+1. Read `skills/sub_agent.md` first (tool rules)
+2. Execute ONLY the task stated above
+3. Write findings to NOTE.md with [Src L:C] coordinates
+4. **FLAG NEW DISCOVERIES** in "待处理发现" section:
    `- [ ] 🆕 {description} @ [Src L:C] (来源: {this task})`
-4. **STOP** — do not continue to other work
+5. **STOP** — do not continue to other work
 
 ## 🚫 FORBIDDEN ACTIONS
 - Reading TODO.md
+- Using `read_file`/`cat`/`grep` on `.js` files (use Smart-FS tools)
+- Closing or navigating away from main browser page
 - Doing any task not explicitly stated above
 - Continuing work after completing the assigned task
 
