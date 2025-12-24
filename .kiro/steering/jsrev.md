@@ -397,25 +397,40 @@ replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
 invokeSubAgent(
   name="general-task-execution",
   prompt="""
-## Task
+## 🎯 YOUR SINGLE TASK (DO NOT DEVIATE)
 {exact task text from TODO.md}
+
+## ⛔ CRITICAL CONSTRAINTS
+You are a FOCUSED EXECUTOR. You must:
+1. **ONLY** complete the single task above — nothing more, nothing less
+2. **STOP IMMEDIATELY** after completing this one task
+3. **DO NOT** look at TODO.md or try to do other tasks
+4. **DO NOT** proceed to "next steps" or "continue with..."
+5. **DO NOT** make decisions about what to do next — that's the main agent's job
 
 ## Context
 - Domain: {domain}
 - Workspace: artifacts/jsrev/{domain}/
-- NOTE.md: artifacts/jsrev/{domain}/NOTE.md (read for prior findings, write your results)
+- NOTE.md: artifacts/jsrev/{domain}/NOTE.md
 
 ## Instructions
-1. Read NOTE.md first for any existing context
-2. Execute the task using appropriate tools
-3. Update NOTE.md with your findings, including:
+1. Read NOTE.md for existing context (if relevant to YOUR task)
+2. Execute ONLY the task stated above
+3. Write your findings to NOTE.md with:
    - Source file paths
-   - [Src L:C] coordinates for any code locations
+   - [Src L:C] coordinates for code locations
    - What you discovered
-4. Be thorough but concise
+4. **STOP** — do not continue to other work
+
+## 🚫 FORBIDDEN ACTIONS
+- Reading TODO.md (main agent handles task sequencing)
+- Doing any task not explicitly stated above
+- Making suggestions about "next steps"
+- Continuing work after completing the assigned task
+- Modifying any files except NOTE.md (unless task explicitly requires it)
 
 ## Output
-Write all findings to NOTE.md. Include [Src L:C] references for code locations.
+Write findings to NOTE.md, then STOP. Your job is done after this one task.
 """,
   explanation="Delegate 🤖 task: {task summary}"
 )
