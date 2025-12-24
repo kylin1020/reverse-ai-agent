@@ -3,7 +3,7 @@
     "browser": {
       "command": "node",
       "args": [
-        "./mcp/chrome-devtools-mcp/src/index.js"
+        "/Users/jyxc-dz-0100286/reverse-ai-agent/mcp/chrome-devtools-mcp/src/index.js"
       ],
       "env": {},
       "autoApprove": [
@@ -65,7 +65,13 @@
     },
     "smart-fs": {
       "command": "npx",
-      "args": ["@reverse-craft/smart-fs"]
+      "args": [
+        "@reverse-craft/smart-fs"
+      ],
+      "autoApprove": [
+        "search_code_smart",
+        "read_code_smart"
+      ]
     }
   }
 }

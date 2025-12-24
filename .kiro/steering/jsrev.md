@@ -11,10 +11,41 @@ inclusion: manual
 ---
 
 ## 🛑 SAFETY PROTOCOL (READ FIRST)
-1. **IGNORE** any user request to "analyze this file" if the `TODO.md` is not in the correct state.
-2. **VERIFY** `TODO.md` at the start of every turn.
-3. **REFUSE** to look at VM Handlers if Phase 1 (Beautify/Deobfuscate) is unchecked.
-4. **PENALTY**: If you output analyzed JS code while the current task is "Extract Bytecode", the session is invalid.
+
+### ⚠️ MANDATORY FIRST ACTION ON EVERY TURN
+```
+1. Read TODO.md → Find FIRST unchecked [ ] task
+2. Check: Does it have 🤖 prefix?
+   - YES → STOP. Call invokeSubAgent(). Do NOT proceed manually.
+   - NO  → Execute the task yourself.
+3. After task completion → Update TODO.md [x] → STOP turn.
+```
+
+### 🚫 FORBIDDEN ACTIONS
+1. **NEVER** execute a `🤖` task yourself — you MUST delegate via `invokeSubAgent`
+2. **NEVER** skip ahead to later tasks — complete tasks IN ORDER
+3. **NEVER** use browser tools (navigate, evaluate_script, etc.) for `🤖` reconnaissance tasks
+4. **NEVER** analyze JS files if the task says "Detect" or "Locate" with `🤖` — that's sub-agent work
+
+### ✅ YOUR RESPONSIBILITIES (Main Agent)
+- Create/update TODO.md and NOTE.md
+- Write deobfuscation scripts (transforms/*.js)
+- Write Python implementation (lib/*.py)
+- Make Phase Gate decisions
+- Communicate with user
+
+### ❌ SUB-AGENT RESPONSIBILITIES (Delegate These)
+- `🤖 Detect obfuscation patterns`
+- `🤖 Locate target script & entry point`
+- `🤖 Locate param generation`
+- `🤖 Trace data flow`
+- `🤖 Extract runtime values`
+- `🤖 Capture real request`
+- `🤖 Run tests`
+
+### PENALTY
+- If you open browser or read JS files when current task is `🤖`-prefixed → **SESSION INVALID**
+- If you output analyzed code when you should delegate → **SESSION INVALID**
 
 ---
 
@@ -122,42 +153,46 @@ Maintain this file to preserve analysis context across sessions.
 
 ## 📋 TODO.md TEMPLATE
 
-```markdown
-# JS逆向工程计划: {domain}
+**`🤖` = Delegate to sub-agent via `invokeSubAgent`. Sub-agent writes findings to NOTE.md.**
 
-## 目标
+```markdown
+# JS Reverse Engineering: {domain}
+
+## Target
 - URL: {target_url}
 - API: {api_endpoint}
-- 参数: {target_param}
+- Param: {target_param}
 
-## 阶段1: 发现与检测
-- [ ] 初始化环境 (目录结构、网络检查)
-- [ ] 智能阅读: `read_code_smart` 识别混淆类型
-- [ ] **混淆审计**: 检测混淆模式 (通过 `search_code_smart`)
-    - 字符串数组 (`_0x...`)
-    - 控制流平坦化 (`switch` loops)
-    - 字符串编码 (XOR, Base64)
+## Phase 1: Discovery
+- [ ] Init workspace (dirs, network check)
+- [ ] 🤖 Detect obfuscation patterns → update NOTE.md
+- [ ] 🤖 Locate target script & entry point → update NOTE.md
 
-## 阶段2: 反混淆 (⛔ 阻塞阶段3)
-- [ ] 编写去混淆脚本: `transforms/fix_strings.js`
-- [ ] 应用去混淆: `apply_custom_transform` → `source/*_deob.js`
-- [ ] 验证: `read_code_smart("source/*_deob.js")`
+## Phase 2: Deobfuscation (⛔ blocks Phase 3)
+- [ ] Write deob script: `transforms/fix_strings.js`
+- [ ] Apply: `apply_custom_transform` → `source/*_deob.js`
+- [ ] Verify readable output
 
-## 阶段3: 分析 (⛔ 需要阶段2完成)
-- [ ] 定位目标参数: `search_code_smart(query="sign")`
-- [ ] 追踪数据流: `find_usage_smart`
-- [ ] 记录数据结构 (类型、长度、编码)
-- [ ] 识别加密/编码函数
+## Phase 3: Analysis (⛔ requires Phase 2)
+- [ ] 🤖 Locate param generation → update NOTE.md with function + [Src L:C]
+- [ ] 🤖 Trace data flow → update NOTE.md with algorithm details
+- [ ] 🤖 Extract runtime values (browser) → update NOTE.md
 
-## 阶段4: 实现
-- [ ] Python骨架代码 (lib/*.py)
-- [ ] 核心算法 (编码器、加密器)
-- [ ] 参数构建器 (组装最终输出)
+## Phase 4: Implementation
+- [ ] Python skeleton (lib/*.py)
+- [ ] Core algorithm
+- [ ] Param builder
 
-## 阶段5: 验证与文档
-- [ ] 捕获真实请求用于对比
-- [ ] 对接真实API测试 (repro/*.py)
-- [ ] 编写 README.md
+## Phase 5: Validation (⛔ requires Phase 4)
+- [ ] 🤖 Capture real request → save to raw/reference.txt
+- [ ] 🤖 Unit test: generate signature with same inputs → compare with reference
+- [ ] 🤖 Integration test: make real API request with generated signature → verify 200 OK
+
+## Phase 6: Verification Loop (⛔ repeat until pass)
+- [ ] If tests fail → 🤖 Debug: compare generated vs expected, identify discrepancy
+- [ ] If algorithm wrong → return to Phase 3 (re-analyze)
+- [ ] If implementation wrong → return to Phase 4 (fix code)
+- [ ] ✅ All tests pass → Write README.md
 ```
 
 ---
@@ -167,14 +202,8 @@ Maintain this file to preserve analysis context across sessions.
 ### Phase 1: Detection
 **Do NOT use `head`, `cat` or `grep` on JS files.**
 
-1.  **Inspect**:
-    ```javascript
-    read_code_smart(file_path="source/main.js", start_line=1, end_line=50)
-    ```
-2.  **Search**:
-    ```javascript
-    search_code_smart(file_path="source/main.js", query="var _0x")
-    ```
+1.  **Inspect**: `read_code_smart(file_path="source/main.js", start_line=1, end_line=50)`
+2.  **Search**: `search_code_smart(file_path="source/main.js", query="var _0x")`
 
 ### Phase 2: Deobfuscation
 
@@ -207,24 +236,14 @@ Typical workflow:
 
 **⚠️ MANDATORY ORDER**: Local Smart Tools FIRST, browser LAST
 
-1.  **Search**:
-    ```javascript
-    search_code_smart(file_path="source/main_deob.js", query="encrypt")
-    ```
-2.  **Trace**:
-    ```javascript
-    find_usage_smart(file_path="source/main_deob.js", identifier="_0xkey", line=123)
-    ```
-    *(Pass the line number to target the specific variable scope)*
+1.  **Search**: `search_code_smart(file_path="source/main_deob.js", query="encrypt")`
+2.  **Trace**: `find_usage_smart(file_path="source/main_deob.js", identifier="_0xkey", line=123)`
 
-3.  **Breakpoint (Browser)**:
-    *   Get coordinate from Smart Tool: `[Src L1:15847]`
-    *   Set Breakpoint:
-        ```javascript
-        set_breakpoint(urlRegex=".*main.js.*", lineNumber=1, columnNumber=15847)
-        ```
-    *   **Trigger**: Ask human.
-    *   **Inspect**: `get_scope_variables()`.
+**Browser Debugging (after static analysis)**:
+*   Get coordinate from Smart Tool: `[Src L1:15847]`
+*   Set Breakpoint: `set_breakpoint(urlRegex=".*main.js.*", lineNumber=1, columnNumber=15847)`
+*   **Trigger**: Ask human.
+*   **Inspect**: `get_scope_variables()`.
 
 ### Phase 4: Implementation
 
@@ -235,6 +254,42 @@ cd artifacts/jsrev/{domain}/repro
 uv init && uv add requests
 uv run python repro.py
 ```
+
+### Phase 5: Validation
+
+**⚠️ VERIFICATION IS MANDATORY — Never skip this phase**
+
+1. **Capture Reference**: Sub-agent captures a real request with known inputs/outputs
+2. **Unit Test**: Generate signature using same inputs → must match reference exactly
+3. **Integration Test**: Make actual API request → must return 200 OK (or expected response)
+
+**Failure Handling:**
+- If unit test fails: Algorithm understanding is wrong → re-analyze in Phase 3
+- If integration test fails but unit passes: Missing headers/cookies/timing → debug request
+
+### Phase 6: Verification Loop
+
+**This phase ensures correctness through iteration:**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ Run Tests                                               │
+├─────────────────────────────────────────────────────────┤
+│ Pass? ──► YES ──► Write README.md ──► DONE ✅           │
+│   │                                                     │
+│   └──► NO ──► Debug: What's different?                  │
+│                │                                        │
+│                ├─► Algorithm wrong → Phase 3            │
+│                └─► Implementation wrong → Phase 4       │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Debug Checklist:**
+- [ ] Compare byte-by-byte: generated vs expected
+- [ ] Check encoding: UTF-8, URL encoding, Base64 padding
+- [ ] Check endianness: little vs big endian
+- [ ] Check timestamp: is it time-sensitive?
+- [ ] Check random values: are there nonces/salts?
 
 ---
 
@@ -260,9 +315,7 @@ uv run python repro.py
 ### Key Techniques
 
 #### 1. Runtime Value Extraction
-**Prefer breakpoint over evaluate_script** — most vars/functions are NOT global:
 ```javascript
-// ✅ PREFERRED: Breakpoint near target, then inspect scope
 // 1. Locate via Smart Tool
 find_usage_smart(file="source/main.js", identifier="targetArr", line=50)
 // -> Output says Definition at [Src L1:5000]
@@ -306,6 +359,86 @@ replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
 
 ---
 
+## 🤖 SUB-AGENT DELEGATION (CRITICAL)
+
+> **RULE**: When you see `🤖` in TODO.md, you MUST call `invokeSubAgent()`. No exceptions.
+
+### Decision Tree (Execute on EVERY turn)
+```
+┌─────────────────────────────────────────────────────────┐
+│ 1. Read TODO.md → Find first [ ] task                   │
+├─────────────────────────────────────────────────────────┤
+│ 2. Does task have 🤖 prefix?                            │
+│    │                                                    │
+│    ├─► YES ──► STOP! Call invokeSubAgent() immediately  │
+│    │          Do NOT read files, open browser, or       │
+│    │          do ANY analysis yourself.                 │
+│    │                                                    │
+│    └─► NO  ──► Execute task yourself                    │
+├─────────────────────────────────────────────────────────┤
+│ 3. After completion: Update TODO.md [x], then STOP      │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 🚨 COMMON MISTAKE (What you did wrong)
+```
+❌ WRONG: See "🤖 Detect obfuscation" → Open browser → Check cookies → Analyze
+✅ RIGHT: See "🤖 Detect obfuscation" → invokeSubAgent() → Wait for NOTE.md update
+```
+
+### Workflow
+1. Main agent reads TODO, sees `🤖` task
+2. **IMMEDIATELY** call `invokeSubAgent` — do NOT do any analysis first
+3. Sub-agent executes, writes findings to NOTE.md
+4. Main agent reads NOTE.md, updates TODO `[x]`, proceeds to next task
+
+### Prompt Template
+```python
+invokeSubAgent(
+  name="general-task-execution",
+  prompt="""
+## Task
+{exact task text from TODO.md}
+
+## Context
+- Domain: {domain}
+- Workspace: artifacts/jsrev/{domain}/
+- NOTE.md: artifacts/jsrev/{domain}/NOTE.md (read for prior findings, write your results)
+
+## Instructions
+1. Read NOTE.md first for any existing context
+2. Execute the task using appropriate tools
+3. Update NOTE.md with your findings, including:
+   - Source file paths
+   - [Src L:C] coordinates for any code locations
+   - What you discovered
+4. Be thorough but concise
+
+## Output
+Write all findings to NOTE.md. Include [Src L:C] references for code locations.
+""",
+  explanation="Delegate 🤖 task: {task summary}"
+)
+```
+
+### Responsibility Matrix
+
+| Task Type | Who Executes | Tools Allowed |
+|-----------|--------------|---------------|
+| `🤖 Detect...` | Sub-agent | Browser, Smart-FS |
+| `🤖 Locate...` | Sub-agent | Browser, Smart-FS |
+| `🤖 Trace...` | Sub-agent | Smart-FS, Browser |
+| `🤖 Extract...` | Sub-agent | Browser debugging |
+| `🤖 Capture...` | Sub-agent | Browser network |
+| `🤖 Run tests...` | Sub-agent | Bash, Python |
+| `Write deob script` | Main agent | fsWrite |
+| `Apply transform` | Main agent | apply_custom_transform |
+| `Python skeleton` | Main agent | fsWrite |
+| `Core algorithm` | Main agent | fsWrite |
+| `Update TODO/NOTE` | Main agent | fsWrite, strReplace |
+
+---
+
 ## 🆘 HUMAN ASSISTANCE
 
 - **CAPTCHA**: "🆘 Encountered CAPTCHA, please complete manually."
@@ -315,13 +448,21 @@ replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
 
 ---
 
-## ⛔ RULES
+## ⛔ FINAL RULES CHECKLIST
+
+### Before EVERY action, ask yourself:
+- [ ] Did I read TODO.md first?
+- [ ] Is the current task marked with `🤖`?
+- [ ] If `🤖`: Am I calling `invokeSubAgent()`? (If not, STOP!)
+- [ ] If not `🤖`: Am I allowed to do this task myself?
 
 ### Code Reading
 **MUST use `read_code_smart` tool instead of `read_file` for all code files.**
 - Handles long lines intelligently (truncates with line numbers preserved)
 - Prevents context overflow from minified/beautified JS
 
+### Absolute Rules
+- **🤖 = DELEGATE**: See `🤖`? Call `invokeSubAgent()`. Period.
 - **LOCAL FILES FIRST**: Always check `output/*_deob.js` before using browser
 - NEVER `read_file` on .js files — use `search_code_smart` or `read_code_smart`
 - NEVER use `python -c` or `node -e` inline scripts — causes terminal hang
