@@ -402,17 +402,26 @@ get_scope_variables()
    - NO → Execute task yourself
 3. After completion: Update TODO.md `[x]`, then STOP
 
-### 🚨 COMMON MISTAKE (What you did wrong)
+### 🚨 COMMON MISTAKE
 ```
-❌ WRONG: See "🤖 定位 VM dispatcher" → Open browser → Analyze code → Find dispatcher
-✅ RIGHT: See "🤖 定位 VM dispatcher" → invokeSubAgent() → Wait for NOTE.md update
+❌ WRONG: See "🤖 定位 VM dispatcher" → Open browser → Analyze yourself
+✅ RIGHT: See "🤖 定位 VM dispatcher" → invokeSubAgent() → Wait for NOTE.md
+```
+
+### 🚀 PARALLEL EXECUTION
+
+**`invokeSubAgent` supports MULTIPLE CONCURRENT CALLS!**
+
+Scan ALL unchecked `🤖` tasks → If no data dependency → Invoke ALL in ONE turn:
+```
+✅ PARALLEL: 提取字节码 + 提取常量数组 (independent)
+❌ SEQUENTIAL: 定位 dispatcher → 提取 handler (handler needs dispatcher)
 ```
 
 ### Workflow
-1. Main agent reads TODO, sees `🤖` task
-2. **IMMEDIATELY** call `invokeSubAgent` — do NOT do any analysis first
-3. Sub-agent executes, writes findings to NOTE.md
-4. Main agent reads NOTE.md, updates TODO `[x]`, proceeds to next task
+1. Read TODO → Find ALL unchecked `🤖` tasks
+2. Identify independent tasks → **Batch invoke** in ONE turn
+3. Wait for all → Read NOTE.md → Update all `[x]`
 
 ### Prompt Template
 ```python
