@@ -4,6 +4,8 @@ inclusion: manual
 
 # jsrev (State-Driven Edition)
 
+> **⚠️ RULE #1: 对于 `.js` 文件，永远不要使用 `read_file/readFile` 工具、`cat`、`head`、`tail`、`grep` 或 `rg`。必须使用 `read_code_smart`、`search_code_smart`、`find_usage_smart` 等 Smart-FS 工具。**
+
 > **ROLE**: You are NOT a decompilation expert. You are a **State Machine Executor**.
 > **OBJECTIVE**: Advance the `TODO.md` state by exactly ONE tick.
 > **RESTRICTION**: You are FORBIDDEN from thinking about the final output. Focus ONLY on the immediate `[ ]` box.
@@ -52,7 +54,7 @@ inclusion: manual
 ## ⛔ CRITICAL RULES
 
 ### 1. Smart Code Access (JS Files Only)
-**NEVER use `read_file`, `cat`, `head`, `tail`, `grep`, or `rg` on `.js` files.**
+**NEVER use `read_file/readFile` tool, `cat`, `head`, `tail`, `grep`, or `rg` on `.js` files.**
 - **Read**: Use `read_code_smart`. It auto-beautifies and maps lines to the ORIGINAL source (X-Ray Mode).
 - **Search**: Use `search_code_smart`. It supports Regex and returns Original Line Numbers (`[Src L:C]`).
 - **Trace**: Use `find_usage_smart`. It finds variable Definitions & References using AST analysis.
@@ -97,42 +99,48 @@ For `.json`, `.txt`, `.py`, `.md`, `.asm`:
 
 ---
 
-## 📝 NOTE.md — Analysis Memory
+## 📝 NOTE.md — 分析记忆
 
-**Path**: `artifacts/jsrev/{domain}/NOTE.md`
+**路径**: `artifacts/jsrev/{domain}/NOTE.md`
 
-Maintain this file to preserve analysis context across sessions.
+维护此文件以在会话间保留分析上下文。
 
-### ⚠️ MANDATORY: File & Action Tracking
+### ⚠️ 强制要求: 文件与操作追踪
 
-**Every NOTE.md entry MUST include:**
-1. **Source file path** — where the function/data was found
-2. **Original Line numbers (`[Src L:C]`)** — exact location in file
-3. **Action taken** — what you did to discover this
-4. **Session timestamp** — when this was discovered
+**每个 NOTE.md 条目必须包含:**
+1. **源文件路径** — 函数/数据在哪里找到的
+2. **原始行号 (`[Src L:C]`)** — 文件中的精确位置
+3. **执行的操作** — 你做了什么来发现这个
+4. **会话时间戳** — 何时发现的
 
-### Required Sections
+### 必需章节
 
 ```markdown
-## Session Log
-### [YYYY-MM-DD HH:MM] Session Summary
-**Task**: What was being worked on
-**Files Analyzed**:
-- `source/main.js` (Virtual Lines 100-200) -> [Src L1:5000-6000]
-**Findings**:
-- Found entry point at `[Src L1:5050]` (Virtual Line 120)
-**Actions**:
-1. Search `sign` -> Found 3 matches
-2. Trace `_0xabc` -> Defined at Line 50
-**Next**: Deobfuscate string array
+## 会话日志
+### [YYYY-MM-DD HH:MM] 会话摘要
+**任务**: 正在处理什么
+**分析的文件**:
+- `source/main.js` (虚拟行 100-200) -> [Src L1:5000-6000]
+**发现**:
+- 在 `[Src L1:5050]` (虚拟行 120) 找到入口点
+**操作**:
+1. 搜索 `sign` -> 找到 3 个匹配
+2. 追踪 `_0xabc` -> 定义在第 50 行
+**下一步**: 去混淆字符串数组
 
-## Key Functions
+## 关键函数
 - `encryptFunc` — `source/main.js` @ `[Src L1:15000]`
-  - Purpose: Signs the payload
-  - Params: (payload, key)
+  - 用途: 签名 payload
+  - 参数: (payload, key)
 
-## Constants & Keys
+## 常量与密钥
 - API Key: `ABC...` — `source/main.js` @ `[Src L1:500]`
+
+## API 端点
+(待发现)
+
+## 混淆模式
+(待发现)
 ```
 
 ---
@@ -151,59 +159,96 @@ Maintain this file to preserve analysis context across sessions.
 
 ---
 
-## 📋 TODO.md TEMPLATE
+## 📋 TODO.md 模板
 
-**`🤖` = Delegate to sub-agent via `invokeSubAgent`. Sub-agent writes findings to NOTE.md.**
+**`🤖` = 委托给子代理执行 (`invokeSubAgent`)。子代理将发现写入 NOTE.md。**
 
 ```markdown
-# JS Reverse Engineering: {domain}
+# JS 逆向工程: {domain}
 
-## Target
+## 目标
 - URL: {target_url}
-- API: {api_endpoint}
-- Param: {target_param}
+- API: (待浏览器侦察发现)
+- 参数: (待浏览器侦察发现)
 
-## Phase 1: Discovery
-- [ ] Init workspace (dirs, network check)
-- [ ] 🤖 Detect obfuscation patterns → update NOTE.md
-- [ ] 🤖 Locate target script & entry point → update NOTE.md
+## 阶段 1: 侦察发现
+- [ ] 初始化工作区 (创建目录)
+- [ ] 🤖 浏览器侦察: 访问目标 URL, 捕获网络请求, 识别目标 API 和参数 → 更新 NOTE.md
+- [ ] 🤖 下载目标 JS 文件到 source/ → 更新 NOTE.md 文件列表
+- [ ] 🤖 检测混淆模式 → 更新 NOTE.md
+- [ ] 🤖 定位目标脚本和入口点 → 更新 NOTE.md
 
-## Phase 2: Deobfuscation (⛔ blocks Phase 3)
-- [ ] Write deob script: `transforms/fix_strings.js`
-- [ ] Apply: `apply_custom_transform` → `source/*_deob.js`
-- [ ] Verify readable output
+## 阶段 2: 去混淆 (⛔ 阻塞阶段 3)
+- [ ] 编写去混淆脚本: `transforms/fix_strings.js`
+- [ ] 应用: `apply_custom_transform` → `source/*_deob.js`
+- [ ] 验证输出可读性
 
-## Phase 3: Analysis (⛔ requires Phase 2)
-- [ ] 🤖 Locate param generation → update NOTE.md with function + [Src L:C]
-- [ ] 🤖 Trace data flow → update NOTE.md with algorithm details
-- [ ] 🤖 Extract runtime values (browser) → update NOTE.md
+## 阶段 3: 分析 (⛔ 需完成阶段 2)
+- [ ] 🤖 定位参数生成函数 → 更新 NOTE.md (函数 + [Src L:C])
+- [ ] 🤖 追踪数据流 → 更新 NOTE.md (算法细节)
+- [ ] 🤖 提取运行时值 (浏览器) → 更新 NOTE.md
 
-## Phase 4: Implementation
-- [ ] Python skeleton (lib/*.py)
-- [ ] Core algorithm
-- [ ] Param builder
+## 阶段 4: 实现
+- [ ] Python 骨架 (lib/*.py)
+- [ ] 核心算法
+- [ ] 参数构建器
 
-## Phase 5: Validation (⛔ requires Phase 4)
-- [ ] 🤖 Capture real request → save to raw/reference.txt
-- [ ] 🤖 Unit test: generate signature with same inputs → compare with reference
-- [ ] 🤖 Integration test: make real API request with generated signature → verify 200 OK
+## 阶段 5: 验证 (⛔ 需完成阶段 4)
+- [ ] 🤖 捕获真实请求 → 保存到 raw/reference.txt
+- [ ] 🤖 单元测试: 使用相同输入生成签名 → 与参考值对比
+- [ ] 🤖 集成测试: 使用生成的签名发起真实 API 请求 → 验证 200 OK
 
-## Phase 6: Verification Loop (⛔ repeat until pass)
-- [ ] If tests fail → 🤖 Debug: compare generated vs expected, identify discrepancy
-- [ ] If algorithm wrong → return to Phase 3 (re-analyze)
-- [ ] If implementation wrong → return to Phase 4 (fix code)
-- [ ] ✅ All tests pass → Write README.md
+## 阶段 6: 验证循环 (⛔ 重复直到通过)
+- [ ] 测试失败 → 🤖 调试: 对比生成值与期望值, 定位差异
+- [ ] 算法错误 → 返回阶段 3 (重新分析)
+- [ ] 实现错误 → 返回阶段 4 (修复代码)
+- [ ] ✅ 所有测试通过 → 编写 README.md
 ```
 
 ---
 
 ## PHASE GUIDES
 
-### Phase 1: Detection
-**Do NOT use `head`, `cat` or `grep` on JS files.**
+### Phase 1: Discovery
 
-1.  **Inspect**: `read_code_smart(file_path="source/main.js", start_line=1, end_line=50)`
-2.  **Search**: `search_code_smart(file_path="source/main.js", query="var _0x")`
+**⚠️ CRITICAL: Use BROWSER for initial reconnaissance, NOT curl!**
+
+`curl` cannot:
+- Execute JavaScript (params are often dynamically generated)
+- Handle cookies/sessions properly
+- Capture XHR/Fetch requests
+- See the actual request parameters being sent
+
+**Correct Workflow:**
+
+1. **Init Workspace** (Main Agent):
+   ```bash
+   mkdir -p artifacts/jsrev/{domain}/{source,transforms,output,raw,lib,repro}
+   ```
+
+2. **🤖 Browser Recon** (Sub-Agent via `invokeSubAgent`):
+   - Navigate to target URL in browser
+   - Open Network tab, filter by XHR/Fetch
+   - Trigger the target action (search, login, etc.)
+   - Identify:
+     - Target API endpoint
+     - Request method (GET/POST)
+     - Headers (especially custom ones)
+     - Request body/params (which ones look encrypted/signed?)
+   - Save findings to NOTE.md
+
+3. **🤖 Download JS Files** (Sub-Agent):
+   - From Network tab, identify JS files loaded
+   - Download relevant ones to `source/` directory
+   - Note: Look for files containing the param generation logic
+
+4. **🤖 Detect Obfuscation** (Sub-Agent):
+   - Use `read_code_smart` on downloaded files
+   - Identify obfuscation patterns (string arrays, control flow, etc.)
+
+**Do NOT use `head`, `cat` or `grep` on JS files.**
+- **Inspect**: `read_code_smart(file_path="source/main.js", start_line=1, end_line=50)`
+- **Search**: `search_code_smart(file_path="source/main.js", query="var _0x")`
 
 ### Phase 2: Deobfuscation
 
@@ -257,39 +302,39 @@ uv run python repro.py
 
 ### Phase 5: Validation
 
-**⚠️ VERIFICATION IS MANDATORY — Never skip this phase**
+**⚠️ 验证是强制性的 — 绝不跳过此阶段**
 
-1. **Capture Reference**: Sub-agent captures a real request with known inputs/outputs
-2. **Unit Test**: Generate signature using same inputs → must match reference exactly
-3. **Integration Test**: Make actual API request → must return 200 OK (or expected response)
+1. **捕获参考值**: 子代理捕获一个已知输入/输出的真实请求
+2. **单元测试**: 使用相同输入生成签名 → 必须与参考值完全匹配
+3. **集成测试**: 发起实际 API 请求 → 必须返回 200 OK (或预期响应)
 
-**Failure Handling:**
-- If unit test fails: Algorithm understanding is wrong → re-analyze in Phase 3
-- If integration test fails but unit passes: Missing headers/cookies/timing → debug request
+**失败处理:**
+- 单元测试失败: 算法理解错误 → 返回阶段 3 重新分析
+- 集成测试失败但单元测试通过: 缺少 headers/cookies/时间戳 → 调试请求
 
 ### Phase 6: Verification Loop
 
-**This phase ensures correctness through iteration:**
+**此阶段通过迭代确保正确性:**
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ Run Tests                                               │
+│ 运行测试                                                │
 ├─────────────────────────────────────────────────────────┤
-│ Pass? ──► YES ──► Write README.md ──► DONE ✅           │
+│ 通过? ──► 是 ──► 编写 README.md ──► 完成 ✅             │
 │   │                                                     │
-│   └──► NO ──► Debug: What's different?                  │
+│   └──► 否 ──► 调试: 哪里不同?                           │
 │                │                                        │
-│                ├─► Algorithm wrong → Phase 3            │
-│                └─► Implementation wrong → Phase 4       │
+│                ├─► 算法错误 → 阶段 3                     │
+│                └─► 实现错误 → 阶段 4                     │
 └─────────────────────────────────────────────────────────┘
 ```
 
-**Debug Checklist:**
-- [ ] Compare byte-by-byte: generated vs expected
-- [ ] Check encoding: UTF-8, URL encoding, Base64 padding
-- [ ] Check endianness: little vs big endian
-- [ ] Check timestamp: is it time-sensitive?
-- [ ] Check random values: are there nonces/salts?
+**调试检查清单:**
+- [ ] 逐字节对比: 生成值 vs 期望值
+- [ ] 检查编码: UTF-8, URL 编码, Base64 填充
+- [ ] 检查字节序: 小端 vs 大端
+- [ ] 检查时间戳: 是否时间敏感?
+- [ ] 检查随机值: 是否有 nonce/salt?
 
 ---
 

@@ -4,6 +4,8 @@ inclusion: manual
 
 # JSVMP Decompilation (State-Driven)
 
+> **⚠️ RULE #1: 对于 `.js` 文件，永远不要使用 `read_file/readFile` 工具、`cat`、`head`、`tail`、`grep` 或 `rg`。必须使用 `read_code_smart`、`search_code_smart`、`find_usage_smart` 等 Smart-FS 工具。**
+
 > **ROLE**: You are NOT a decompilation expert. You are a **State Machine Executor**.
 > **OBJECTIVE**: Advance the `TODO.md` state by exactly ONE tick.
 > **RESTRICTION**: You are FORBIDDEN from thinking about the final output. Focus ONLY on the immediate `[ ]` box.
@@ -111,28 +113,42 @@ For `.json`, `.txt`, `.asm`, `.md`:
 
 ---
 
-## 📝 NOTE.md Template
+## 📝 NOTE.md 模板
 
-**Path**: `artifacts/jsvmp/{target}/NOTE.md`
+**路径**: `artifacts/jsvmp/{target}/NOTE.md`
 
 ```markdown
-## Session Log
-### [YYYY-MM-DD HH:MM] Session Summary
-**Task**: Current Task
-**Files**: `source/main.js` (Virtual Lines 10-20)
-**Findings**:
-- Found dispatcher at `[Src L1:5024]` (Virtual Line 15)
-- Variable `_0x123` is the VM Stack.
+## 会话日志
+### [YYYY-MM-DD HH:MM] 会话摘要
+**任务**: 当前任务
+**文件**: `source/main.js` (虚拟行 10-20)
+**发现**:
+- 在 `[Src L1:5024]` (虚拟行 15) 找到 dispatcher
+- 变量 `_0x123` 是 VM 栈
 
-## File Index
-| File | Type | Status |
-|------|------|--------|
-| `source/main.js` | Raw (Virtual View) | ✅ |
-| `source/main_deob.js` | Deobfuscated | ⏳ |
+## 文件索引
+| 文件 | 类型 | 状态 |
+|------|------|------|
+| `source/main.js` | 原始 (虚拟视图) | ✅ |
+| `source/main_deob.js` | 去混淆后 | ⏳ |
 
-## VM Structure
-- Bytecode: `source/main.js` @ [Src L1:10500]
-...
+## VM 结构
+- 字节码: `source/main.js` @ [Src L1:10500]
+- Dispatcher: (待发现)
+- Handler 表: (待发现)
+- 常量数组: (待发现)
+
+## 关键函数
+(待发现)
+
+## 常量与密钥
+(待发现)
+
+## API 端点
+(待发现)
+
+## 混淆模式
+(待发现)
 ```
 
 ---
@@ -213,29 +229,31 @@ get_scope_variables()
 
 ---
 
-## 📋 TODO.md TEMPLATE
+## 📋 TODO.md 模板
 
-**`🤖` = Delegate to sub-agent via `invokeSubAgent`. Sub-agent writes findings to NOTE.md.**
+**`🤖` = 委托给子代理执行 (`invokeSubAgent`)。子代理将发现写入 NOTE.md。**
 
 ```markdown
 # JSVMP 反编译计划: {target}
 
-## Target
+## 目标
 - URL: {target_url}
-- API: {api_endpoint}
-- Param: {target_param}
+- API: (待浏览器侦察发现)
+- 参数: (待浏览器侦察发现)
 
 ## 阶段 1: 代码预处理
-- [ ] 下载脚本到 source/
-- [ ] 🤖 检测混淆类型 → update NOTE.md
+- [ ] 初始化工作区 (创建目录)
+- [ ] 🤖 浏览器侦察: 访问目标 URL, 捕获网络请求, 识别目标 API 和参数 → 更新 NOTE.md
+- [ ] 🤖 下载目标 JS 文件到 source/ → 更新 NOTE.md 文件列表
+- [ ] 🤖 检测混淆类型 → 更新 NOTE.md
 - [ ] 编写去混淆脚本 (Babel Visitor)
 - [ ] 应用去混淆: `apply_custom_transform` → output/*_deob.js
 
 ## 阶段 2: VM 数据提取 (⛔ 需完成阶段 1)
-- [ ] 🤖 定位 VM dispatcher → update NOTE.md with [Src L:C]
-- [ ] 🤖 提取字节码 → save to raw/bytecode.json
-- [ ] 🤖 提取常量数组 → save to raw/constants.json
-- [ ] 🤖 提取 handler 函数 → update NOTE.md
+- [ ] 🤖 定位 VM dispatcher → 更新 NOTE.md ([Src L:C])
+- [ ] 🤖 提取字节码 → 保存到 raw/bytecode.json
+- [ ] 🤖 提取常量数组 → 保存到 raw/constants.json
+- [ ] 🤖 提取 handler 函数 → 更新 NOTE.md
 
 ## 阶段 3: 反汇编 (⛔ 需完成阶段 2)
 - [ ] 分析 opcode 格式
@@ -254,20 +272,20 @@ get_scope_variables()
 - [ ] 生成可读 JS: output/*_decompiled.js
 
 ## 阶段 7: 实现 (⛔ 需完成阶段 6)
-- [ ] Python skeleton (lib/*.py)
-- [ ] Core algorithm
-- [ ] Param builder
+- [ ] Python 骨架 (lib/*.py)
+- [ ] 核心算法
+- [ ] 参数构建器
 
 ## 阶段 8: 验证 (⛔ 需完成阶段 7)
-- [ ] 🤖 Capture real request → save to raw/reference.txt
-- [ ] 🤖 Unit test: generate signature with same inputs → compare with reference
-- [ ] 🤖 Integration test: make real API request with generated signature → verify 200 OK
+- [ ] 🤖 捕获真实请求 → 保存到 raw/reference.txt
+- [ ] 🤖 单元测试: 使用相同输入生成签名 → 与参考值对比
+- [ ] 🤖 集成测试: 使用生成的签名发起真实 API 请求 → 验证 200 OK
 
-## 阶段 9: 验证循环 (⛔ repeat until pass)
-- [ ] If tests fail → 🤖 Debug: compare generated vs expected, identify discrepancy
-- [ ] If algorithm wrong → return to 阶段 3 (re-analyze)
-- [ ] If implementation wrong → return to 阶段 7 (fix code)
-- [ ] ✅ All tests pass → Write README.md
+## 阶段 9: 验证循环 (⛔ 重复直到通过)
+- [ ] 测试失败 → 🤖 调试: 对比生成值与期望值, 定位差异
+- [ ] 算法错误 → 返回阶段 3 (重新分析)
+- [ ] 实现错误 → 返回阶段 7 (修复代码)
+- [ ] ✅ 所有测试通过 → 编写 README.md
 ```
 
 ---
@@ -276,20 +294,55 @@ get_scope_variables()
 
 ### Phase 1: Preprocessing (Smart Mode)
 
-**DO NOT use `head` or `cat`.**
+**⚠️ CRITICAL: Use BROWSER for initial reconnaissance, NOT curl!**
 
-1.  **Inspect**:
+`curl` cannot:
+- Execute JavaScript (params are often dynamically generated)
+- Handle cookies/sessions properly
+- Capture XHR/Fetch requests
+- See the actual request parameters being sent
+
+**Correct Workflow:**
+
+1. **Init Workspace** (Main Agent):
+   ```bash
+   mkdir -p artifacts/jsvmp/{target}/{source,transforms,output,raw,lib,repro}
+   ```
+
+2. **🤖 Browser Recon** (Sub-Agent via `invokeSubAgent`):
+   - Navigate to target URL in browser
+   - Open Network tab, filter by XHR/Fetch
+   - Trigger the target action (search, login, etc.)
+   - Identify:
+     - Target API endpoint
+     - Request method (GET/POST)
+     - Headers (especially custom ones)
+     - Request body/params (which ones look encrypted/signed?)
+   - Save findings to NOTE.md
+
+3. **🤖 Download JS Files** (Sub-Agent):
+   - From Network tab, identify JS files loaded
+   - Download relevant ones to `source/` directory
+   - Note: Look for files containing VM code (large switch statements, bytecode arrays)
+
+4. **🤖 检测混淆类型** (Sub-Agent):
+   - Use `read_code_smart` on downloaded files
+   - Identify: VM dispatcher, bytecode arrays, string obfuscation, etc.
+
+**DO NOT use `head` or `cat` on JS files.**
+
+5.  **Inspect** (after download):
     ```javascript
     read_code_smart(file_path="source/main.js", start_line=1, end_line=50)
     ```
     *Check output for: `var _0x...`, flattened control flow, etc.*
 
-2.  **Search**:
+6.  **Search**:
     ```javascript
     search_code_smart(file_path="source/main.js", query="debugger")
     ```
 
-3.  **Deobfuscate (If needed)**:
+7.  **Deobfuscate (If needed)**:
     *   Create transform script: `artifacts/jsvmp/{target}/transforms/fix_strings.js`
     *   Apply:
         ```javascript
@@ -428,39 +481,39 @@ Write findings to NOTE.md, then STOP. Your job is done after this one task.
 
 ### 阶段 8: 验证
 
-**⚠️ VERIFICATION IS MANDATORY — Never skip this phase**
+**⚠️ 验证是强制性的 — 绝不跳过此阶段**
 
-1. **Capture Reference**: Sub-agent captures a real request with known inputs/outputs
-2. **Unit Test**: Generate signature using same inputs → must match reference exactly
-3. **Integration Test**: Make actual API request → must return 200 OK (or expected response)
+1. **捕获参考值**: 子代理捕获一个已知输入/输出的真实请求
+2. **单元测试**: 使用相同输入生成签名 → 必须与参考值完全匹配
+3. **集成测试**: 发起实际 API 请求 → 必须返回 200 OK (或预期响应)
 
-**Failure Handling:**
-- If unit test fails: Algorithm understanding is wrong → re-analyze in 阶段 3-6
-- If integration test fails but unit passes: Missing headers/cookies/timing → debug request
+**失败处理:**
+- 单元测试失败: 算法理解错误 → 返回阶段 3-6 重新分析
+- 集成测试失败但单元测试通过: 缺少 headers/cookies/时间戳 → 调试请求
 
 ### 阶段 9: 验证循环
 
-**This phase ensures correctness through iteration:**
+**此阶段通过迭代确保正确性:**
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ Run Tests                                               │
+│ 运行测试                                                │
 ├─────────────────────────────────────────────────────────┤
-│ Pass? ──► YES ──► Write README.md ──► DONE ✅           │
+│ 通过? ──► 是 ──► 编写 README.md ──► 完成 ✅             │
 │   │                                                     │
-│   └──► NO ──► Debug: What's different?                  │
+│   └──► 否 ──► 调试: 哪里不同?                           │
 │                │                                        │
-│                ├─► Algorithm wrong → 阶段 3-6           │
-│                └─► Implementation wrong → 阶段 7        │
+│                ├─► 算法错误 → 阶段 3-6                   │
+│                └─► 实现错误 → 阶段 7                     │
 └─────────────────────────────────────────────────────────┘
 ```
 
-**Debug Checklist:**
-- [ ] Compare byte-by-byte: generated vs expected
-- [ ] Check encoding: UTF-8, URL encoding, Base64 padding
-- [ ] Check endianness: little vs big endian
-- [ ] Check timestamp: is it time-sensitive?
-- [ ] Check random values: are there nonces/salts?
+**调试检查清单:**
+- [ ] 逐字节对比: 生成值 vs 期望值
+- [ ] 检查编码: UTF-8, URL 编码, Base64 填充
+- [ ] 检查字节序: 小端 vs 大端
+- [ ] 检查时间戳: 是否时间敏感?
+- [ ] 检查随机值: 是否有 nonce/salt?
 
 ---
 
