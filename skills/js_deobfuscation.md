@@ -2,333 +2,248 @@
 
 ## Core Principle
 
-**Babel AST is the ONLY reliable method for true deobfuscation.** Other tools (ast-grep, ripgrep, browser extraction) are supplementary — useful for quick string extraction or pattern discovery, but NOT for actual code transformation.
+**Babel AST is the ONLY reliable method for true deobfuscation.** Use `apply_custom_transform` for transforms, smart-fs tools for code analysis.
 
 ---
 
-## 1. Babel AST Deobfuscation (PRIMARY METHOD)
-
-### 1.1 Setup
-
-```bash
-npm init -y && npm i @babel/parser @babel/traverse @babel/types @babel/generator
-```
-
-### 1.2 Standard Template
+## 1. Babel Plugin Format (for apply_custom_transform)
 
 ```javascript
-const fs = require('fs');
-const parser = require('@babel/parser');
-const traverse = require('@babel/traverse').default;
-const t = require('@babel/types');
-const generator = require('@babel/generator').default;
-
-const code = fs.readFileSync('input.js', 'utf-8');
-const ast = parser.parse(code, { sourceType: 'unambiguous' });
-
-// Apply transforms
-traverse(ast, { /* visitors */ });
-
-// Generate output
-const output = generator(ast, { compact: false, comments: true }).code;
-fs.writeFileSync('output.js', output);
+// plugin.js — must export function returning visitor
+module.exports = function(babel) {
+    const { types: t } = babel;
+    return {
+        visitor: {
+            // visitors here
+        }
+    };
+};
 ```
 
-### 1.3 Transform Order (CRITICAL)
+Usage: `apply_custom_transform(target_file="source.js", script_path="plugin.js")`
 
-Execute transforms in this sequence — order matters:
+---
 
-1. **Anti-debug removal** — Remove debugger traps first
+## 2. Transform Order (CRITICAL)
+
+1. **Anti-debug removal** — Remove debugger traps
 2. **Hex/Unicode normalization** — Restore readable literals
-3. **String array decoding** — Replace decoder calls with actual strings
+3. **String array decoding** — Replace decoder calls
 4. **Computed property cleanup** — `obj["prop"]` → `obj.prop`
 5. **Constant folding** — Evaluate static expressions
 6. **Dead code elimination** — Remove unreachable branches
-7. **Control flow unflattening** — Restore natural flow (if applicable)
+7. **Control flow unflattening** — Restore natural flow
 
-**After EACH transform**: `node --check output.js` to verify syntax validity.
+---
 
-### 1.4 Essential Transforms
+## 3. Verify Deobfuscation Results
 
-#### Anti-Debug Removal
+After each transform, read 3 code segments to assess effectiveness:
 
-```javascript
-// Remove debugger statements
-Debugger(path) { path.remove(); }
-
-// Remove setInterval/setTimeout with debugger
-CallExpression(path) {
-    const { callee, arguments: args } = path.node;
-    if (t.isIdentifier(callee, { name: 'setInterval' }) || 
-        t.isIdentifier(callee, { name: 'setTimeout' })) {
-        const funcBody = args[0]?.body?.body || [];
-        if (funcBody.some(n => t.isDebuggerStatement(n))) {
-            path.remove();
-        }
-    }
-}
-
-// Remove console detection traps
-IfStatement(path) {
-    const test = path.get('test');
-    if (test.isCallExpression() && 
-        generator(test.node).code.includes('console')) {
-        path.remove();
-    }
-}
 ```
+# Head (lines 1-50)
+read_code_smart(file_path="output.js", start_line=1, end_line=50)
 
-#### Hex/Unicode Normalization
+# Middle (e.g., lines 200-300 for 500-line file)
+read_code_smart(file_path="output.js", start_line=200, end_line=300)
 
-```javascript
-// Restore readable number/string literals
-'NumericLiteral|StringLiteral'(path) {
-    delete path.node.extra;  // Removes hex representation
-}
-```
-
-#### String Array Decoding
-
-```javascript
-// Step 1: Extract string array
-let stringArray = [];
-let arrayName = '';
-
-traverse(ast, {
-    VariableDeclarator(path) {
-        if (path.node.id.name?.match(/^_0x[a-f0-9]+$/) && 
-            t.isArrayExpression(path.node.init)) {
-            arrayName = path.node.id.name;
-            stringArray = path.node.init.elements.map(e => e?.value ?? null);
-            path.stop();
-        }
-    }
-});
-
-// Step 2: Handle shuffler (if present)
-traverse(ast, {
-    CallExpression(path) {
-        // Pattern: (function(arr, n) { while(--n) arr.push(arr.shift()); })(array, count)
-        if (t.isFunctionExpression(path.node.callee)) {
-            const args = path.node.arguments;
-            if (t.isIdentifier(args[0], { name: arrayName }) && t.isNumericLiteral(args[1])) {
-                const count = args[1].value;
-                for (let i = 0; i < count; i++) stringArray.push(stringArray.shift());
-                path.remove();  // Remove shuffler call
-            }
-        }
-    }
-});
-
-// Step 3: Replace decoder calls
-const OFFSET = 0x100;  // Common offset, adjust per target
-traverse(ast, {
-    CallExpression(path) {
-        const { callee, arguments: args } = path.node;
-        if (t.isIdentifier(callee) && callee.name.match(/^_0x/) && 
-            args.length >= 1 && t.isNumericLiteral(args[0])) {
-            const idx = args[0].value - OFFSET;
-            if (stringArray[idx] !== undefined) {
-                path.replaceWith(t.stringLiteral(stringArray[idx]));
-            }
-        }
-    }
-});
-```
-
-#### Computed Property Cleanup
-
-```javascript
-MemberExpression(path) {
-    const { property, computed } = path.node;
-    if (computed && t.isStringLiteral(property)) {
-        // Only convert if valid identifier
-        if (/^[a-zA-Z_$][\w$]*$/.test(property.value)) {
-            path.node.property = t.identifier(property.value);
-            path.node.computed = false;
-        }
-    }
-}
-```
-
-#### Constant Folding
-
-```javascript
-'BinaryExpression|UnaryExpression'(path) {
-    const { confident, value } = path.evaluate();
-    if (confident && typeof value !== 'object' && value !== undefined) {
-        path.replaceWith(t.valueToNode(value));
-    }
-}
-
-// Conditional expression simplification
-ConditionalExpression(path) {
-    const test = path.get('test');
-    const { confident, value } = test.evaluate();
-    if (confident) {
-        path.replaceWith(value ? path.node.consequent : path.node.alternate);
-    }
-}
-```
-
-#### Dead Code Elimination
-
-```javascript
-IfStatement(path) {
-    const test = path.get('test');
-    const { confident, value } = test.evaluate();
-    if (confident) {
-        if (value) {
-            path.replaceWithMultiple(path.node.consequent.body || [path.node.consequent]);
-        } else if (path.node.alternate) {
-            path.replaceWithMultiple(path.node.alternate.body || [path.node.alternate]);
-        } else {
-            path.remove();
-        }
-    }
-}
-```
-
-### 1.5 Advanced: Control Flow Unflattening
-
-```javascript
-// For switch-based control flow flattening
-SwitchStatement(path) {
-    const discriminant = path.get('discriminant');
-    if (!t.isIdentifier(discriminant.node)) return;
-    
-    const stateVar = discriminant.node.name;
-    const cases = path.node.cases;
-    const blocks = new Map();
-    
-    // Build block map
-    cases.forEach(c => {
-        if (t.isNumericLiteral(c.test) || t.isStringLiteral(c.test)) {
-            blocks.set(c.test.value, c.consequent);
-        }
-    });
-    
-    // Reconstruct flow (requires analysis of state transitions)
-    // Implementation depends on specific obfuscation pattern
-}
+# Tail (last 50-100 lines)
+read_code_smart(file_path="output.js", start_line=450, end_line=500)
 ```
 
 ---
 
-## 2. Supplementary Tools (FOR EXTRACTION ONLY)
+## 4. Essential Transforms
 
-These tools help with quick pattern discovery and string extraction — NOT for actual deobfuscation.
-
-### 2.1 ast-grep (sg) — Pattern Discovery
-
-```bash
-# Find string array declarations
-sg -p 'var $_NAME = [$$ELEMENTS]' source/file.js --json
-
-# Find decoder function pattern
-sg -p 'function $_($IDX) { return $_[$IDX - $_] }' source/file.js
-
-# Find shuffler IIFE
-sg -p '(function($A,$B){while(--$B)$A.push($A.shift())})($_,$_)' source/file.js
-```
-
-### 2.2 ripgrep — Quick Location
-
-```bash
-# Locate array position
-rg -n "var _0x[a-f0-9]+ *= *\[" source/file.js | head -3
-
-# Find decoder offset
-rg -o '\[_0x[a-f0-9]+\s*-\s*(0x[a-f0-9]+)\]' source/file.js | head -1
-
-# Find anti-debug patterns
-rg -n "debugger|setInterval.*debug|console\[" source/file.js
-```
-
-### 2.3 Node.js Quick Eval — Simple Array Extraction
-
-```bash
-# Only for self-contained arrays (no dependencies)
-node -e "
-const code = require('fs').readFileSync('source/file.js', 'utf-8');
-const match = code.match(/var (_0x[a-f0-9]+)\s*=\s*(\[[^\]]+\])/);
-if (match) {
-    const arr = eval(match[2]);
-    require('fs').writeFileSync('strings_raw.json', JSON.stringify(arr, null, 2));
-    console.log('Extracted', arr.length, 'strings');
-}
-"
-```
-
-### 2.4 Browser Extraction — LAST RESORT
-
-**Only use when:**
-- Decoder depends on runtime DOM/environment
-- Complex runtime state that cannot be replicated
-- Static analysis fails after multiple attempts
+### Anti-Debug Removal
 
 ```javascript
-// Via MCP browser tools
-evaluate_script(function=`() => JSON.stringify(window._0xabc)`)
+module.exports = function(babel) {
+    const { types: t } = babel;
+    const generate = require('@babel/generator').default;
+    return {
+        visitor: {
+            Debugger(path) { path.remove(); path.scope.crawl(); },
+            CallExpression(path) {
+                const { callee, arguments: args } = path.node;
+                if (t.isIdentifier(callee, { name: 'setInterval' }) || 
+                    t.isIdentifier(callee, { name: 'setTimeout' })) {
+                    const funcBody = args[0]?.body?.body || [];
+                    if (funcBody.some(n => t.isDebuggerStatement(n))) { path.remove(); path.scope.crawl(); }
+                }
+            },
+            IfStatement(path) {
+                const test = path.get('test');
+                if (test.isCallExpression() && generate(test.node).code.includes('console')) {
+                    path.remove(); path.scope.crawl();
+                }
+            }
+        }
+    };
+};
+```
+
+### Hex/Unicode Normalization
+
+```javascript
+module.exports = function(babel) {
+    return {
+        visitor: {
+            'NumericLiteral|StringLiteral'(path) { delete path.node.extra; }
+        }
+    };
+};
+```
+
+### String Array Decoding
+
+```javascript
+module.exports = function(babel) {
+    const { types: t } = babel;
+    const ARRAY_NAME = '_0x1234';  // adjust per target
+    const OFFSET = 0x100;
+    const SHUFFLE_COUNT = 0;
+    let stringArray = [], arrayFound = false;
+    
+    return {
+        visitor: {
+            Program: {
+                enter(path) {
+                    path.traverse({
+                        VariableDeclarator(p) {
+                            if (t.isIdentifier(p.node.id, { name: ARRAY_NAME }) && 
+                                t.isArrayExpression(p.node.init)) {
+                                stringArray = p.node.init.elements.map(e => e?.value ?? null);
+                                for (let i = 0; i < SHUFFLE_COUNT; i++) stringArray.push(stringArray.shift());
+                                arrayFound = true;
+                                p.stop();
+                            }
+                        }
+                    });
+                }
+            },
+            CallExpression(path) {
+                if (!arrayFound) return;
+                const { callee, arguments: args } = path.node;
+                if (t.isIdentifier(callee) && callee.name.match(/^_0x/) && 
+                    args.length >= 1 && t.isNumericLiteral(args[0])) {
+                    const idx = args[0].value - OFFSET;
+                    if (idx >= 0 && idx < stringArray.length && stringArray[idx] !== null) {
+                        path.replaceWith(t.stringLiteral(stringArray[idx]));
+                        path.scope.crawl();
+                    }
+                }
+            }
+        }
+    };
+};
+```
+
+### Computed Property Cleanup
+
+```javascript
+module.exports = function(babel) {
+    const { types: t } = babel;
+    return {
+        visitor: {
+            MemberExpression(path) {
+                const { property, computed } = path.node;
+                if (computed && t.isStringLiteral(property) && /^[a-zA-Z_$][\w$]*$/.test(property.value)) {
+                    path.node.property = t.identifier(property.value);
+                    path.node.computed = false;
+                }
+            }
+        }
+    };
+};
+```
+
+### Constant Folding
+
+```javascript
+module.exports = function(babel) {
+    const { types: t } = babel;
+    return {
+        visitor: {
+            'BinaryExpression|UnaryExpression'(path) {
+                const { confident, value } = path.evaluate();
+                if (confident && typeof value !== 'object' && value !== undefined) {
+                    path.replaceWith(t.valueToNode(value));
+                    path.scope.crawl();
+                }
+            },
+            ConditionalExpression(path) {
+                const { confident, value } = path.get('test').evaluate();
+                if (confident) { path.replaceWith(value ? path.node.consequent : path.node.alternate); path.scope.crawl(); }
+            }
+        }
+    };
+};
+```
+
+### Dead Code Elimination
+
+```javascript
+module.exports = function(babel) {
+    const { types: t } = babel;
+    return {
+        visitor: {
+            IfStatement(path) {
+                const { confident, value } = path.get('test').evaluate();
+                if (confident) {
+                    if (value) path.replaceWithMultiple(path.node.consequent.body || [path.node.consequent]);
+                    else if (path.node.alternate) path.replaceWithMultiple(path.node.alternate.body || [path.node.alternate]);
+                    else path.remove();
+                    path.scope.crawl();
+                }
+            }
+        }
+    };
+};
 ```
 
 ---
 
-## 3. Common Decoder Implementations
+## 5. Code Analysis Tools
 
-When you identify the decoder algorithm, implement it locally in your Babel transform:
+```
+# Read beautified code with source map coords
+read_code_smart(file_path="source.js", start_line=1, end_line=100)
+
+# Search patterns in beautified code
+search_code_smart(file_path="source.js", query="var _0x.*= *\\[")
+
+# Find variable definitions and references (AST scope analysis)
+find_usage_smart(file_path="source.js", identifier="_0x1234", line=50)
+```
+
+---
+
+## 6. Common Decoders
 
 ### RC4
-
 ```javascript
 function rc4(str, key) {
     let s = [...Array(256).keys()], j = 0;
-    for (let i = 0; i < 256; i++) {
-        j = (j + s[i] + key.charCodeAt(i % key.length)) % 256;
-        [s[i], s[j]] = [s[j], s[i]];
-    }
+    for (let i = 0; i < 256; i++) { j = (j + s[i] + key.charCodeAt(i % key.length)) % 256; [s[i], s[j]] = [s[j], s[i]]; }
     let i = 0, k = 0, res = '';
-    for (let c of str) {
-        i = (i + 1) % 256; k = (k + s[i]) % 256;
-        [s[i], s[k]] = [s[k], s[i]];
-        res += String.fromCharCode(c.charCodeAt(0) ^ s[(s[i] + s[k]) % 256]);
-    }
+    for (let c of str) { i = (i + 1) % 256; k = (k + s[i]) % 256; [s[i], s[k]] = [s[k], s[i]]; res += String.fromCharCode(c.charCodeAt(0) ^ s[(s[i] + s[k]) % 256]); }
     return res;
 }
 ```
 
 ### Base64 + XOR
-
 ```javascript
-const decode = (enc, key) => {
-    const decoded = Buffer.from(enc, 'base64').toString();
-    return decoded.split('')
-        .map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ key.charCodeAt(i % key.length)))
-        .join('');
-};
-```
-
-### Base64 + Rotation
-
-```javascript
-const decodeRotate = (enc, offset) => {
-    const decoded = Buffer.from(enc, 'base64').toString();
-    return decoded.split('')
-        .map(c => String.fromCharCode(c.charCodeAt(0) - offset))
-        .join('');
-};
+const decode = (enc, key) => Buffer.from(enc, 'base64').toString().split('').map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ key.charCodeAt(i % key.length))).join('');
 ```
 
 ---
 
-## 4. Troubleshooting
+## 7. Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
-| Parser fails | Try `sourceType: 'script'` or `'module'` explicitly |
-| Transform breaks syntax | Run `node --check` after each transform, isolate the breaking one |
-| Decoder offset wrong | Search for `- 0x` pattern near decoder function |
-| Shuffler count unknown | Look for numeric literal in shuffler IIFE call |
-| Strings still encoded | Check for nested encoding (base64 + xor + rotation) |
-| Control flow complex | Map state transitions manually before unflattening |
-
+| Parser fails | Check encoding, try different sourceType |
+| Transform breaks | Use `read_code_smart` to inspect output |
+| Wrong offset | `search_code_smart` for `- 0x` pattern |
+| Unknown shuffle | `find_usage_smart` to trace shuffler call |

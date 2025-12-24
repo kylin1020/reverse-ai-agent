@@ -35,8 +35,6 @@ inclusion: manual
 
 ### ✅ YOUR RESPONSIBILITIES (Main Agent)
 - Create/update TODO.md and NOTE.md
-- Write deobfuscation scripts (transforms/*.js)
-- Write Python implementation (lib/*.py)
 - Make Phase Gate decisions
 - Communicate with user
 
@@ -48,6 +46,9 @@ inclusion: manual
 - `🤖 Extract runtime values`
 - `🤖 Capture real request`
 - `🤖 Run tests`
+- `🤖 Write deobfuscation scripts`
+- `🤖 Apply transforms & verify`
+- `🤖 Write Python implementation`
 
 ### PENALTY
 - If you open browser or read JS files when current task is `🤖`-prefixed → **SESSION INVALID**
@@ -190,9 +191,8 @@ For `.json`, `.txt`, `.py`, `.md`, `.asm`:
 - [ ] 🤖 检测混淆模式 → 更新 NOTE.md
 
 ## 阶段 2: 去混淆 (⛔ 阻塞阶段 3)
-- [ ] 编写去混淆脚本: `transforms/fix_strings.js`
-- [ ] 应用: `apply_custom_transform` → `source/*_deob.js`
-- [ ] 验证输出可读性
+- [ ] 🤖 分析混淆模式并编写去混淆脚本 → `transforms/*.js`
+- [ ] 🤖 应用去混淆并验证: `apply_custom_transform` → `source/*_deob.js`
 
 ## 阶段 3: 分析 (⛔ 需完成阶段 2)
 - [ ] 🤖 定位入口点: 在去混淆代码中搜索关键词, 结合浏览器断点验证 → 更新 NOTE.md
@@ -201,9 +201,7 @@ For `.json`, `.txt`, `.py`, `.md`, `.asm`:
 - [ ] 🤖 提取运行时值 (浏览器) → 更新 NOTE.md
 
 ## 阶段 4: 实现
-- [ ] Python 骨架 (lib/*.py)
-- [ ] 核心算法
-- [ ] 参数构建器
+- [ ] 🤖 Python 实现: 骨架 + 核心算法 + 参数构建器 → `lib/*.py`
 
 ## 阶段 5: 验证 (⛔ 需完成阶段 4)
 - [ ] 🤖 捕获真实请求 → 保存到 raw/reference.txt
@@ -438,7 +436,8 @@ invokeSubAgent(
   name="general-task-execution",
   prompt="""
 ## ⚠️ MANDATORY FIRST STEP
-Read `skills/sub_agent.md` — it contains critical tool usage rules you MUST follow.
+1. Read `skills/sub_agent.md` — tool usage rules
+2. If task involves deobfuscation/transforms: also read `skills/js_deobfuscation.md`
 
 ## 🎯 YOUR SINGLE TASK (DO NOT DEVIATE)
 {exact task text from TODO.md}
@@ -457,7 +456,7 @@ You are a FOCUSED EXECUTOR. You must:
 - NOTE.md: artifacts/jsrev/{domain}/NOTE.md
 
 ## Instructions
-1. Read `skills/sub_agent.md` first (tool rules)
+1. Read required skill files first
 2. Execute ONLY the task stated above
 3. Write findings to NOTE.md with [Src L:C] coordinates
 4. **FLAG NEW DISCOVERIES** in "待处理发现" section:
@@ -487,11 +486,11 @@ Write findings to NOTE.md, then STOP.
 | `🤖 Extract...` | Sub-agent | Browser debugging |
 | `🤖 Capture...` | Sub-agent | Browser network |
 | `🤖 Run tests...` | Sub-agent | Bash, Python |
-| `Write deob script` | Main agent | fsWrite |
-| `Apply transform` | Main agent | apply_custom_transform |
-| `Python skeleton` | Main agent | fsWrite |
-| `Core algorithm` | Main agent | fsWrite |
+| `🤖 Write deob script` | Sub-agent | Smart-FS, fsWrite |
+| `🤖 Apply transform` | Sub-agent | apply_custom_transform, Smart-FS |
+| `🤖 Python impl` | Sub-agent | fsWrite, Bash |
 | `Update TODO/NOTE` | Main agent | fsWrite, strReplace |
+| `Phase Gate decisions` | Main agent | — |
 
 ---
 

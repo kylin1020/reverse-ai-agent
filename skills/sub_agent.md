@@ -32,7 +32,7 @@ For `.json`, `.txt`, `.py`, `.md`, `.asm` files:
 | Tool | Limit | How |
 |------|-------|-----|
 | `read_code_smart` | Auto-handled | Built-in truncation |
-| `evaluate_script` | 2000 chars | `.slice(0, 2000)` or use `savePath` |
+| `evaluate_script` | 200 chars | `.slice(0, 200)` or use `savePath` to save full text to file |
 | `console.log` | 500 chars | Limit per value |
 | `rg` (non-JS) | `-M 200 -m 10` | Max line length + max matches |
 
