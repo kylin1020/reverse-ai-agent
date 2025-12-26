@@ -75,7 +75,9 @@ temperature: 0.1
 **Why Smart-FS?**
 - **Auto-beautifies** minified/compressed code
 - **Intelligent truncation** prevents context overflow
-- **Source mapping** (`[Src L:C]`) for JS/TS enables precise breakpoint setting
+- **Source mapping** (`[L:line] [Src L:col]`) for JS/TS enables precise breakpoint setting
+  - `[L:xxx]` = beautified view line (for read_code_smart)
+  - `[Src Lx:xxx]` = original file line:col (for Chrome breakpoint)
 - **AST analysis** for JS/TS enables variable tracing
 
 ### 2. When to Use Traditional Tools (Rare Cases)
@@ -128,7 +130,7 @@ Only use `read_file`/`rg` when:
 
 **每个 NOTE.md 条目必须包含:**
 1. **源文件路径** — 函数/数据在哪里找到的
-2. **原始行号 (`[Src L:C]`)** — 文件中的精确位置
+2. **位置坐标** (`[L:line] [Src L:col]`) — beautified line + original position
 3. **执行的操作** — 你做了什么来发现这个
 4. **会话时间戳** — 何时发现的
 
@@ -147,11 +149,13 @@ Only use `read_file`/`rg` when:
 | `sign` | (待分析) | 🔍 |
 
 ## 关键函数
-- `encryptFunc` — `source/main.js` L:{line} [Src L{srcLine}:{srcCol}]
+- `encryptFunc` — `source/main.js` [L:123] [Src L1:15000]
+  - L:123 = beautified view line (for read_code_smart)
+  - Src L1:15000 = original file line:col (for Chrome breakpoint)
 
 ## 待处理发现
 > Main Agent: 通过 `todowrite` 转换为任务后删除
-- 🆕 {description} @ [Src L:C] (来源: {task})
+- 🆕 {description} @ [L:line] [Src L:col] (来源: {task})
 ```
 
 ---
@@ -167,7 +171,7 @@ Only use `read_file`/`rg` when:
 
 ### Common discoveries to add:
 - 发现新参数 → `🤖 追踪参数: {name}`
-- 发现新函数 → `🤖 分析函数: {name} @ [Src L:C]`
+- 发现新函数 → `🤖 分析函数: {name} @ [L:line] [Src L:col]`
 - 发现新端点 → `🤖 分析端点: {url}`
 
 ---
@@ -216,7 +220,7 @@ Only use `read_file`/`rg` when:
 
 **阶段 3: 分析 (⛔ 需完成阶段 2)**
 - `🤖 定位入口点: 在去混淆代码中搜索关键词, 结合浏览器断点验证(必要时) → 更新 NOTE.md`
-- `🤖 定位参数生成函数 → 更新 NOTE.md (函数 + [L:Current line] [Src L:C])`
+- `🤖 定位参数生成函数 → 更新 NOTE.md (函数 + [L:line] [Src L:col])`
 - `🤖 追踪数据流 → 更新 NOTE.md (算法细节)`
 
 **阶段 4: 实现**
@@ -313,7 +317,7 @@ Typical workflow:
 2.  **Trace**: `find_usage_smart(file_path="source/main_deob.js", identifier="_0xkey", line=123)`
 
 **Browser Debugging (after static analysis)**:
-*   Get coordinate from Smart Tool: `[Src L1:15847]`
+*   Get coordinate from Smart Tool: `[L:15] [Src L1:15847]`
 *   Set Breakpoint: `set_breakpoint(urlRegex=".*main.js.*", lineNumber=1, columnNumber=15847)`
 *   **Trigger**: Ask human.
 *   **Inspect**: `get_scope_variables()`.
@@ -368,7 +372,7 @@ uv run python repro.py
 | **Search Text** | `search_code_smart` | `file="...", query="pattern"` |
 | **Trace Var** | `find_usage_smart` | `file="...", id="x", line=10` |
 | **Deobfuscate** | `apply_custom_transform` | `target="...", script="..."` |
-| **Breakpoint** | `set_breakpoint` | Use `[Src]` coords from Smart Tools |
+| **Breakpoint** | `set_breakpoint` | Use coords from Smart Tools (L:line for read_code_smart, Src L:col for Chrome) |
 | **Read Runtime** | `get_scope_variables` | After hitting breakpoint |
 | **Global Var** | `evaluate_script` | Only for globals |
 | **Search Non-JS**| `rg` | `-M 200 -m 10` |
@@ -484,9 +488,9 @@ You are a FOCUSED EXECUTOR. You must:
 ## Instructions
 1. Read required skill files first
 2. Execute ONLY the task stated above
-3. Write findings to NOTE.md with [Src L:C] coordinates
+3. Write findings to NOTE.md with [L:line] [Src L:col] coordinates
 4. **FLAG NEW DISCOVERIES** in "待处理发现" section:
-   `- [ ] 🆕 {description} @ [Src L:C] (来源: {this task})`
+   `- [ ] 🆕 {description} @ [L:line] [Src L:col] (来源: {this task})`
 5. **STOP** — do not continue to other work
 
 ## 🚫 FORBIDDEN ACTIONS
@@ -561,5 +565,5 @@ Write findings to NOTE.md, then STOP.
 - **PHASE 2 GATE**: MUST load `skill("js-deobfuscation")` before ANY deobfuscation task
 - **READ `NOTE.md` at session start** — resume from previous findings
 - **UPDATE `NOTE.md` after discoveries** — preserve knowledge for next session
-- **ALWAYS include [Src L:C] references** — future sessions depend on this
+- **ALWAYS include [L:line] [Src L:col] references** — future sessions depend on this
 - **LOG every session** — append to Session Log section

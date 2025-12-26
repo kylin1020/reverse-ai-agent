@@ -71,6 +71,9 @@ This provides:
 - Auto-beautifies minified/compressed code
 - Intelligent truncation prevents context overflow
 - `[Src L:C]` coordinates for JS/TS enable precise Chrome DevTools breakpoints
+- Output format: `[L:{current_line}] [Src L:C]`
+  - `[L:xxx]` = beautified view line (for read_code_smart)
+  - `[Src Lx:xxx]` = original file line:col (for Chrome breakpoint)
 - AST analysis for JS/TS enables variable definition/reference tracing
 
 ### 3. When to Use Traditional Tools (Rare)
@@ -106,7 +109,7 @@ Only use `read_file`/`rg` when:
 
 ### 2. Breakpoint Coordinates
 
-**Always use `[Src L:C]` from Smart-FS:**
+**Always use `[L:line] [Src L:col]` from Smart-FS:**
 
 ```javascript
 // 1. Get coordinates from Smart-FS
@@ -159,11 +162,13 @@ set_breakpoint(
 
 ### 1. Always Include Source References
 
-Every finding MUST include file path + `[Src L:C]` coordinates:
+Every finding MUST include file path + `[L:line] [Src L:col]` coordinates:
 
 ```markdown
 ## 关键函数
-- `encryptFunc` — `source/main.js` @ `[Src L1:15000]`
+- `encryptFunc` — `source/main.js` [L:123] [Src L1:15000]
+  - L:123 = beautified view line (for read_code_smart)
+  - Src L1:15000 = original file line:col (for Chrome breakpoint)
 ```
 
 ### 2. Flag New Discoveries
@@ -172,8 +177,8 @@ Add to "待处理发现" section:
 
 ```markdown
 ## 待处理发现 (Pending Discoveries)
-- [ ] 🆕 Found param `nonce` @ [Src L1:8000] (from: Browser Recon)
-- [ ] 🆕 Decoder `_0xabc` @ [Src L1:500] (from: Detect Obfuscation)
+- [ ] 🆕 Found param `nonce` [L:50] [Src L1:8000] (from: Browser Recon)
+- [ ] 🆕 Decoder `_0xabc` [L:20] [Src L1:500] (from: Detect Obfuscation)
 ```
 
 ### 3. Be Concise
@@ -201,7 +206,7 @@ Add to "待处理发现" section:
 Before finishing:
 - [ ] ALL paths within designated directory (e.g., `artifacts/`)?
 - [ ] Used Smart-FS for ALL file reading (never `read_file`/`read`)?
-- [ ] All findings include `[Src L:C]` for JS/TS files?
+- [ ] All findings include `[L:line] [Src L:col]` for JS/TS files?
 - [ ] Output lengths within limits?
 - [ ] Browser state preserved?
 - [ ] New discoveries in NOTE.md "待处理发现"?
@@ -231,5 +236,7 @@ take_snapshot()
 
 ### Coordinate Flow
 ```
-Smart-FS [Src L:C] → set_breakpoint(lineNumber=L, columnNumber=C)
+Smart-FS 输出: [L:123] [Src L1:15000] | code...
+                ↓                ↓
+read_code_smart(start_line=123)  set_breakpoint(lineNumber=1, columnNumber=15000)
 ```

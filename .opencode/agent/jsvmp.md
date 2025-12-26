@@ -75,7 +75,9 @@ temperature: 0.1
 **Why Smart-FS?**
 - **Auto-beautifies** minified/compressed code
 - **Intelligent truncation** prevents context overflow
-- **Source mapping** (`[Src L:C]`) for JS/TS enables precise breakpoint setting
+- **Source mapping** (`[L:line] [Src L:col]`) for JS/TS enables precise breakpoint setting
+  - `[L:xxx]` = beautified view line (for read_code_smart)
+  - `[Src Lx:xxx]` = original file line:col (for Chrome breakpoint)
 - **AST analysis** for JS/TS enables variable tracing
 
 ### 2. When to Use Traditional Tools (Rare Cases)
@@ -97,7 +99,9 @@ Only use `read_file`/`rg` when:
 
 **Concept**: You are working with a **Virtual View**.
 - You read `source/main.js` (Minified) -> Tool shows **Virtual Beautified View**.
-- The `[Src L:C]` column in output ALWAYS points to the **Original Minified File**.
+- Output format: `[L:{current_line}] [Src L:C]`
+  - `[L:xxx]` = beautified view line (for read_code_smart)
+  - `[Src Lx:xxx]` = original file line:col (for Chrome breakpoint)
 - **Rule**: NEVER look for `main.beautified.js`. It does not exist for you. Just read `main.js`.
 
 | Action | Tool | Usage |
@@ -144,9 +148,9 @@ Only use `read_file`/`rg` when:
 
 ### Common discoveries to add:
 - New param found → `- [ ] 🤖 Trace param: {name}`
-- New handler found → `- [ ] 🤖 Analyze handler: {name} @ [Src L:C]`
+- New handler found → `- [ ] 🤖 Analyze handler: {name} @ [L:line] [Src L:col]`
 - New bytecode array → `- [ ] 🤖 Extract bytecode: {name}`
-- Unknown opcode → `- [ ] 🤖 Trace opcode: {opcode}`
+- Unknown opcode → `- [ ] 🤖 Trace opcode: {opcode} @ [L:line] [Src L:col]`
 
 ---
 
@@ -167,12 +171,12 @@ Only use `read_file`/`rg` when:
 | `_signature` | (待分析) | 🔍 |
 
 ## VM 结构
-- Dispatcher: [Src L1:xxx]
-- Handler 表: [Src L1:xxx]
+- Dispatcher: [L:line] [Src L1:col]
+- Handler 表: [L:line] [Src L1:col]
 
 ## 待处理发现 (Pending Discoveries)
 > Main Agent: 转换为 TODO 任务后删除
-- [ ] 🆕 {description} @ [Src L:C] (来源: {task})
+- [ ] 🆕 {description} @ [L:line] [Src L:col] (来源: {task})
 ```
 
 ---
@@ -274,7 +278,7 @@ get_scope_variables()
 - [ ] 应用去混淆: `apply_custom_transform` → output/*_deob.js
 
 ## 阶段 2: VM 数据提取 (⛔ 需完成阶段 1)
-- [ ] 🤖 定位 VM dispatcher → 更新 NOTE.md ([Src L:C])
+- [ ] 🤖 定位 VM dispatcher → 更新 NOTE.md ([L:行号] [Src L:列])
 - [ ] 🤖 提取字节码 → 保存到 raw/bytecode.json
 - [ ] 🤖 提取常量数组 → 保存到 raw/constants.json
 - [ ] 🤖 提取 handler 函数 → 更新 NOTE.md
@@ -401,7 +405,7 @@ get_scope_variables()
 |-------|----------|
 | **File too big** | `read_code_smart` handles this. Do NOT use `read_file`. |
 | **Variable soup** | Use `find_usage_smart(..., line=X)` to trace specific scope. |
-| **Line mismatch** | Trust the `[Src L:C]` column in Smart Tool output. |
+| **Line mismatch** | Trust the `[L:xxx] [Src Lx:xxx]` in Smart Tool output. |
 | **Unknown opcode** | Trace handler using `set_breakpoint` at `[Src]` location. |
 
 ---
@@ -465,9 +469,9 @@ You are a FOCUSED EXECUTOR. You must:
 ## Instructions
 1. Read `skills/sub_agent.md` first (tool rules)
 2. Execute ONLY the task stated above
-3. Write findings to NOTE.md with [Src L:C] coordinates
+3. Write findings to NOTE.md with [L:line] [Src L:col] coordinates
 4. **FLAG NEW DISCOVERIES** in "待处理发现" section:
-   `- [ ] 🆕 {description} @ [Src L:C] (来源: {this task})`
+   `- [ ] 🆕 {description} @ [L:line] [Src L:col] (来源: {this task})`
 5. **STOP** — do not continue to other work
 
 ## 🚫 FORBIDDEN ACTIONS
