@@ -1,8 +1,10 @@
 ---
-inclusion: manual
+description: JSVMP decompilation state machine for bytecode analysis and VM reverse engineering
+mode: primary
+temperature: 0.1
 ---
 
-# jsrev (State-Driven Edition)
+# JSVMP Decompilation (State-Driven)
 
 > **⚠️ RULE #1: NEVER use `read_file/readFile`, `cat`, `head`, `tail`, `grep`, or `rg` for reading files. ALWAYS use Smart-FS tools (`read_code_smart`, `search_code_smart`, `find_usage_smart`) as your DEFAULT file access method. Smart-FS supports JS/TS (full AST + beautify + source map), JSON/HTML/XML/CSS (beautify), and all other text files.**
 
@@ -30,25 +32,24 @@ inclusion: manual
 ### 🚫 FORBIDDEN ACTIONS
 1. **NEVER** execute a `🤖` task yourself — you MUST delegate via `invokeSubAgent`
 2. **NEVER** skip ahead to later tasks — complete tasks IN ORDER
-3. **NEVER** use browser tools (navigate, evaluate_script, etc.) for `🤖` reconnaissance tasks
-4. **NEVER** analyze JS files if the task says "Detect" or "Locate" with `🤖` — that's sub-agent work
+3. **NEVER** use browser tools for `🤖` reconnaissance tasks
+4. **NEVER** analyze VM handlers if Phase 1 (Beautify/Deobfuscate) is unchecked
 
 ### ✅ YOUR RESPONSIBILITIES (Main Agent)
 - Create/update TODO.md and NOTE.md
+- Write deobfuscation scripts (transforms/*.js)
+- Write Python implementation (lib/*.py)
 - Make Phase Gate decisions
 - Communicate with user
 
 ### ❌ SUB-AGENT RESPONSIBILITIES (Delegate These)
 - `🤖 Detect obfuscation patterns`
-- `🤖 Locate target script & entry point`
-- `🤖 Locate param generation`
-- `🤖 Trace data flow`
+- `🤖 Locate VM dispatcher`
+- `🤖 Extract bytecode/constants`
+- `🤖 Trace handler functions`
 - `🤖 Extract runtime values`
 - `🤖 Capture real request`
 - `🤖 Run tests`
-- `🤖 Write deobfuscation scripts`
-- `🤖 Apply transforms & verify`
-- `🤖 Write Python implementation`
 
 ### PENALTY
 - If you open browser or read JS files when current task is `🤖`-prefixed → **SESSION INVALID**
@@ -90,15 +91,6 @@ Only use `read_file`/`rg` when:
 - `console.log` output: limit to 500 chars per value.
 - Large data: save to file via `savePath` or `fs` tools.
 
-### 4. Output Limits
-| Tool | Limit |
-|------|-------|
-| `search_code_smart` | Returns truncated context automatically |
-| `rg` (non-JS) | `-M 200 -m 10` |
-| `head/tail` (non-JS) | `-c 2000` or `-n 50` |
-| `cat` | ❌ NEVER |
-| `evaluate_script` | `.slice(0, 2000)` or use `savePath` |
-
 ---
 
 ## 🛠️ SMART-FS TOOLKIT (Virtual Filesystem)
@@ -117,45 +109,31 @@ Only use `read_file`/`rg` when:
 
 ---
 
-## 📝 NOTE.md — 分析记忆
+## 🔄 STATE PROTOCOL
 
-**路径**: `artifacts/jsrev/{domain}/NOTE.md`
+**You are an execution engine for `artifacts/jsvmp/{target}/TODO.md`.**
 
-维护此文件以在会话间保留分析上下文。
+### Execution Loop
+1. **READ**: `TODO.md` + `NOTE.md` (create if missing).
+2. **IDENTIFY**: First unchecked `[ ]` = current task.
+3. **CHECK**: Is current phase complete? (see Phase Gate).
+4. **EXECUTE**: One step to advance (Use Smart Tools for JS).
+5. **UPDATE**: Mark `[x]` when done, update `NOTE.md`.
+6. **PLAN**: If new discoveries require follow-up → Add new tasks to TODO.md (see Dynamic Planning).
 
-### ⚠️ 强制要求: 文件与操作追踪
-
-**每个 NOTE.md 条目必须包含:**
-1. **源文件路径** — 函数/数据在哪里找到的
-2. **原始行号 (`[Src L:C]`)** — 文件中的精确位置
-3. **执行的操作** — 你做了什么来发现这个
-4. **会话时间戳** — 何时发现的
-
-### 必需章节
-
-```markdown
-## 会话日志
-### [YYYY-MM-DD HH:MM] 会话摘要
-**任务**: 正在处理什么
-**发现**: ...
-**新增待办**: 🆕 需追踪参数 `x` / 🆕 需分析函数 `y`
-
-## 参数追踪
-| 参数名 | 生成函数 | 状态 |
-|--------|----------|------|
-| `sign` | (待分析) | 🔍 |
-
-## 关键函数
-- `encryptFunc` — `source/main.js` L:{line} @ Src L{srcLine}:{srcCol}
-
-## 待处理发现 (Pending Discoveries)
-> Main Agent: 转换为 TODO 任务后删除
-- [ ] 🆕 {description} @ [Src L:C] (来源: {task})
-```
+### Phase Gate
+| Phase Status | Allowed Actions |
+|--------------|-----------------|
+| Phase 1 incomplete | `read_code_smart` / `apply_custom_transform` ONLY |
+| Phase 2 incomplete | Extract VM data ONLY |
+| Phase 3 incomplete | Disassembly ONLY |
+| Phase 4 incomplete | Stack analysis ONLY |
+| Phase 5 incomplete | CFG/Data-flow ONLY |
+| All phases done | Code generation |
 
 ---
 
-## � DYNAMIC TODO PLANNING
+## 📊 DYNAMIC TODO PLANNING
 
 **TODO.md is a LIVING DOCUMENT — update it as analysis reveals new work items.**
 
@@ -166,22 +144,112 @@ Only use `read_file`/`rg` when:
 
 ### Common discoveries to add:
 - New param found → `- [ ] 🤖 Trace param: {name}`
-- New function found → `- [ ] 🤖 Analyze function: {name} @ [Src L:C]`
-- New endpoint found → `- [ ] 🤖 Analyze endpoint: {url}`
+- New handler found → `- [ ] 🤖 Analyze handler: {name} @ [Src L:C]`
+- New bytecode array → `- [ ] 🤖 Extract bytecode: {name}`
+- Unknown opcode → `- [ ] 🤖 Trace opcode: {opcode}`
 
 ---
 
-## �🚨 PHASE GATE — STRICT ORDERING
+## 📝 NOTE.md 模板
 
-**Before ANY action: "Is Phase 2 complete?"**
+**路径**: `artifacts/jsvmp/{target}/NOTE.md`
 
-| Phase 2 Status | Allowed Actions |
-|----------------|-----------------|
-| Has `[ ]` items | Deobfuscation ONLY: extract decoders, inline strings, write `*_deob.js` |
-| All `[x]` | Proceed to Phase 3 |
+```markdown
+## 会话日志
+### [YYYY-MM-DD HH:MM] 会话摘要
+**任务**: 当前任务
+**发现**: ...
+**新增待办**: 🆕 需追踪参数 `x` / 🆕 需分析 handler `y`
 
-**❌ FORBIDDEN while Phase 2 incomplete:**
-- ANY Phase 3/4/5 actions
+## 参数追踪
+| 参数名 | 生成函数 | 状态 |
+|--------|----------|------|
+| `_signature` | (待分析) | 🔍 |
+
+## VM 结构
+- Dispatcher: [Src L1:xxx]
+- Handler 表: [Src L1:xxx]
+
+## 待处理发现 (Pending Discoveries)
+> Main Agent: 转换为 TODO 任务后删除
+- [ ] 🆕 {description} @ [Src L:C] (来源: {task})
+```
+
+---
+
+## 🌐 BROWSER AUXILIARY TOOLS
+
+**Browser is for: validating static analysis, getting runtime values, locating hard-to-analyze code.**
+
+### Use Cases
+| Scenario | Tool | Note |
+|----------|------|------|
+| Locate VM Dispatcher | Performance Profiler | Find longest Self Time function |
+| Verify Opcode | Log breakpoint | Differential analysis |
+| Get runtime values | `get_scope_variables` | When static analysis fails |
+| Bypass anti-debug | `replace_script` | Remove debugger statements |
+| Print function source | `evaluate_script` | Quick location |
+
+### Key Techniques
+
+#### 0. Locate Code Position (The Smart Way)
+**Do NOT use `rg` on minified JS.** Use `search_code_smart` to get the Chrome-compatible position.
+```javascript
+// 1. Search in Virtual View
+search_code_smart(file="source/main.js", query="for\\(;;\\)")
+// Output: 
+//   15 | [Src L1:15847] | for(;;) { ... }
+
+// 2. Set Breakpoint using [Src] coordinates
+set_breakpoint(urlRegex=".*main.js.*", lineNumber=1, columnNumber=15847)
+```
+
+#### 1. Call Stack Tracing (Priority)
+```javascript
+// 1. Set breakpoint, let human trigger
+set_breakpoint(urlRegex=".*target.js.*", lineNumber=1, columnNumber=12345)
+// 2. After trigger, read call stack
+get_debugger_status(maxCallStackFrames=20)
+// 3. Call stack shows: file + line + function → target found
+```
+
+#### 2. Print Function Source (Limit Output)
+```javascript
+// ⚠️ ALWAYS limit output or use savePath
+evaluate_script(script="targetFunc.toString().slice(0, 2000)")
+evaluate_script(script="JSON.stringify(largeData)", savePath="artifacts/jsvmp/{target}/raw/data.json")
+```
+
+#### 3. Breakpoint Strategies
+```javascript
+// Log breakpoint (no pause) — ", false" is key!
+set_breakpoint(urlRegex=".*vm.js.*", lineNumber=1, columnNumber=123,
+    condition='console.log(`PC:${pc} OP:${op}`), false')
+
+// Pause breakpoint
+set_breakpoint(urlRegex=".*vm.js.*", lineNumber=1, columnNumber=123)
+```
+
+#### 4. Anti-Debug Bypass
+```javascript
+// 1. Check call stack at debugger
+get_debugger_status(contextLines=5)
+// 2. Replace anti-debug logic
+replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
+// 3. Reload
+navigate_page(type="reload", timeout=3000)
+```
+
+#### 5. Runtime Value Extraction
+**Prefer breakpoint over evaluate_script** — most vars/functions are NOT global:
+```javascript
+// ✅ PREFERRED: Breakpoint near target, then inspect scope
+// Use find_usage_smart to locate where to break
+find_usage_smart(file="source/main.js", identifier="targetVar", line=100)
+// -> Definition at [Src L1:5000]
+set_breakpoint(..., lineNumber=1, columnNumber=5000)
+get_scope_variables()
+```
 
 ---
 
@@ -190,41 +258,57 @@ Only use `read_file`/`rg` when:
 **`🤖` = 委托给子代理执行 (`invokeSubAgent`)。子代理将发现写入 NOTE.md。**
 
 ```markdown
-# JS 逆向工程: {domain}
+# JSVMP 反编译计划: {target}
 
 ## 目标
 - URL: {target_url}
 - API: (待浏览器侦察发现)
 - 参数: (待浏览器侦察发现)
 
-## 阶段 1: 侦察发现
+## 阶段 1: 代码预处理
 - [ ] 初始化工作区 (创建目录)
 - [ ] 🤖 浏览器侦察: 访问目标 URL, 捕获网络请求, 识别目标 API 和参数 → 更新 NOTE.md
 - [ ] 🤖 下载所有可疑的 JS 文件和其他资源到 source/ (包括主要脚本、依赖库、静态资源等) → 更新 NOTE.md 文件列表
-- [ ] 🤖 检测混淆模式 → 更新 NOTE.md
+- [ ] 🤖 检测混淆类型 → 更新 NOTE.md
+- [ ] 编写去混淆脚本 (Babel Visitor)
+- [ ] 应用去混淆: `apply_custom_transform` → output/*_deob.js
 
-## 阶段 2: 去混淆 (⛔ 阻塞阶段 3)
-- [ ] 🤖 分析混淆模式并编写去混淆脚本 → `transforms/*.js`
-- [ ] 🤖 应用去混淆并验证: `apply_custom_transform` → `source/*_deob.js`
+## 阶段 2: VM 数据提取 (⛔ 需完成阶段 1)
+- [ ] 🤖 定位 VM dispatcher → 更新 NOTE.md ([Src L:C])
+- [ ] 🤖 提取字节码 → 保存到 raw/bytecode.json
+- [ ] 🤖 提取常量数组 → 保存到 raw/constants.json
+- [ ] 🤖 提取 handler 函数 → 更新 NOTE.md
 
-## 阶段 3: 分析 (⛔ 需完成阶段 2)
-- [ ] 🤖 定位入口点: 在去混淆代码中搜索关键词, 结合浏览器断点验证 → 更新 NOTE.md
-- [ ] 🤖 定位参数生成函数 → 更新 NOTE.md (函数 + [Src L:C])
-- [ ] 🤖 追踪数据流 → 更新 NOTE.md (算法细节)
-- [ ] 🤖 提取运行时值 (浏览器) → 更新 NOTE.md
+## 阶段 3: 反汇编 (⛔ 需完成阶段 2)
+- [ ] 分析 opcode 格式
+- [ ] 编写反汇编器
+- [ ] 生成 LIR: output/*_disasm.asm
 
-## 阶段 4: 实现
-- [ ] 🤖 Python 实现: 骨架 + 核心算法 + 参数构建器 → `lib/*.py`
+## 阶段 4: 栈分析 (⛔ 需完成阶段 3)
+- [ ] 分析栈操作
+- [ ] 生成 MIR: output/*_mir.txt
 
-## 阶段 5: 验证 (⛔ 需完成阶段 4)
+## 阶段 5: 控制流分析 (⛔ 需完成阶段 4)
+- [ ] 构建 CFG
+- [ ] 生成 HIR: output/*_hir.txt
+
+## 阶段 6: 代码生成 (⛔ 需完成阶段 5)
+- [ ] 生成可读 JS: output/*_decompiled.js
+
+## 阶段 7: 实现 (⛔ 需完成阶段 6)
+- [ ] Python 骨架 (lib/*.py)
+- [ ] 核心算法
+- [ ] 参数构建器
+
+## 阶段 8: 验证 (⛔ 需完成阶段 7)
 - [ ] 🤖 捕获真实请求 → 保存到 raw/reference.txt
 - [ ] 🤖 单元测试: 使用相同输入生成签名 → 与参考值对比
 - [ ] 🤖 集成测试: 使用生成的签名发起真实 API 请求 → 验证 200 OK
 
-## 阶段 6: 验证循环 (⛔ 重复直到通过)
+## 阶段 9: 验证循环 (⛔ 重复直到通过)
 - [ ] 测试失败 → 🤖 调试: 对比生成值与期望值, 定位差异
 - [ ] 算法错误 → 返回阶段 3 (重新分析)
-- [ ] 实现错误 → 返回阶段 4 (修复代码)
+- [ ] 实现错误 → 返回阶段 7 (修复代码)
 - [ ] ✅ 所有测试通过 → 编写 README.md
 ```
 
@@ -232,25 +316,26 @@ Only use `read_file`/`rg` when:
 
 ## PHASE GUIDES
 
-### Phase 1: Discovery
+### Phase 1: Preprocessing (Smart Mode)
 
 **⚠️ CRITICAL: Use BROWSER for initial reconnaissance, NOT curl!**
 
 `curl` cannot:
 - Execute JavaScript (params are often dynamically generated)
 - Handle cookies/sessions properly
-- Capture requests
+- Capture XHR/Fetch requests
 - See the actual request parameters being sent
 
 **Correct Workflow:**
 
 1. **Init Workspace** (Main Agent):
    ```bash
-   mkdir -p artifacts/jsrev/{domain}/{source,transforms,output,raw,lib,repro}
+   mkdir -p artifacts/jsvmp/{target}/{source,transforms,output,raw,lib,repro}
    ```
 
 2. **🤖 Browser Recon** (Sub-Agent via `invokeSubAgent`):
    - Navigate to target URL in browser
+   - Open Network tab, filter by XHR/Fetch
    - Trigger the target action (search, login, etc.)
    - Identify:
      - Target API endpoint
@@ -262,161 +347,62 @@ Only use `read_file`/`rg` when:
 3. **🤖 Download JS Files** (Sub-Agent):
    - From Network tab, identify JS files loaded
    - Download relevant ones to `source/` directory
-   - Note: Look for files containing the param generation logic
+   - Note: Look for files containing VM code (large switch statements, bytecode arrays)
 
-4. **🤖 Detect Obfuscation** (Sub-Agent):
+4. **🤖 检测混淆类型** (Sub-Agent):
    - Use `read_code_smart` on downloaded files
-   - Identify obfuscation patterns (string arrays, control flow, etc.)
+   - Identify: VM dispatcher, bytecode arrays, string obfuscation, etc.
 
-**Do NOT use `head`, `cat` or `grep` on JS files.**
-- **Inspect**: `read_code_smart(file_path="source/main.js", start_line=1, end_line=50)`
-- **Search**: `search_code_smart(file_path="source/main.js", query="var _0x")`
+**DO NOT use `head` or `cat` on JS files.**
 
-### Phase 2: Deobfuscation
-
-**⚠️ MANDATORY FIRST STEP**: `read_file("skills/js_deobfuscation.md")`
-
-Typical workflow:
-1.  **Analyze**: Use `read_code_smart` to see the structure.
-2.  **Write Script**: Create `transforms/fix_strings.js` (Babel Visitor).
+5.  **Inspect** (after download):
     ```javascript
-    // Template for transforms/fix_strings.js
-    module.exports = function({ types: t }) {
-      return {
-        visitor: {
-          MemberExpression(path) { /* logic */ }
-        }
-      };
-    };
+    read_code_smart(file_path="source/main.js", start_line=1, end_line=50)
     ```
-3.  **Apply**:
+    *Check output for: `var _0x...`, flattened control flow, etc.*
+
+6.  **Search**:
     ```javascript
-    apply_custom_transform(target_file="source/main.js", script_path="transforms/fix_strings.js")
+    search_code_smart(file_path="source/main.js", query="debugger")
     ```
-4.  **Verify**:
-    ```javascript
-    read_code_smart("source/main_deob.js")
-    ```
-    *Note: The output will still map to `main.js` [Src L:C], but the code will be readable.*
 
-### Phase 3: Analysis
+7.  **Deobfuscate (If needed)**:
+    *   Create transform script: `artifacts/jsvmp/{target}/transforms/fix_strings.js`
+    *   Apply:
+        ```javascript
+        apply_custom_transform(target_file="source/main.js", script_path="transforms/fix_strings.js")
+        ```
+    *   Verify: `read_code_smart("source/main_deob.js")`
 
-**⚠️ MANDATORY ORDER**: Local Smart Tools FIRST, browser LAST
+### Phase 2: VM Data Extraction
 
-1.  **Search**: `search_code_smart(file_path="source/main_deob.js", query="encrypt")`
-2.  **Trace**: `find_usage_smart(file_path="source/main_deob.js", identifier="_0xkey", line=123)`
+#### Locate Dispatcher
+1.  **Static**: `search_code_smart(query="while\\s*\\(\\s*true")` or `search_code_smart(query="switch\\s*\\(")`
+2.  **Dynamic**: Record Performance Profile -> Find longest function.
 
-**Browser Debugging (after static analysis)**:
-*   Get coordinate from Smart Tool: `[Src L1:15847]`
-*   Set Breakpoint: `set_breakpoint(urlRegex=".*main.js.*", lineNumber=1, columnNumber=15847)`
-*   **Trigger**: Ask human.
-*   **Inspect**: `get_scope_variables()`.
+#### Extract Data
+*   Use `find_usage_smart` to trace where Bytecode Array is defined.
+*   Use `evaluate_script(..., savePath="...")` to dump arrays from browser memory.
 
-### Phase 4: Implementation
+### Phase 3-6: IR Pipeline
 
-**⚠️ Python env: use `uv` only**
-
-```bash
-cd artifacts/jsrev/{domain}/repro
-uv init && uv add requests
-uv run python repro.py
-```
-
-### Phase 5: Validation
-
-**⚠️ Validation is MANDATORY — NEVER skip this phase**
-
-1. **Capture Reference**: Sub-agent captures a real request with known input/output
-2. **Unit Test**: Generate signature with same input → must match reference exactly
-3. **Integration Test**: Make actual API request → must return 200 OK (or expected response)
-
-**Failure Handling:**
-- Unit test fails: Algorithm misunderstanding → return to Phase 3 for re-analysis
-- Integration test fails but unit test passes: Missing headers/cookies/timestamp → debug request
-
-### Phase 6: Verification Loop
-
-**This phase ensures correctness through iteration:**
-
-1. Run tests
-2. Pass?
-   - Yes → Write README.md → Done ✅
-   - No → Debug: What's different?
-     - Algorithm error → Phase 3
-     - Implementation error → Phase 4
-
-**Debug Checklist:**
-- [ ] Byte-by-byte comparison: generated value vs expected value
-- [ ] Check encoding: UTF-8, URL encoding, Base64 padding
-- [ ] Check byte order: little-endian vs big-endian
-- [ ] Check timestamp: is it time-sensitive?
-- [ ] 检查随机值: 是否有 nonce/salt?
+| Phase | Input | Output | Description |
+|-------|-------|--------|-------------|
+| 3 (LIR) | bytecode | `_disasm.asm` | Explicit stack ops |
+| 4 (MIR) | LIR | `_mir.txt` | Expression trees |
+| 5 (HIR) | MIR | `_hir.txt` | CFG + structure |
+| 6 (JS) | HIR | `_decompiled.js` | Readable code |
 
 ---
 
-## TOOL QUICK REF
+## Troubleshooting
 
-| Task | Tool | Usage |
-|------|------|-------|
-| **Read Code** | `read_code_smart` | `file="...", start=1, end=50` |
-| **Search Text** | `search_code_smart` | `file="...", query="pattern"` |
-| **Trace Var** | `find_usage_smart` | `file="...", id="x", line=10` |
-| **Deobfuscate** | `apply_custom_transform` | `target="...", script="..."` |
-| **Breakpoint** | `set_breakpoint` | Use `[Src]` coords from Smart Tools |
-| **Read Runtime** | `get_scope_variables` | After hitting breakpoint |
-| **Global Var** | `evaluate_script` | Only for globals |
-| **Search Non-JS**| `rg` | `-M 200 -m 10` |
-
----
-
-## 🌐 BROWSER AUXILIARY TOOLS
-
-**Browser is for: validating static analysis, getting runtime values, locating hard-to-analyze code.**
-
-### Key Techniques
-
-#### 1. Runtime Value Extraction
-```javascript
-// 1. Locate via Smart Tool
-find_usage_smart(file="source/main.js", identifier="targetArr", line=50)
-// -> Output says Definition at [Src L1:5000]
-
-// 2. Set Breakpoint
-set_breakpoint(urlRegex=".*main.js.*", lineNumber=1, columnNumber=5000)
-
-// 3. Inspect
-get_scope_variables()
-```
-
-#### 2. Evaluate Script Tips
-`evaluate_script` works like DevTools Console.
-**For large output, use `savePath` parameter:**
-```javascript
-// Save large data directly to file
-evaluate_script(script="JSON.stringify(largeArray)", savePath="artifacts/jsrev/{domain}/raw/data.json")
-```
-
-#### 3. Breakpoint Strategies
-```javascript
-// Logger (non-stopping)
-set_breakpoint(urlRegex=".*target.js.*", lineNumber=123,
-  condition='console.log("args:", arguments), false')
-
-// Injection (Modify Source)
-replace_script(urlPattern=".*obfuscated.js.*",
-  oldCode="function _0x123(x){...}",
-  newCode="window.decoder = function _0x123(x){...};")
-
-// Debugger bypass
-replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
-```
-
-#### 4. Browser Rules
-1. **Static analysis first** — Use Smart Tools on local files first.
-2. **Trust [Src] Coords** — Smart Tools give you the exact Chrome coordinates.
-3. **Log breakpoints preferred** — `, false` condition.
-4. **Hooks survive via set_breakpoint** — evaluate_script doesn't survive refresh.
-5. **NO BACKSLASH ESCAPING** — `.*main.*js.*`, not `.*main.*\\.js.*`.
+| Issue | Solution |
+|-------|----------|
+| **File too big** | `read_code_smart` handles this. Do NOT use `read_file`. |
+| **Variable soup** | Use `find_usage_smart(..., line=X)` to trace specific scope. |
+| **Line mismatch** | Trust the `[Src L:C]` column in Smart Tool output. |
+| **Unknown opcode** | Trace handler using `set_breakpoint` at `[Src]` location. |
 
 ---
 
@@ -433,8 +419,8 @@ replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
 
 ### 🚨 COMMON MISTAKE
 ```
-❌ WRONG: See "🤖 Detect obfuscation" → Open browser → Analyze yourself
-✅ RIGHT: See "🤖 Detect obfuscation" → invokeSubAgent() → Wait for NOTE.md
+❌ WRONG: See "🤖 定位 VM dispatcher" → Open browser → Analyze yourself
+✅ RIGHT: See "🤖 定位 VM dispatcher" → invokeSubAgent() → Wait for NOTE.md
 ```
 
 ### 🚀 PARALLEL EXECUTION
@@ -443,8 +429,8 @@ replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
 
 Scan ALL unchecked `🤖` tasks → If no data dependency → Invoke ALL in ONE turn:
 ```
-✅ PARALLEL: Download JS + Capture request (independent)
-❌ SEQUENTIAL: Detect patterns → Write script (script needs patterns)
+✅ PARALLEL: 提取字节码 + 提取常量数组 (independent)
+❌ SEQUENTIAL: 定位 dispatcher → 提取 handler (handler needs dispatcher)
 ```
 
 ### Workflow
@@ -458,8 +444,7 @@ invokeSubAgent(
   name="general-task-execution",
   prompt="""
 ## ⚠️ MANDATORY FIRST STEP
-1. Read `skills/sub_agent.md` — tool usage rules
-2. If task involves deobfuscation/transforms: also read `skills/js_deobfuscation.md`
+Read `skills/sub_agent.md` — it contains critical tool usage rules you MUST follow.
 
 ## 🎯 YOUR SINGLE TASK (DO NOT DEVIATE)
 {exact task text from TODO.md}
@@ -474,11 +459,11 @@ You are a FOCUSED EXECUTOR. You must:
 
 ## Context
 - Domain: {domain}
-- Workspace: artifacts/jsrev/{domain}/
-- NOTE.md: artifacts/jsrev/{domain}/NOTE.md
+- Workspace: artifacts/jsvmp/{domain}/
+- NOTE.md: artifacts/jsvmp/{domain}/NOTE.md
 
 ## Instructions
-1. Read required skill files first
+1. Read `skills/sub_agent.md` first (tool rules)
 2. Execute ONLY the task stated above
 3. Write findings to NOTE.md with [Src L:C] coordinates
 4. **FLAG NEW DISCOVERIES** in "待处理发现" section:
@@ -502,26 +487,63 @@ Write findings to NOTE.md, then STOP.
 
 | Task Type | Who Executes | Tools Allowed |
 |-----------|--------------|---------------|
-| `🤖 Detect...` | Sub-agent | Browser, Smart-FS |
-| `🤖 Locate...` | Sub-agent | Browser, Smart-FS |
-| `🤖 Trace...` | Sub-agent | Smart-FS, Browser |
-| `🤖 Extract...` | Sub-agent | Browser debugging |
+| `🤖 检测...` | Sub-agent | Browser, Smart-FS |
+| `🤖 定位...` | Sub-agent | Browser, Smart-FS |
+| `🤖 提取...` | Sub-agent | Smart-FS, Browser |
 | `🤖 Capture...` | Sub-agent | Browser network |
 | `🤖 Run tests...` | Sub-agent | Bash, Python |
-| `🤖 Write deob script` | Sub-agent | Smart-FS, fsWrite |
-| `🤖 Apply transform` | Sub-agent | apply_custom_transform, Smart-FS |
-| `🤖 Python impl` | Sub-agent | fsWrite, Bash |
+| `🤖 Debug...` | Sub-agent | All tools |
+| `编写去混淆脚本` | Main agent | fsWrite |
+| `应用去混淆` | Main agent | apply_custom_transform |
+| `Python skeleton` | Main agent | fsWrite |
+| `Core algorithm` | Main agent | fsWrite |
 | `Update TODO/NOTE` | Main agent | fsWrite, strReplace |
-| `Phase Gate decisions` | Main agent | — |
+
+---
+
+## Phase 8-9: Validation Guide
+
+### Phase 8: Validation
+
+**⚠️ Validation is MANDATORY — NEVER skip this phase**
+
+1. **Capture Reference**: Sub-agent captures a real request with known input/output
+2. **Unit Test**: Generate signature with same input → must match reference exactly
+3. **Integration Test**: Make actual API request → must return 200 OK (or expected response)
+
+**Failure Handling:**
+- Unit test fails: Algorithm misunderstanding → return to Phase 3-6 for re-analysis
+- Integration test fails but unit test passes: Missing headers/cookies/timestamp → debug request
+
+### Phase 9: Verification Loop
+
+**This phase ensures correctness through iteration:**
+
+1. Run tests
+2. Pass?
+   - Yes → Write README.md → Done ✅
+   - No → Debug: What's different?
+     - Algorithm error → Phase 3-6
+     - Implementation error → Phase 7
+
+**Debug Checklist:**
+- [ ] Byte-by-byte comparison: generated value vs expected value
+- [ ] Check encoding: UTF-8, URL encoding, Base64 padding
+- [ ] Check byte order: little-endian vs big-endian
+- [ ] Check timestamp: is it time-sensitive?
+- [ ] Check random values: is there a nonce/salt?
 
 ---
 
 ## 🆘 HUMAN ASSISTANCE
 
+- **Unknown Opcode**: "🆘 Unknown opcode {opcode}, need handler analysis."
+- **Stack Imbalance**: "🆘 Stack imbalance at PC {pc}."
+- **Complex Control Flow**: "🆘 Control flow too complex."
 - **CAPTCHA**: "🆘 Encountered CAPTCHA, please complete manually."
 - **Login**: "🆘 Please log in."
 - **Trigger**: "🆘 Please click button to trigger request."
-- **Stuck**: "🆘 Deobfuscation blocked, need assistance."
+- **Stuck**: "🆘 Decompilation blocked."
 
 ---
 
@@ -552,7 +574,7 @@ Write findings to NOTE.md, then STOP.
 - **SMART-FS DEFAULT**: Use `read_code_smart`/`search_code_smart` for ALL file reading — supports JS/TS/JSON/HTML/XML/CSS and all text files
 - NEVER use `read_file`/`cat`/`grep`/`rg` for reading files — use Smart-FS tools
 - NEVER use `python -c` or `node -e` inline scripts — causes terminal hang
-- **PHASE 2 GATE**: MUST `read_file("skills/js_deobfuscation.md")` before ANY deobfuscation task
+- **PHASE 1 GATE**: MUST complete deobfuscation before ANY VM analysis
 - **READ `NOTE.md` at session start** — resume from previous findings
 - **UPDATE `NOTE.md` after discoveries** — preserve knowledge for next session
 - **ALWAYS include [Src L:C] references** — future sessions depend on this

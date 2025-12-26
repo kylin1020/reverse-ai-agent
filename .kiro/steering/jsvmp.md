@@ -4,7 +4,7 @@ inclusion: manual
 
 # JSVMP Decompilation (State-Driven)
 
-> **⚠️ RULE #1: 对于 `.js` 文件，永远不要使用 `read_file/readFile` 工具、`cat`、`head`、`tail`、`grep` 或 `rg`。必须使用 `read_code_smart`、`search_code_smart`、`find_usage_smart` 等 Smart-FS 工具。**
+> **⚠️ RULE #1: NEVER use `read_file/readFile`, `cat`, `head`, `tail`, `grep`, or `rg` for reading files. ALWAYS use Smart-FS tools (`read_code_smart`, `search_code_smart`, `find_usage_smart`) as your DEFAULT file access method. Smart-FS supports JS/TS (full AST + beautify + source map), JSON/HTML/XML/CSS (beautify), and all other text files.**
 
 > **ROLE**: You are NOT a decompilation expert. You are a **State Machine Executor**.
 > **OBJECTIVE**: Advance the `TODO.md` state by exactly ONE tick.
@@ -57,17 +57,30 @@ inclusion: manual
 
 ## ⛔ CRITICAL RULES
 
-### 1. Smart Code Access (JS Files Only)
-**NEVER use `read_file`, `cat`, `head`, or `rg` on `.js` files.**
-- **Read**: Use `read_code_smart`. It auto-beautifies and maps lines to the ORIGINAL source (X-Ray Mode).
-- **Search**: Use `search_code_smart`. It supports Regex and returns Original Line Numbers (`[Src L:C]`).
-- **Trace**: Use `find_usage_smart`. It finds variable Definitions & References using AST analysis.
-- **Transform**: Use `apply_custom_transform`. It handles deobfuscation while preserving Source Maps.
+### 1. Smart-FS as DEFAULT File Access
+**ALWAYS use Smart-FS tools as your primary file access method.**
 
-### 2. Standard File Access (Non-JS Files)
-For `.json`, `.txt`, `.asm`, `.md`:
-- Use `read_file` (with start/end lines).
-- Use `rg` (ripgrep) for searching.
+| File Type | Smart-FS Capabilities | Tools |
+|-----------|----------------------|-------|
+| `.js`, `.mjs`, `.cjs`, `.jsx` | Full: AST + Beautify + Source Map | `read_code_smart`, `search_code_smart`, `find_usage_smart`, `apply_custom_transform` |
+| `.ts`, `.tsx`, `.mts`, `.cts` | Full: AST + Beautify + Source Map | Same as above |
+| `.json` | Beautify | `read_code_smart`, `search_code_smart` |
+| `.html`, `.htm` | Beautify | `read_code_smart`, `search_code_smart` |
+| `.xml`, `.svg` | Beautify | `read_code_smart`, `search_code_smart` |
+| `.css` | Beautify | `read_code_smart`, `search_code_smart` |
+| Other text files | Basic reading with smart truncation | `read_code_smart`, `search_code_smart` |
+
+**Why Smart-FS?**
+- **Auto-beautifies** minified/compressed code
+- **Intelligent truncation** prevents context overflow
+- **Source mapping** (`[Src L:C]`) for JS/TS enables precise breakpoint setting
+- **AST analysis** for JS/TS enables variable tracing
+
+### 2. When to Use Traditional Tools (Rare Cases)
+Only use `read_file`/`rg` when:
+- Binary file inspection (though Smart-FS handles text gracefully)
+- Specific line range extraction from very large non-code files
+- Performance-critical batch operations on simple text files
 
 ### 3. String Length Limits
 **NEVER output or read long strings:**
@@ -429,7 +442,6 @@ invokeSubAgent(
   name="general-task-execution",
   prompt="""
 ## ⚠️ MANDATORY FIRST STEP
-Read `skills/sub_agent.md` — it contains critical tool usage rules you MUST follow.
 
 ## 🎯 YOUR SINGLE TASK (DO NOT DEVIATE)
 {exact task text from TODO.md}
@@ -457,7 +469,7 @@ You are a FOCUSED EXECUTOR. You must:
 
 ## 🚫 FORBIDDEN ACTIONS
 - Reading TODO.md
-- Using `read_file`/`cat`/`grep` on `.js` files (use Smart-FS tools)
+- Using `read_file`/`cat`/`grep`/`rg` for reading files (use Smart-FS tools for ALL file access)
 - Closing or navigating away from main browser page
 - Doing any task not explicitly stated above
 - Continuing work after completing the assigned task
@@ -547,15 +559,17 @@ Write findings to NOTE.md, then STOP.
 - [ ] Did I mark the current task `[x]`?
 
 ### Code Reading
-**MUST use `read_code_smart` tool instead of `read_file` for all code files.**
+**MUST use `read_code_smart` tool instead of `read_file` for ALL file reading.**
+- Supports JS/TS (full AST + beautify + source map), JSON/HTML/XML/CSS (beautify), and all text files
 - Handles long lines intelligently (truncates with line numbers preserved)
-- Prevents context overflow from minified/beautified JS
+- Prevents context overflow from minified/beautified code
 
 ### Absolute Rules
 - **🤖 = DELEGATE**: See `🤖`? Call `invokeSubAgent()`. Period.
 - **DYNAMIC PLANNING**: After each task, check for new discoveries and update TODO.md
 - **LOCAL FILES FIRST**: Always check `output/*_deob.js` before using browser
-- NEVER `read_file` on .js files — use `search_code_smart` or `read_code_smart`
+- **SMART-FS DEFAULT**: Use `read_code_smart`/`search_code_smart` for ALL file reading — supports JS/TS/JSON/HTML/XML/CSS and all text files
+- NEVER use `read_file`/`cat`/`grep`/`rg` for reading files — use Smart-FS tools
 - NEVER use `python -c` or `node -e` inline scripts — causes terminal hang
 - **PHASE 1 GATE**: MUST complete deobfuscation before ANY VM analysis
 - **READ `NOTE.md` at session start** — resume from previous findings
