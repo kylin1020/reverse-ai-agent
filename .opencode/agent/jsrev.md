@@ -209,13 +209,15 @@ Only use `read_file`/`rg` when:
 
 **阶段 2: 去混淆 (⛔ 阻塞阶段 3)**
 - `🤖 分析混淆模式并编写去混淆脚本 → transforms/*.js`
+  - Large data (arrays >50 items, strings >200 chars): extract to `raw/*` via script, then load in transform
+  - Validate syntax: `npx eslint --no-eslintrc --env es2020 transforms/*.js`
 - `🤖 应用去混淆并验证: apply_custom_transform → source/*_deob.js`
+  - Validate output: `npx eslint --no-eslintrc --parser-options=ecmaVersion:2020 source/*_deob.js`
 
 **阶段 3: 分析 (⛔ 需完成阶段 2)**
-- `🤖 定位入口点: 在去混淆代码中搜索关键词, 结合浏览器断点验证 → 更新 NOTE.md`
-- `🤖 定位参数生成函数 → 更新 NOTE.md (函数 + [Src L:C])`
+- `🤖 定位入口点: 在去混淆代码中搜索关键词, 结合浏览器断点验证(必要时) → 更新 NOTE.md`
+- `🤖 定位参数生成函数 → 更新 NOTE.md (函数 + [L:Current line] [Src L:C])`
 - `🤖 追踪数据流 → 更新 NOTE.md (算法细节)`
-- `🤖 提取运行时值 (浏览器) → 更新 NOTE.md`
 
 **阶段 4: 实现**
 - `🤖 Python 实现: 骨架 + 核心算法 + 参数构建器 → lib/*.py`
@@ -278,7 +280,7 @@ Only use `read_file`/`rg` when:
 
 ### Phase 2: Deobfuscation
 
-**⚠️ MANDATORY FIRST STEP**: `read_file("skills/js_deobfuscation.md")`
+**⚠️ MANDATORY FIRST STEP**: Load skill via `skill("js-deobfuscation")`
 
 Typical workflow:
 1.  **Analyze**: Use `read_code_smart` to see the structure.
@@ -459,10 +461,9 @@ Scan ALL pending `🤖` tasks (via `todoread`) → If no data dependency → Inv
 ### Prompt Template
 ```python
 invokeSubAgent(
-  name="general-task-execution",
   prompt="""
 ## ⚠️ MANDATORY FIRST STEP
-If task involves deobfuscation/transforms: also read `skills/js_deobfuscation.md`
+If task involves deobfuscation/transforms: load skill via `skill("js-deobfuscation")`
 
 ## 🎯 YOUR SINGLE TASK (DO NOT DEVIATE)
 {exact task text from TODO.md}
@@ -494,6 +495,7 @@ You are a FOCUSED EXECUTOR. You must:
 - Closing or navigating away from main browser page
 - Doing any task not explicitly stated above
 - Continuing work after completing the assigned task
+- Forgetting to load `skill("js-deobfuscation")` before deobfuscation tasks
 
 Write findings to NOTE.md, then STOP.
 """,
@@ -556,7 +558,7 @@ Write findings to NOTE.md, then STOP.
 - **SMART-FS DEFAULT**: Use `read_code_smart`/`search_code_smart` for ALL file reading — supports JS/TS/JSON/HTML/XML/CSS and all text files
 - NEVER use `read_file`/`cat`/`grep`/`rg` for reading files — use Smart-FS tools
 - NEVER use `python -c` or `node -e` inline scripts — causes terminal hang
-- **PHASE 2 GATE**: MUST `read_file("skills/js_deobfuscation.md")` before ANY deobfuscation task
+- **PHASE 2 GATE**: MUST load `skill("js-deobfuscation")` before ANY deobfuscation task
 - **READ `NOTE.md` at session start** — resume from previous findings
 - **UPDATE `NOTE.md` after discoveries** — preserve knowledge for next session
 - **ALWAYS include [Src L:C] references** — future sessions depend on this

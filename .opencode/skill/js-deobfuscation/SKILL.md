@@ -1,3 +1,8 @@
+---
+name: js-deobfuscation
+description: JavaScript deobfuscation techniques using Babel AST transforms. Includes anti-debug removal, string array decoding, constant folding, dead code elimination, and control flow unflattening patterns.
+---
+
 # JavaScript Deobfuscation Skill
 
 ## Core Principle
@@ -124,6 +129,7 @@ Key values to extract:
 - **Index offset**: `0x100` (look for `idx - 0x???` pattern)
 - **Shuffle count**: Check if array is rotated before use
 
+
 #### Step 2: Extract Array to File (run with node)
 
 ```javascript
@@ -136,9 +142,6 @@ const sourceFile = process.argv[2] || 'source/main.js';
 const code = fs.readFileSync(sourceFile, 'utf8');
 
 // Match string array declaration (adjust regex for specific obfuscator)
-// Pattern 1: var _0x1234 = ["a", "b", "c"];
-// Pattern 2: var _0x1234 = ['a', 'b', 'c'];
-// Pattern 3: var _0x1234=["a","b","c"]; (minified)
 const arrayRegex = /var\s+(_0x[a-f0-9]+)\s*=\s*\[([\s\S]*?)\];/;
 const match = code.match(arrayRegex);
 
@@ -155,7 +158,6 @@ const strings = [];
 const elementRegex = /["']((?:[^"'\\]|\\.)*)["']/g;
 let elemMatch;
 while ((elemMatch = elementRegex.exec(arrayContent)) !== null) {
-    // Unescape common escape sequences
     const str = elemMatch[1]
         .replace(/\\n/g, '\n')
         .replace(/\\r/g, '\r')
@@ -168,7 +170,7 @@ while ((elemMatch = elementRegex.exec(arrayContent)) !== null) {
 
 console.log(`Found array "${arrayName}" with ${strings.length} elements`);
 
-// Save as newline-delimited file (use \x00 as delimiter if strings contain newlines)
+// Save as newline-delimited file
 const hasNewlines = strings.some(s => s.includes('\n'));
 const delimiter = hasNewlines ? '\x00' : '\n';
 const outputFile = 'raw/string_array.txt';
@@ -227,28 +229,6 @@ module.exports = function({ types: t }) {
     };
 };
 ```
-
-#### Step 4: Validate and Apply
-
-```bash
-# Validate transform syntax
-npx eslint --no-eslintrc --env es2020 transforms/decode_strings.js
-
-# Apply transform
-# (use apply_custom_transform tool)
-
-# Validate output
-npx eslint --no-eslintrc --parser-options=ecmaVersion:2020 source/main_deob.js
-```
-
-#### Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| Array not found | Adjust regex; check if array is split across lines |
-| Wrong decoded strings | Check OFFSET value; search for `- 0x` in decoder function |
-| Some calls not replaced | Decoder may have multiple variants; check for wrapper functions |
-| Strings contain delimiters | Use null byte (`\x00`) as delimiter instead of newline |
 
 ### Computed Property Cleanup
 
