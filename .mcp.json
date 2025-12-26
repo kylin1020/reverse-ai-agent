@@ -1,0 +1,49 @@
+{
+  "mcpServers": {
+    "browser-debugger": {
+      "command": "npx",
+      "args": [
+        "@reverse-craft/rc-devtools-mcp@latest"
+      ],
+      "autoApprove": [
+        "new_page",
+        "list_network_requests",
+        "list_network_requests",
+        "take_snapshot",
+        "click",
+        "navigate_page",
+        "get_network_request",
+        "fill",
+        "search_network_requests",
+        "take_screenshot",
+        "evaluate_script",
+        "evaluate_script",
+        "close_page",
+        "close_page",
+        "save_static_resource",
+        "save_static_resource",
+        "save_static_resource",
+        "list_pages",
+        "list_console_messages",
+        "clear_cookies",
+        "save_network_request"
+      ],
+      "disabled": false
+    },
+    "smart-fs": {
+      "command": "npx",
+      "args": [
+        "@reverse-craft/smart-fs-mcp@latest"
+      ],
+      "autoApprove": [
+        "read_code_smart",
+        "read_code_smart",
+        "search_code_smart",
+        "search_code_smart",
+        "search_code_smart",
+        "apply_custom_transform"
+      ],
+      "disabled": false
+    }
+  }
+}
