@@ -1,6 +1,0 @@
-/**
- * @license
- * Copyright 2025 Google LLC
- * SPDX-License-Identifier: Apache-2.0
- */
-import{getCdpSession as t}from"./cdp.js";const e=new WeakMap;function n(t){let n=e.get(t);return n||(n=new Map,e.set(t,n)),n}export async function addScript(e,r,i){const a=await t(e);await a.send("Page.enable");let s=r.trim();(s.startsWith("(")&&s.includes("=>")||s.startsWith("function")||s.startsWith("async function")||s.startsWith("async ("))&&(s.endsWith("()")||s.endsWith("();")||(s=`(${s})()`));const c={identifier:(await a.send("Page.addScriptToEvaluateOnNewDocument",{source:s})).identifier,name:i,source:r,createdAt:Date.now()};return n(e).set(c.identifier,c),c}export async function removeScript(e,r){const i=n(e);if(!i.has(r))return!1;const a=await t(e);return await a.send("Page.removeScriptToEvaluateOnNewDocument",{identifier:r}),i.delete(r),!0}export function listScripts(t){const e=n(t);return Array.from(e.values())}export async function clearScripts(e){const r=n(e),i=r.size;if(0===i)return 0;const a=await t(e),s=Array.from(r.keys()).map(t=>a.send("Page.removeScriptToEvaluateOnNewDocument",{identifier:t}));return await Promise.all(s),r.clear(),i}export function truncateSource(t,e=100){return t.length<=e?t:t.substring(0,e)+"..."}
