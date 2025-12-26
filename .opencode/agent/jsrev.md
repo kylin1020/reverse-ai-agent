@@ -78,6 +78,18 @@ artifacts/jsrev/{domain}/          # ← WORKSPACE_ROOT
     *   Tracing: `find_usage_smart(file, identifier, line)`
     *   Transforming: `apply_custom_transform(target, script)`
 
+#### Smart-FS Output Format
+```
+/path/to/file.js (1-20/5000)        ← (currentRange/totalLines)
+Src=original position for breakpoints
+1 L1:0       var _0x1234 = ...      ← LineNum + Src(L:C) + Code
+2 L1:25      var data = "SGV...";
+3 L1:50078   return decode(data);
+```
+*   **Line Format**: `{CurrentLine} L{SrcLine}:{SrcCol} {Code}`
+*   **CurrentLine**: Line number in deobfuscated file (use for `read_code_smart` range)
+*   **Src L:C**: Original source position (use for browser breakpoints)
+
 ### 2. Browser Usage
 *   **Main Agent**: NEVER use browser tools directly.
 *   **Sub-Agent**: Allowed to use browser tools for `🤖` tasks.
@@ -107,16 +119,21 @@ artifacts/jsrev/{domain}/          # ← WORKSPACE_ROOT
 ...
 
 ## 参数追踪
-| 参数名 | 生成函数 | 状态 |
-|--------|----------|------|
-| `sign` | [Src L:C] | 🔍 |
+| 参数名 | 生成函数 | 位置 (Line @ Src) | 状态 |
+|--------|----------|-------------------|------|
+| `sign` | `getSign()` | `output/main.js` L:1234 @ Src L1:50078 | 🔍 |
 
 ## 关键函数
-- `encryptFunc` — `source/main.js` @ `[Src L1:15000]`
+> Format: `file` L:{CurrentLine} @ Src L{SrcLine}:{SrcCol}
+> - CurrentLine = line in deobfuscated file (for read_code_smart)
+> - Src L:C = original position (for browser breakpoints)
+
+- `encryptFunc` — `output/main.js` L:1234 @ Src L1:50078
+- `decodeData` — `output/utils.js` L:567 @ Src L1:12000
 
 ## 待处理发现 (Pending Discoveries)
 > Sub-Agent writes here. Main Agent moves to TODO.md.
-- [ ] 🆕 {description} @ [Src L:C] (来源: {task})
+- [ ] 🆕 {description} — `{file}` L:{line} @ Src L{srcLine}:{srcCol} (from: {task})
 ```
 
 ---
@@ -151,10 +168,12 @@ invokeSubAgent(
 ## OUTPUT REQUIREMENTS
 1. **Update `artifacts/jsrev/{domain}/NOTE.md`**:
    - Log findings under `## 会话日志`.
-   - Log key locations under `## 关键函数` with `[Src L:C]`.
+   - Log key locations under `## 关键函数` with format: `file` L:{line} @ Src L{srcLine}:{srcCol}
+     - L:{line} = current line in deobfuscated file (for read_code_smart)
+     - Src L:C = original source position (for browser breakpoints)
 2. **Flag Discoveries**:
    - If new params/functions/endpoints are found, append to `## 待处理发现`:
-     `- [ ] 🆕 {description} @ [Src L:C]`
+     `- [ ] 🆕 {description} — {file} L:{line} @ Src L{srcLine}:{srcCol}`
 3. **Stop**: Do not proceed to next task.
 """,
   explanation="Delegating: {task_description}"
