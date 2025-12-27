@@ -384,26 +384,26 @@ get_scope_variables()
 
 ## 阶段 3: 反汇编 (⛔ 需完成阶段 2)
 > **📚 技能引用**: 阅读 `#[[file:skills/jsvmp-decompiler.md]]` 获取 Babel 反编译器实现指南
-- [ ] 分析 opcode 格式 (参考 skill 第 11 节)
-- [ ] 编写反汇编器 (lib/decompiler.js)
-- [ ] 生成 LIR: output/*_disasm.asm
+- [ ] 🤖 分析 opcode 格式 (参考 skill 第 11 节)
+- [ ] 🤖 编写反汇编器 (lib/decompiler.js)
+- [ ] 🤖 生成 LIR: output/*_disasm.asm
 
 ## 阶段 4: 栈分析 (⛔ 需完成阶段 3)
 > **📚 技能引用**: 参考 `#[[file:skills/jsvmp-decompiler.md]]` 第 8 节数据流分析
-- [ ] 分析栈操作 (replace_stack_var)
-- [ ] 生成 MIR: output/*_mir.txt
+- [ ] 🤖 分析栈操作 (replace_stack_var)
+- [ ] 🤖 生成 MIR: output/*_mir.txt
 
 ## 阶段 5: 控制流分析 (⛔ 需完成阶段 4)
 > **📚 技能引用**: 参考 `#[[file:skills/jsvmp-decompiler.md]]` 第 6-7 节
-- [ ] 构建 CFG (graph_construct)
-- [ ] 区间图分析 (intervals, derived_sequence)
-- [ ] 循环/条件识别 (loop_struct, if_struct)
-- [ ] 生成 HIR: output/*_hir.txt
+- [ ] 🤖 构建 CFG (graph_construct)
+- [ ] 🤖 区间图分析 (intervals, derived_sequence)
+- [ ] 🤖 循环/条件识别 (loop_struct, if_struct)
+- [ ] 🤖 生成 HIR: output/*_hir.txt
 
 ## 阶段 6: 代码生成 (⛔ 需完成阶段 5)
 > **📚 技能引用**: 参考 `#[[file:skills/jsvmp-decompiler.md]]` 第 9 节 Writer
-- [ ] 实现 Writer 类
-- [ ] 生成可读 JS: output/*_decompiled.js
+- [ ] 🤖 实现 Writer 类
+- [ ] 🤖 生成可读 JS: output/*_decompiled.js
 
 ## 阶段 7: 实现 (⛔ 需完成阶段 6)
 - [ ] Python 骨架 (lib/*.py)
