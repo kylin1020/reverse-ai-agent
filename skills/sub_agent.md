@@ -86,6 +86,89 @@ Only use `read_file`/`rg` when:
 
 **For large data**: Always use `savePath` parameter or save to file.
 
+### 5. ⚠️ Large Data Extraction (CRITICAL)
+
+**NEVER write or output large constant arrays or strings directly!**
+
+This includes:
+- Bytecode arrays (often 10,000+ elements)
+- String lookup tables (often 1,000+ strings)
+- Opcode mapping tables
+- Encrypted/encoded data blobs
+
+**Why?**
+- Causes context overflow and token waste
+- Slows down response generation
+- Often results in truncated/corrupted data
+- Makes code unreadable
+
+**Extraction Priority (Static > Dynamic):**
+
+| Priority | Method | When to Use | Example |
+|----------|--------|-------------|---------|
+| 1️⃣ | AST Transform | Array is statically defined | `apply_custom_transform` |
+| 2️⃣ | Smart-FS + Script | Need to locate first | `search_code_smart` → extraction script |
+| 3️⃣ | Browser savePath | Runtime-generated data | `evaluate_script(..., savePath=...)` |
+| 4️⃣ | Scope dump | Complex objects at breakpoint | `save_scope_variables` |
+
+**✅ CORRECT: Static Extraction**
+```javascript
+// Step 1: Locate the array
+search_code_smart(file_path="source/main.js", query="var\\s+_0x[a-f0-9]+\\s*=\\s*\\[")
+// Output: [L:150] [Src L1:8234] var _0xabc123 = ["function", "Symbol", ...]
+
+// Step 2: Write extraction transform (transforms/extract_constants.js)
+module.exports = function({ types: t }) {
+  return {
+    visitor: {
+      VariableDeclarator(path) {
+        if (path.node.id.name === '_0xabc123') {
+          const elements = path.node.init.elements.map(e => e.value);
+          require('fs').writeFileSync('raw/constants.json', JSON.stringify(elements));
+          console.log(`Extracted ${elements.length} elements`);
+        }
+      }
+    }
+  };
+};
+
+// Step 3: Run extraction
+apply_custom_transform(target_file="source/main.js", script_path="transforms/extract_constants.js")
+```
+
+**✅ CORRECT: Browser Extraction (when static fails)**
+```javascript
+// ALWAYS use savePath — NEVER output large data
+evaluate_script(
+  script="JSON.stringify(window._0xabc123 || targetArray)",
+  savePath="raw/constants.json",
+  maxOutputChars=100  // Only show confirmation
+)
+
+// For scope variables at breakpoint
+save_scope_variables(filePath="raw/scope_dump.json", includeGlobal=false)
+```
+
+**❌ FORBIDDEN:**
+```javascript
+// NEVER do this — wastes tokens, causes truncation
+const arr = ["item1", "item2", ... /* hundreds of items */];
+fsWrite("raw/data.json", JSON.stringify(hugeArray)); // Don't embed in code
+
+// NEVER output array contents in responses
+"Found constants: ['function', 'Symbol', 'iterator', ...]" // ❌
+"Found constants: raw/constants.json (17930 elements)" // ✅
+```
+
+**Reporting Extracted Data:**
+In NOTE.md, write:
+```markdown
+## 提取的数据
+- Constants: `raw/constants.json` (17930 elements) from [L:150] [Src L1:8234]
+- Bytecode: `raw/bytecode.json` (5000 opcodes) from [L:200] [Src L1:12000]
+```
+NOT the actual array contents!
+
 ---
 
 ## 🌐 BROWSER RULES
@@ -190,6 +273,8 @@ Add to "待处理发现" section:
 6. **DO NOT output unlimited data**
 7. **DO NOT create files in project root** — Use designated directory only
 8. **DO NOT read files outside designated directory**
+9. **DO NOT write large arrays/strings directly** — Use file extraction
+10. **DO NOT output array contents (>50 elements)** — Save to file, report path + count
 
 ---
 

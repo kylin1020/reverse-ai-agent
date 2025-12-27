@@ -84,12 +84,97 @@ Only use `read_file`/`rg` when:
 - Specific line range extraction from very large non-code files
 - Performance-critical batch operations on simple text files
 
-### 3. String Length Limits
-**NEVER output or read long strings:**
+### 3. String/Array Length Limits (CRITICAL)
+**NEVER output, write, or embed large strings/arrays in code or responses:**
 - `read_code_smart` handles truncation automatically.
 - `evaluate_script` results: limit to 2000 chars (`.slice(0, 2000)`).
 - `console.log` output: limit to 500 chars per value.
 - Large data: save to file via `savePath` or `fs` tools.
+
+### 4. ⚠️ Large Data Extraction (STATIC FIRST)
+
+**FORBIDDEN: Writing constant arrays or long strings directly**
+```javascript
+// ❌ NEVER DO THIS — wastes tokens, causes truncation, corrupts data
+const constants = ["str1", "str2", ... /* 1000+ items */];
+const bytecode = [0x01, 0x02, ... /* huge array */];
+fsWrite("raw/data.json", JSON.stringify(hugeArray)); // ❌ Don't embed in code
+```
+
+**Extraction Priority (Static > Dynamic):**
+
+| Priority | Method | When to Use | Tools |
+|----------|--------|-------------|-------|
+| 1️⃣ | AST Transform | Array/object is statically defined in source | `apply_custom_transform` |
+| 2️⃣ | Smart-FS + Script | Need to locate first, then extract | `search_code_smart` → Node.js script |
+| 3️⃣ | Browser savePath | Runtime-generated or encrypted data | `evaluate_script(..., savePath=...)` |
+| 4️⃣ | Browser scope dump | Complex nested objects at breakpoint | `save_scope_variables` |
+
+**✅ CORRECT: Static Extraction via AST Transform**
+```javascript
+// Step 1: Locate the array using Smart-FS
+search_code_smart(file="source/main.js", query="var\\s+_0x[a-f0-9]+\\s*=\\s*\\[")
+// Output: [L:150] [Src L1:8234] var _0xabc123 = ["function", "Symbol", ...]
+
+// Step 2: Write extraction transform (transforms/extract_constants.js)
+module.exports = function({ types: t }) {
+  return {
+    visitor: {
+      VariableDeclarator(path) {
+        if (path.node.id.name === '_0xabc123' && 
+            t.isArrayExpression(path.node.init)) {
+          const elements = path.node.init.elements.map(e => {
+            if (t.isStringLiteral(e)) return e.value;
+            if (t.isNumericLiteral(e)) return e.value;
+            return null;
+          });
+          require('fs').writeFileSync(
+            'artifacts/jsvmp/{target}/raw/constants.json',
+            JSON.stringify(elements, null, 2)
+          );
+          console.log(`✅ Extracted ${elements.length} elements`);
+        }
+      }
+    }
+  };
+};
+
+// Step 3: Run extraction
+apply_custom_transform(target="source/main.js", script="transforms/extract_constants.js")
+// Output file: raw/constants.json (NOT in chat output!)
+```
+
+**✅ CORRECT: Browser Extraction (when static fails)**
+```javascript
+// ALWAYS use savePath — NEVER output large data to chat
+evaluate_script(
+  script="JSON.stringify(window._0xabc123 || targetArray)",
+  savePath="artifacts/jsvmp/{target}/raw/constants.json",
+  maxOutputChars=100  // Only show confirmation, not data
+)
+
+// For scope variables at breakpoint
+save_scope_variables(
+  filePath="artifacts/jsvmp/{target}/raw/scope_dump.json",
+  frameIndex=0,
+  includeGlobal=false
+)
+```
+
+**Common Extraction Targets:**
+| Data Type | Static Method | Dynamic Method |
+|-----------|---------------|----------------|
+| String lookup table | AST: find ArrayExpression | `evaluate_script` + savePath |
+| Bytecode array | AST: find large NumericLiteral[] | `evaluate_script` + savePath |
+| Opcode handlers | AST: find switch cases | `get_scope_variables` at dispatcher |
+| Encrypted strings | N/A (runtime only) | `evaluate_script` after decryption |
+
+**Sub-Agent Extraction Rules:**
+When delegating `🤖 提取...` tasks, sub-agent MUST:
+1. Use `search_code_smart` to locate the target first
+2. Prefer AST extraction script over browser
+3. Save to `raw/*.json` — NEVER output array contents
+4. Report only: variable name, location, element count
 
 ---
 
@@ -278,9 +363,11 @@ get_scope_variables()
 
 ## 阶段 2: VM 数据提取 (⛔ 需完成阶段 1)
 - [ ] 🤖 定位 VM dispatcher (`find_jsvmp_dispatcher`) → 更新 NOTE.md
-- [ ] 🤖 提取字节码 → 保存到 raw/bytecode.json
-- [ ] 🤖 提取常量数组 → 保存到 raw/constants.json
-- [ ] 🤖 提取 handler 函数 → 更新 NOTE.md
+- [ ] 🤖 定位字节码数组 (静态分析: search_code_smart + find_usage_smart) → 记录位置到 NOTE.md
+- [ ] 🤖 提取字节码 → 保存到 raw/bytecode.json (⚠️ 禁止直接输出数组内容)
+- [ ] 🤖 定位常量数组 (静态分析优先) → 记录位置到 NOTE.md
+- [ ] 🤖 提取常量数组 → 保存到 raw/constants.json (⚠️ 禁止直接输出数组内容)
+- [ ] 🤖 提取 handler 函数 → 更新 NOTE.md (记录函数位置，不要复制代码)
 
 ## 阶段 3: 反汇编 (⛔ 需完成阶段 2)
 - [ ] 分析 opcode 格式
@@ -389,9 +476,50 @@ search_code_smart(query="while\\s*\\(\\s*true")
 search_code_smart(query="switch\\s*\\(")
 ```
 
-#### Extract Data
-*   Use `find_usage_smart` to trace where Bytecode Array is defined.
-*   Use `evaluate_script(..., savePath="...")` to dump arrays from browser memory.
+#### Extract Data (Static-First Approach)
+
+**⚠️ PRIORITY: Static extraction > Browser extraction**
+
+1. **Locate via Smart-FS** (ALWAYS first):
+   ```javascript
+   // Find array definitions
+   search_code_smart(query="\\[\\s*['\"].*['\"]\\s*,")  // String arrays
+   search_code_smart(query="\\[\\s*\\d+\\s*,")          // Number arrays
+   
+   // Trace variable to definition
+   find_usage_smart(file="source/main.js", identifier="bytecodeArray", line=100)
+   ```
+
+2. **Extract via AST Transform** (PREFERRED for static data):
+   ```javascript
+   // Create transforms/extract_constants.js:
+   // module.exports = function({ types: t }) {
+   //   return {
+   //     visitor: {
+   //       ArrayExpression(path) {
+   //         if (path.node.elements.length > 100) {
+   //           // Save to file, replace with require()
+   //         }
+   //       }
+   //     }
+   //   };
+   // };
+   apply_custom_transform(target="source/main.js", script="transforms/extract_constants.js")
+   ```
+
+3. **Browser extraction** (ONLY when runtime evaluation needed):
+   ```javascript
+   // ⚠️ ALWAYS use savePath — NEVER output large arrays
+   evaluate_script(
+     script="JSON.stringify(window.bytecodeArray || _0x1234)",
+     savePath="raw/bytecode.json"
+   )
+   ```
+
+**❌ NEVER DO:**
+- Copy array contents into responses or code
+- Use `evaluate_script` without `savePath` for large data
+- Skip static analysis and go straight to browser
 
 ### Phase 3-6: IR Pipeline
 
@@ -466,6 +594,36 @@ You are a FOCUSED EXECUTOR. You must:
 4. **DO NOT** proceed to "next steps" or "continue with..."
 5. **DO NOT** make decisions about what to do next — that's the main agent's job
 
+## 🚫 LARGE DATA HANDLING (CRITICAL)
+**NEVER write or output large constant arrays or strings directly!**
+
+When extracting bytecode, constants, or string arrays:
+1. **Static Analysis First** — Use Smart-FS tools to LOCATE the data:
+   - `search_code_smart(query="\\[.*,.*\\]")` to find arrays
+   - `find_usage_smart(identifier="arrayName", line=X)` to trace definitions
+   - Note the [L:line] [Src L:col] coordinates in NOTE.md
+   
+2. **Save to File** — NEVER paste array contents:
+   - Browser: `evaluate_script(script="JSON.stringify(arr)", savePath="raw/data.json")`
+   - Static: Write AST transform to extract and save
+   
+3. **Reference by Path** — In NOTE.md, write:
+   - `Constants: raw/constants.json (extracted from [L:1234] [Src L1:5678])`
+   - NOT the actual array contents!
+
+❌ FORBIDDEN:
+```javascript
+// NEVER output this in responses or code:
+const arr = ["item1", "item2", ... /* hundreds of items */];
+```
+
+✅ CORRECT:
+```markdown
+## NOTE.md
+Constants array located at [L:1234] [Src L1:5678]
+Extracted to: raw/constants.json (1847 items)
+```
+
 ## Context
 - Domain: {domain}
 - Workspace: artifacts/jsvmp/{domain}/
@@ -474,14 +632,17 @@ You are a FOCUSED EXECUTOR. You must:
 ## Instructions
 1. Read `skills/sub_agent.md` first (tool rules)
 2. Execute ONLY the task stated above
-3. Write findings to NOTE.md with [L:line] [Src L:col] coordinates
-4. **FLAG NEW DISCOVERIES** in "待处理发现" section:
+3. For data extraction: Use static analysis to LOCATE, then save to file
+4. Write findings to NOTE.md with [L:line] [Src L:col] coordinates
+5. **FLAG NEW DISCOVERIES** in "待处理发现" section:
    `- [ ] 🆕 {description} @ [L:line] [Src L:col] (来源: {this task})`
-5. **STOP** — do not continue to other work
+6. **STOP** — do not continue to other work
 
 ## 🚫 FORBIDDEN ACTIONS
 - Reading TODO.md
 - Using `read_file`/`cat`/`grep`/`rg` for reading files (use Smart-FS tools for ALL file access)
+- Writing large arrays/strings directly in code or responses
+- Using evaluate_script without savePath for large data
 - Closing or navigating away from main browser page
 - Doing any task not explicitly stated above
 - Continuing work after completing the assigned task
@@ -581,8 +742,11 @@ Write findings to NOTE.md, then STOP.
 - **DYNAMIC PLANNING**: After each task, check for new discoveries and update TODO.md
 - **LOCAL FILES FIRST**: Always check `output/*_deob.js` before using browser
 - **SMART-FS DEFAULT**: Use `read_code_smart`/`search_code_smart` for ALL file reading — supports JS/TS/JSON/HTML/XML/CSS and all text files
+- **STATIC EXTRACTION FIRST**: For bytecode/constants, use AST transform before browser
+- **NEVER EMBED LARGE DATA**: Save arrays/strings to `raw/*.json`, never write directly
 - NEVER use `read_file`/`cat`/`grep`/`rg` for reading files — use Smart-FS tools
 - NEVER use `python -c` or `node -e` inline scripts — causes terminal hang
+- NEVER output array contents (>50 elements) in responses — save to file instead
 - **PHASE 1 GATE**: MUST complete deobfuscation before ANY VM analysis
 - **READ `NOTE.md` at session start** — resume from previous findings
 - **UPDATE `NOTE.md` after discoveries** — preserve knowledge for next session
