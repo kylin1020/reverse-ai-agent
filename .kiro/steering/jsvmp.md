@@ -108,6 +108,7 @@ Only use `read_file`/`rg` when:
 | **Search Text** | `search_code_smart` | `file="source/main.js", query="debugger"` |
 | **Trace Var** | `find_usage_smart` | `file="...", identifier="_0xabc", line=105` |
 | **Deobfuscate** | `apply_custom_transform` | `target="...", script="transforms/fix.js"` |
+| **Find JSVMP** | `find_jsvmp_dispatcher` | `filePath="source/main.js"` — AI-powered dispatcher detection |
 
 ---
 
@@ -186,7 +187,7 @@ Only use `read_file`/`rg` when:
 ### Use Cases
 | Scenario | Tool | Note |
 |----------|------|------|
-| Locate VM Dispatcher | Performance Profiler | Find longest Self Time function |
+| Locate VM Dispatcher | `find_jsvmp_dispatcher` | AI-powered, returns confidence + line numbers |
 | Verify Opcode | Log breakpoint | Differential analysis |
 | Get runtime values | `get_scope_variables` | When static analysis fails |
 | Bypass anti-debug | `replace_script` | Remove debugger statements |
@@ -276,7 +277,7 @@ get_scope_variables()
 - [ ] 应用去混淆: `apply_custom_transform` → output/*_deob.js
 
 ## 阶段 2: VM 数据提取 (⛔ 需完成阶段 1)
-- [ ] 🤖 定位 VM dispatcher → 更新 NOTE.md ([L:line] [Src L:col])
+- [ ] 🤖 定位 VM dispatcher (`find_jsvmp_dispatcher`) → 更新 NOTE.md
 - [ ] 🤖 提取字节码 → 保存到 raw/bytecode.json
 - [ ] 🤖 提取常量数组 → 保存到 raw/constants.json
 - [ ] 🤖 提取 handler 函数 → 更新 NOTE.md
@@ -379,8 +380,14 @@ get_scope_variables()
 ### Phase 2: VM Data Extraction
 
 #### Locate Dispatcher
-1.  **Static**: `search_code_smart(query="while\\s*\\(\\s*true")` or `search_code_smart(query="switch\\s*\\(")`
-2.  **Dynamic**: Record Performance Profile -> Find longest function.
+```javascript
+// PRIMARY: AI-powered detection (handles obfuscation, returns confidence + line numbers)
+find_jsvmp_dispatcher(filePath="source/main.js")
+
+// FALLBACK: Simple regex if AI detection fails
+search_code_smart(query="while\\s*\\(\\s*true")
+search_code_smart(query="switch\\s*\\(")
+```
 
 #### Extract Data
 *   Use `find_usage_smart` to trace where Bytecode Array is defined.
@@ -405,6 +412,7 @@ get_scope_variables()
 | **Variable soup** | Use `find_usage_smart(..., line=X)` to trace specific scope. |
 | **Line mismatch** | Trust the `[L:line] [Src L:col]` in Smart Tool output. |
 | **Unknown opcode** | Trace handler using `set_breakpoint` at `[Src]` location. |
+| **Can't find dispatcher** | Use `find_jsvmp_dispatcher` instead of regex. |
 
 ---
 
@@ -488,8 +496,8 @@ Write findings to NOTE.md, then STOP.
 
 | Task Type | Who Executes | Tools Allowed |
 |-----------|--------------|---------------|
-| `🤖 检测...` | Sub-agent | Browser, Smart-FS |
-| `🤖 定位...` | Sub-agent | Browser, Smart-FS |
+| `🤖 检测...` | Sub-agent | Browser, Smart-FS, `find_jsvmp_dispatcher` |
+| `🤖 定位...` | Sub-agent | Smart-FS, `find_jsvmp_dispatcher`, Browser |
 | `🤖 提取...` | Sub-agent | Smart-FS, Browser |
 | `🤖 Capture...` | Sub-agent | Browser network |
 | `🤖 Run tests...` | Sub-agent | Bash, Python |
