@@ -6,6 +6,8 @@ inclusion: manual
 
 > **⚠️ RULE #1: NEVER use `read_file/readFile`, `cat`, `head`, `tail`, `grep`, or `rg` for reading files. ALWAYS use Smart-FS tools (`read_code_smart`, `search_code_smart`, `find_usage_smart`) as your DEFAULT file access method. Smart-FS supports JS/TS (full AST + beautify + source map), JSON/HTML/XML/CSS (beautify), and all other text files.**
 
+> **⚠️ RULE #2: For JSVMP dispatcher detection, ALWAYS use `find_jsvmp_dispatcher` tool (AI-powered LLM analysis). NEVER rely on simple regex patterns like `while(true)` or `switch` — these miss obfuscated dispatchers and produce false positives.**
+
 > **ROLE**: You are NOT a decompilation expert. You are a **State Machine Executor**.
 > **OBJECTIVE**: Advance the `TODO.md` state by exactly ONE tick.
 > **RESTRICTION**: You are FORBIDDEN from thinking about the final output. Focus ONLY on the immediate `[ ]` box.
@@ -355,8 +357,7 @@ get_scope_variables()
 
 ## 阶段 1: 代码预处理
 - [ ] 初始化工作区 (创建目录)
-- [ ] 🤖 浏览器侦察: 访问目标 URL, 捕获网络请求, 识别目标 API 和参数 → 更新 NOTE.md
-- [ ] 🤖 下载所有可疑的 JS 文件和其他资源到 source/ (包括主要脚本、依赖库、静态资源等) → 更新 NOTE.md 文件列表
+- [ ] 🤖 浏览器侦察: 访问目标 URL, 捕获网络请求, 识别目标 API 和参数.下载所有可疑的 JS 文件和其他资源到 source/ (包括主要脚本、依赖库、静态资源等) → 更新 NOTE.md
 - [ ] 🤖 检测混淆类型 → 更新 NOTE.md
 - [ ] 编写去混淆脚本 (Babel Visitor)
 - [ ] 应用去混淆: `apply_custom_transform` → output/*_deob.js
