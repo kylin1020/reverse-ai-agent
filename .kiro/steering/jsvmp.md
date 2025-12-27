@@ -4,11 +4,18 @@ inclusion: manual
 
 # JSVMP Decompilation (State-Driven)
 
+> **⚠️ RULE #0: 反编译器必须使用 Babel/Node.js 技术栈实现，禁止使用 Python！**
+> - 核心依赖: `@babel/parser`, `@babel/generator`, `@babel/types`, `@babel/traverse`
+> - 参考实现: `#[[file:skills/jsvmp-decompiler.md]]`
+> - 理论基础: [编译与反编译原理实战之dad反编译器浅析](https://www.anquanke.com/post/id/266930)
+
 > **⚠️ RULE #1: Never use `read_file/readFile`, `cat`, `head`, `tail`, `grep`, or `rg` for reading files. ALWAYS use Smart-FS tools (`read_code_smart`, `search_code_smart`, `find_usage_smart`) as your DEFAULT file access method. Smart-FS supports JS/TS (full AST + beautify + source map), JSON/HTML/XML/CSS (beautify), and all other text files.**
 
 > **⚠️ RULE #2: For JSVMP dispatcher detection, ALWAYS use `find_jsvmp_dispatcher` tool (AI-powered LLM analysis). NEVER rely on simple regex patterns like `while(true)` or `switch` — these miss obfuscated dispatchers and produce false positives.**
 
 > **⚠️ RULE #3: All file save tools (`fsWrite`, `save_*`, `savePath`, etc.) require ABSOLUTE paths.**
+
+> **⚠️ RULE #4: STATIC EXTRACTION FIRST. Extract bytecode/constants/handlers from source code using Smart-FS + AST transforms. Browser is LAST RESORT for runtime-only data (encrypted strings, dynamic values).**
 
 > **ROLE**: You are NOT a decompilation expert. You are a **State Machine Executor**.
 > **OBJECTIVE**: Advance the `TODO.md` state by exactly ONE tick.
@@ -364,28 +371,38 @@ get_scope_variables()
 - [ ] 编写去混淆脚本 (Babel Visitor)
 - [ ] 应用去混淆: `apply_custom_transform` → output/*_deob.js
 
-## 阶段 2: VM 数据提取 (⛔ 需完成阶段 1)
+## 阶段 2: VM 结构分析 (⛔ 需完成阶段 1)
+> **📚 技能引用**: 参考 `#[[file:skills/jsvmp-decompiler.md]]` 第 4 节
 - [ ] 🤖 定位 VM dispatcher (`find_jsvmp_dispatcher`) → 更新 NOTE.md
-- [ ] 🤖 定位字节码数组 (静态分析: search_code_smart + find_usage_smart) → 记录位置到 NOTE.md
-- [ ] 🤖 提取字节码 → 保存到 raw/bytecode.json (⚠️ 禁止直接输出数组内容)
-- [ ] 🤖 定位常量数组 (静态分析优先) → 记录位置到 NOTE.md
-- [ ] 🤖 提取常量数组 → 保存到 raw/constants.json (⚠️ 禁止直接输出数组内容)
-- [ ] 🤖 提取 handler 函数 → 更新 NOTE.md (记录函数位置，不要复制代码)
+- [ ] 🤖 分析 dispatcher 结构 (switch/if-else/函数表) → 记录 opcode 分发机制到 NOTE.md
+- [ ] 🤖 定位字节码来源 (可能是数组、字符串、或动态生成) → 记录位置到 NOTE.md
+- [ ] 🤖 分析字节码格式 (指令长度、操作数编码方式) → 记录到 NOTE.md
+- [ ] 提取/解码字节码 → 保存到 raw/bytecode.json (⚠️ 禁止直接输出内容)
+- [ ] 🤖 定位常量池 (如有) → 记录位置到 NOTE.md
+- [ ] 提取常量池 (如有) → 保存到 raw/constants.json (⚠️ 禁止直接输出内容)
+- [ ] 🤖 分析 opcode 语义 (通过 dispatcher 分支逻辑) → 记录 opcode 含义到 NOTE.md
 
 ## 阶段 3: 反汇编 (⛔ 需完成阶段 2)
-- [ ] 分析 opcode 格式
-- [ ] 编写反汇编器
+> **📚 技能引用**: 阅读 `#[[file:skills/jsvmp-decompiler.md]]` 获取 Babel 反编译器实现指南
+- [ ] 分析 opcode 格式 (参考 skill 第 11 节)
+- [ ] 编写反汇编器 (lib/decompiler.js)
 - [ ] 生成 LIR: output/*_disasm.asm
 
 ## 阶段 4: 栈分析 (⛔ 需完成阶段 3)
-- [ ] 分析栈操作
+> **📚 技能引用**: 参考 `#[[file:skills/jsvmp-decompiler.md]]` 第 8 节数据流分析
+- [ ] 分析栈操作 (replace_stack_var)
 - [ ] 生成 MIR: output/*_mir.txt
 
 ## 阶段 5: 控制流分析 (⛔ 需完成阶段 4)
-- [ ] 构建 CFG
+> **📚 技能引用**: 参考 `#[[file:skills/jsvmp-decompiler.md]]` 第 6-7 节
+- [ ] 构建 CFG (graph_construct)
+- [ ] 区间图分析 (intervals, derived_sequence)
+- [ ] 循环/条件识别 (loop_struct, if_struct)
 - [ ] 生成 HIR: output/*_hir.txt
 
 ## 阶段 6: 代码生成 (⛔ 需完成阶段 5)
+> **📚 技能引用**: 参考 `#[[file:skills/jsvmp-decompiler.md]]` 第 9 节 Writer
+- [ ] 实现 Writer 类
 - [ ] 生成可读 JS: output/*_decompiled.js
 
 ## 阶段 7: 实现 (⛔ 需完成阶段 6)
