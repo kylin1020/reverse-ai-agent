@@ -4,9 +4,11 @@ inclusion: manual
 
 # JSVMP Decompilation (State-Driven)
 
-> **⚠️ RULE #1: NEVER use `read_file/readFile`, `cat`, `head`, `tail`, `grep`, or `rg` for reading files. ALWAYS use Smart-FS tools (`read_code_smart`, `search_code_smart`, `find_usage_smart`) as your DEFAULT file access method. Smart-FS supports JS/TS (full AST + beautify + source map), JSON/HTML/XML/CSS (beautify), and all other text files.**
+> **⚠️ RULE #1: Never use `read_file/readFile`, `cat`, `head`, `tail`, `grep`, or `rg` for reading files. ALWAYS use Smart-FS tools (`read_code_smart`, `search_code_smart`, `find_usage_smart`) as your DEFAULT file access method. Smart-FS supports JS/TS (full AST + beautify + source map), JSON/HTML/XML/CSS (beautify), and all other text files.**
 
 > **⚠️ RULE #2: For JSVMP dispatcher detection, ALWAYS use `find_jsvmp_dispatcher` tool (AI-powered LLM analysis). NEVER rely on simple regex patterns like `while(true)` or `switch` — these miss obfuscated dispatchers and produce false positives.**
+
+> **⚠️ RULE #3: All file save tools (`fsWrite`, `save_*`, `savePath`, etc.) require ABSOLUTE paths.**
 
 > **ROLE**: You are NOT a decompilation expert. You are a **State Machine Executor**.
 > **OBJECTIVE**: Advance the `TODO.md` state by exactly ONE tick.
