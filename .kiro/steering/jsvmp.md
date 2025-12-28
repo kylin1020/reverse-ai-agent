@@ -196,23 +196,43 @@ set_breakpoint(urlRegex=".*main.js.*", lineNumber=1, columnNumber=15847)
 > **RULE**: When you see `🤖` in TODO.md, you MUST call `invokeSubAgent()`. No exceptions.
 
 ### Decision Tree (Execute on EVERY turn)
-1. Read TODO.md → Find first `[ ]` task
-2. Does task have 🤖 prefix?
-   - YES → STOP! Call `invokeSubAgent()` immediately. Do NOT read files, open browser, or do ANY analysis yourself.
-   - NO → Execute task yourself
-3. After completion: Update TODO.md `[x]`, then STOP
+1. Read TODO.md → Find ALL unchecked `[ ] 🤖` tasks in current phase
+2. Analyze dependencies between tasks
+3. **INVOKE ALL INDEPENDENT TASKS IN PARALLEL** (single turn, multiple `invokeSubAgent` calls)
+4. Wait for all sub-agents to complete → Check NOTE.md for results
+5. Update TODO.md `[x]` for completed tasks
 
-### 🚨 COMMON MISTAKE
+### � PARALLEML EXECUTION (MANDATORY)
+
+**⚠️ ALWAYS maximize parallelism! Sub-agents run concurrently — use this!**
+
+**Dependency Analysis:**
+```
+Independent (✅ PARALLEL):
+- Tasks that read different files
+- Tasks that write to different output files
+- Tasks that don't need each other's results
+
+Dependent (❌ SEQUENTIAL):
+- Task B needs Task A's output (e.g., "Extract handler" needs "Locate dispatcher")
+- Task B reads file that Task A writes
+```
+
+**Example - Phase 2 Parallel Execution:**
+```javascript
+// ✅ CORRECT: Invoke ALL independent tasks in ONE turn
+// These 4 tasks can run in parallel:
+invokeSubAgent({ prompt: "🤖 定位 VM 调度器..." })
+invokeSubAgent({ prompt: "🤖 定位字节码来源..." })
+invokeSubAgent({ prompt: "🤖 定位常量池..." })
+invokeSubAgent({ prompt: "🤖 分析操作码语义..." })
+
+### 🚨 COMMON MISTAKES
 ```
 ❌ WRONG: See "🤖 Locate VM dispatcher" → Open browser → Analyze yourself
 ✅ RIGHT: See "🤖 Locate VM dispatcher" → invokeSubAgent() → Wait for NOTE.md
-```
 
-### 🚀 PARALLEL EXECUTION
-Scan ALL unchecked `🤖` tasks → If no data dependency → Invoke ALL in ONE turn:
-```
-✅ PARALLEL: Extract bytecode + Extract constants (independent)
-❌ SEQUENTIAL: Locate dispatcher → Extract handler (handler needs dispatcher)
+✅ RIGHT: Invoke ALL independent sub-agents in ONE turn (parallel)
 ```
 
 ### Prompt Template
@@ -282,22 +302,23 @@ invokeSubAgent(
 
 ## 阶段 2: VM 结构分析 (⛔ 需要完成阶段 1)
 > **📚 参考**: `#[[file:skills/jsvmp-decompiler.md]]` 第 4 节
-- [ ] 🤖 定位 VM 调度器 (`find_jsvmp_dispatcher`) → NOTE.md
-- [ ] 🤖 定位字节码来源/分析字节码格式 → NOTE.md
-- [ ] 🤖 提取/解码字节码,定位常量池并提取 → raw/bytecode.json,raw/constants.json (⚠️ 禁止直接输出)
-- [ ] 🤖 分析操作码语义 → NOTE.md
+> **🚀 并行提示**: 前 3 个任务可并行执行，最后 1 个需等待前面完成
+- [ ] 🤖 定位 VM 调度器 (`find_jsvmp_dispatcher`) → NOTE.md  ⚡可并行
+- [ ] 🤖 定位字节码来源/分析字节码格式 → NOTE.md  ⚡可并行
+- [ ] 🤖 分析操作码语义 → NOTE.md  ⚡可并行
+- [ ] 🤖 提取/解码字节码,定位常量池并提取 → raw/bytecode.json,raw/constants.json (⚠️ 禁止直接输出) ⏳依赖上面
 
 ## 阶段 3-6: 反编译流水线
 > **📚 参考**: `#[[file:skills/jsvmp-decompiler.md]]` + `#[[file:skills/jsvmp-ir-format.md]]` + `#[[file:skills/jsvmp-ir-sourcemap.md]]`
 - [ ] 🤖 编写反汇编器 (lib/decompiler.js)，生成 LIR + Source Map: output/*_disasm.asm + output/*_disasm.asm.map
-- [ ] 验证 Source Map: 测试断点映射是否正确
+- [ ] 🤖 验证 Source Map: 测试断点映射是否正确
 - [ ] 🤖 栈分析 → output/*_mir.txt
 - [ ] 🤖 CFG 分析 → output/*_hir.txt
 - [ ] 🤖 代码生成 → output/*_decompiled.js
 
 ## 阶段 7-9: 实现与验证
-- [ ] Python 骨架代码 (lib/*.py)
-- [ ] 核心算法实现
+- [ ] 🤖 Python 骨架代码 (lib/*.py)
+- [ ] 🤖 核心算法实现
 - [ ] 🤖 捕获真实请求 → raw/reference.txt
 - [ ] 🤖 单元测试: 对比生成结果与参考值
 - [ ] 🤖 集成测试: 发起真实 API 请求
