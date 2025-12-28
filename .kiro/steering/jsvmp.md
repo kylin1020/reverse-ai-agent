@@ -383,6 +383,43 @@ When generating IR/ASM output, you MUST also generate a Source Map:
 
 ---
 
+## 🔧 IR Debugging Tools
+
+Use IR debugger tools to debug JSVMP at IR level instead of raw JS. Requires Source Map (`.asm.map`).
+
+### Workflow
+```javascript
+// 1. Create IR debugger session
+create_ir_debugger(sourceMapPath="output/main_disasm.asm.map", urlPattern=".*main.js.*")
+// Returns: sessionId
+
+// 2. Set breakpoint at IR line
+ir_set_breakpoint(sessionId="...", irLine=15)
+
+// 3. Trigger action in browser, then get IR state when paused
+ir_get_state(sessionId="...")
+// Returns: $pc, $opcode, $stack[0..2], $sp, IR context lines
+
+// 4. Step/resume as needed
+step_over() / step_into() / resume_execution()
+
+// 5. Cleanup
+ir_clear_breakpoints(sessionId="...") // or remove_ir_debugger(sessionId="...")
+```
+
+### Key Tools
+| Tool | Purpose |
+|------|---------|
+| `create_ir_debugger` | Create session from Source Map |
+| `ir_set_breakpoint` | Set breakpoint at IR line |
+| `ir_get_state` | Get VM state in IR form when paused |
+| `ir_remove_breakpoint` | Remove single IR breakpoint |
+| `ir_clear_breakpoints` | Clear all breakpoints in session |
+| `list_ir_debuggers` | List active sessions |
+| `remove_ir_debugger` | Remove session and cleanup |
+
+---
+
 ## 🆘 HUMAN ASSISTANCE
 
 - **Unknown Opcode**: "🆘 Unknown opcode {opcode}, need handler analysis."
