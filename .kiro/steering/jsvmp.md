@@ -4,13 +4,26 @@ inclusion: manual
 
 # JSVMP Decompilation (State-Driven)
 
-> **⚠️ RULE #1**: Never use `read_file/readFile`, `cat`, `head`, `tail`, `grep`, or `rg` for reading files. ALWAYS use Smart-FS tools (`read_code_smart`, `search_code_smart`, `find_usage_smart`) as your DEFAULT file access method.
+> **⚠️ RULE #1**: Never use `read_file/readFile`, `cat`, `head`, `tail`, `grep`, or `rg`. ALWAYS use Smart-FS tools.
 
-> **⚠️ RULE #2**: For JSVMP dispatcher detection, ALWAYS use `find_jsvmp_dispatcher` tool (AI-powered). NEVER rely on simple regex patterns.
+> **⚠️ RULE #2**: Use `find_jsvmp_dispatcher` for VM detection. NEVER use regex.
 
-> **⚠️ RULE #3**: All file save tools (`fsWrite`, `save_*`, `savePath`, etc.) require ABSOLUTE paths.
+> **⚠️ RULE #3**: **ALL file paths MUST be ABSOLUTE**. Run `pwd` first, then use full paths everywhere.
 
-> **⚠️ RULE #4**: STATIC EXTRACTION FIRST. Browser is LAST RESORT for runtime-only data.
+> **⚠️ RULE #4**: STATIC EXTRACTION FIRST. Browser is LAST RESORT.
+
+---
+
+## 🗂️ WORKSPACE INIT (MANDATORY FIRST STEP)
+
+**On session start, run `pwd` and use absolute paths for ALL operations:**
+
+```javascript
+// ✅ CORRECT
+read_code_smart({ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/source/main.js" })
+fsWrite({ path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/raw/bytecode.json" })
+invokeSubAgent({ prompt: `Workspace: /Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/` })
+```
 
 > **ROLE**: You are NOT a decompilation expert. You are a **State Machine Executor**.
 > **OBJECTIVE**: Advance the `TODO.md` state by exactly ONE tick.
@@ -426,35 +439,38 @@ Use IR debugger tools to debug JSVMP at IR level instead of raw JS. Requires Sou
 
 ### Workflow
 ```javascript
-// 1. Create IR debugger session
-// 需要确保js已加载再设置
-create_ir_debugger(sourceMapPath="output/main_disasm.asm.map")
-// Returns: sessionId
+// 1. Load IR source map (can be done before script loads)
+load_ir_source_map(sourceMapPath="output/main_disasm.asm.map")
+// Returns: irId
 
-// 2. Set breakpoint at IR line
-ir_set_breakpoint(sessionId="...", irLine=15)
+// 2. Set breakpoint at IR line (will resolve when script loads)
+ir_set_breakpoint(irId="...", irLine=15)
 
 // 3. Trigger action in browser, then get IR state when paused
-ir_get_state(sessionId="...")
+ir_get_state(irId="...")  // irId is optional - auto-detected from paused location
 // Returns: $pc, $opcode, $stack[0..2], $sp, IR context lines
 
 // 4. Step/resume as needed
 step_over() / step_into() / resume_execution()
 
 // 5. Cleanup
-ir_clear_breakpoints(sessionId="...") // or remove_ir_debugger(sessionId="...")
+ir_clear_breakpoints(irId="...") // or unload_ir_source_map(irId="...")
 ```
 
 ### Key Tools
 | Tool | Purpose |
 |------|---------|
-| `create_ir_debugger` | Create session from Source Map |
-| `ir_set_breakpoint` | Set breakpoint at IR line |
-| `ir_get_state` | Get VM state in IR form when paused |
+| `load_ir_source_map` | Load source map, returns irId for subsequent operations |
+| `ir_set_breakpoint` | Set breakpoint at IR line (resolves when script loads) |
+| `ir_get_state` | Get VM state in IR form when paused (irId optional, auto-detected) |
 | `ir_remove_breakpoint` | Remove single IR breakpoint |
-| `ir_clear_breakpoints` | Clear all breakpoints in session |
-| `list_ir_debuggers` | List active sessions |
-| `remove_ir_debugger` | Remove session and cleanup |
+| `ir_clear_breakpoints` | Clear all breakpoints for an irId |
+| `list_ir_source_maps` | List all loaded source maps with irId, paths, breakpoint counts |
+| `unload_ir_source_map` | Unload source map and clear all its breakpoints |
+
+### Integration with Standard Debugger
+- `get_debugger_status` now shows IR context when paused at an IR breakpoint (auto-detected)
+- `list_breakpoints` shows IR metadata (irId, irLine, opcode) for IR breakpoints
 
 ---
 
