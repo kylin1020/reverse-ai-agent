@@ -220,100 +220,26 @@ Scan ALL unchecked `🤖` tasks → If no data dependency → Invoke ALL in ONE 
 invokeSubAgent(
   name="general-task-execution",
   prompt="""
-## 🎯 YOUR SINGLE TASK (DO NOT DEVIATE)
+## 🎯 TASK
 {exact task text from TODO.md}
 
-## ⛔ CRITICAL CONSTRAINTS
-1. **ONLY** complete the single task above
-2. **STOP IMMEDIATELY** after completing this one task
-3. **DO NOT** look at TODO.md or try to do other tasks
-4. **DO NOT** proceed to "next steps"
+## 📚 REQUIRED READING (use readFile)
+1. `skills/sub_agent.md` - Common rules (MANDATORY)
+2. `skills/sub-agent-jsvmp.md` - JSVMP-specific rules (MANDATORY)
+3. Task-specific skills (if needed):
+   - IR generation: `skills/jsvmp-ir-format.md`, `skills/jsvmp-ir-sourcemap.md`
+   - Decompiler: `skills/jsvmp-decompiler.md`
+   - Phase workflow: `skills/jsvmp-phase-guide.md`
 
-## 🚫 LARGE DATA HANDLING
-**NEVER write or output large constant arrays or strings directly!**
-1. Use Smart-FS tools to LOCATE the data
-2. Save to file: `evaluate_script(..., savePath="raw/data.json")`
-3. Reference by path in NOTE.md, NOT actual contents
-
-## 📚 MANDATORY: READ SKILL FILES FIRST!
-**⚠️ Use `readFile` to read these BEFORE starting work:**
-- `skills/jsvmp-phase-guide.md` - Phase workflow
-- `skills/jsvmp-ir-format.md` - IR output format
-- `skills/jsvmp-ir-sourcemap.md` - Source Map format
-- `skills/jsvmp-decompiler.md` - Decompiler implementation
-
-## 🗺️ SOURCE MAP REQUIREMENTS (For IR Generation Tasks)
-When generating IR/ASM output, you MUST also generate a Source Map:
-1. Output files: `output/{name}_disasm.asm` + `output/{name}_disasm.asm.map`
-2. IR file format:
-   - Clean format with `//` comments
-   - Function header has `Source: L{line}:{column}`
-   - **No special markers** - Source Map `irLine` IS the actual file line number
-3. Source Map: One mapping entry per instruction with irLine (= actual line number), irAddr, source, breakpoint
-
-### ⚠️ CRITICAL: Original Source Coordinates Workflow
-**`find_jsvmp_dispatcher` returns BEAUTIFIED line numbers. To get ORIGINAL coordinates for Source Map, you MUST use `read_code_smart` to read the relevant code!**
-
-**Workflow:**
-1. Call `find_jsvmp_dispatcher` → Get dispatcher location (beautified line numbers)
-2. Use `read_code_smart` to read the relevant code sections → Output includes `[Src Lx:xxx]` markers
-3. Extract ORIGINAL coordinates from `[Src Lx:xxx]` in `read_code_smart` output
-4. Use these ORIGINAL coordinates in Source Map `source.line` and `source.column`
-
-```javascript
-// Step 1: find_jsvmp_dispatcher returns beautified lines
-// dispatcher at [L:150] (beautified)
-
-// Step 2: read_code_smart to get original coordinates
-read_code_smart(file="source/main.js", start=148, end=155)
-// Output:
-// [L:148] [Src L1:28400]  function interpret() {
-// [L:149] [Src L1:28420]    var pc = 0;
-// [L:150] [Src L1:28456]    for (;;) {
-//                           ^^^^^^^^^ ORIGINAL coordinate for breakpoint!
-
-// Step 3: Extract and use in Source Map
-{
-  "source": { 
-    "line": 1,      // ← From [Src L1:xxx] - the line number
-    "column": 28456 // ← From [Src L1:28456] - the column number
-  }
-}
-```
-
-**Why This Matters:**
-- Minified JS files are typically 1 line with thousands of columns
-- Chrome DevTools breakpoints require exact `lineNumber` + `columnNumber`
-- Using beautified line numbers will set breakpoints at wrong locations
-- **ALWAYS** use `read_code_smart` to verify and extract original coordinates
-
-4. **CRITICAL**: Breakpoint conditions MUST use actual variable names from `find_jsvmp_dispatcher`:
-   - Get `instructionPointer`, `bytecodeArray`, `stackPointer`, `virtualStack`, `scopeChain`, `constantsPool` names
-   - Build condition like: `{ip} === {pc} && {bytecode}[{ip}] === {opcode}`
-   - Variable names vary per target (e.g., `a2`, `_0x1234`, `ip`, etc.)
-5. **watchExpressions**: Generate for each instruction to enable VM state extraction during debugging:
-   - Standard watches: `$pc`, `$opcode`, `$stack[0..2]`, `$sp`
-   - Opcode-specific: `$scope[depth]` for scope ops, `$fn`/`$this`/`$args` for CALL/NEW, `$const[x]` for constant ops
-   - See `#[[file:skills/jsvmp-ir-sourcemap.md]]` Section 3.4 for details
-
-## Context
+## 📍 Context
 - Domain: {domain}
 - Workspace: artifacts/jsvmp/{domain}/
 - NOTE.md: artifacts/jsvmp/{domain}/NOTE.md
 
-## Instructions
-1. Read `skills/sub_agent.md` first (tool rules)
-2. Execute ONLY the task stated above
-3. Write findings to NOTE.md with [L:line] [Src L:col] coordinates
-4. **FLAG NEW DISCOVERIES** in "Pending Discoveries" section
-5. **STOP** — do not continue to other work
-
-## 🚫 FORBIDDEN ACTIONS
-- Reading TODO.md
-- Using `read_file`/`cat`/`grep`/`rg` (use Smart-FS tools)
-- Writing large arrays/strings directly
-- Using evaluate_script without savePath for large data
-- Continuing work after completing the assigned task
+## ⛔ RULES
+- Complete ONLY this task, then STOP
+- Write findings to NOTE.md with [L:line] [Src L:col]
+- Flag new discoveries in "Pending Discoveries" section
 """,
   explanation="Delegate 🤖 task: {task summary}"
 )
