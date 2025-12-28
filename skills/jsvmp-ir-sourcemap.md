@@ -78,9 +78,54 @@ From `find_jsvmp_dispatcher` result. Variable names vary per target.
 | `irLine` | IR file line number (1-based) |
 | `irAddr` | Bytecode address (0-based) |
 | `opcode` | Raw opcode value |
-| `source` | Original JS location |
+| `source` | **ORIGINAL** JS location (from `[Src Lx:xxx]` in `read_code_smart` output) |
 | `breakpoint.condition` | JS expression for conditional breakpoint |
 | `breakpoint.watchExpressions` | Variables to extract when paused |
+
+### ⚠️ 3.2.1 CRITICAL: Extracting Original Source Coordinates
+
+**`find_jsvmp_dispatcher` returns BEAUTIFIED line numbers. You MUST use `read_code_smart` to read the code and extract ORIGINAL coordinates from `[Src Lx:xxx]` markers!**
+
+**Workflow:**
+```javascript
+// Step 1: find_jsvmp_dispatcher gives beautified line (e.g., L:150)
+const dispatcherInfo = find_jsvmp_dispatcher({ filePath: "source/main.js" });
+// Returns: dispatcher at beautified line 150
+
+// Step 2: Use read_code_smart to read the code and get original coordinates
+read_code_smart({ file: "source/main.js", start: 148, end: 155 });
+// Output:
+// [L:148] [Src L1:28400]  function interpret() {
+// [L:149] [Src L1:28420]    var pc = 0;
+// [L:150] [Src L1:28456]    for (;;) {
+//  ^^^^    ^^^^^^^^^^^^
+//  |       └── ORIGINAL: line=1, column=28456 (USE THIS for Source Map!)
+//  └── BEAUTIFIED line (for human reading only, DO NOT use for breakpoints)
+
+// Step 3: Extract and use ORIGINAL coordinates in Source Map
+{
+  "source": { 
+    "line": 1,       // ← From [Src L1:xxx] - extract the line number after "L"
+    "column": 28456  // ← From [Src L1:28456] - extract the column number after ":"
+  }
+}
+```
+
+**Extraction Pattern:**
+```javascript
+// Parse [Src Lx:xxx] from read_code_smart output
+const srcMatch = line.match(/\[Src L(\d+):(\d+)\]/);
+if (srcMatch) {
+  const originalLine = parseInt(srcMatch[1]);    // e.g., 1
+  const originalColumn = parseInt(srcMatch[2]);  // e.g., 28456
+}
+```
+
+**Why This Matters:**
+- Minified JS files are typically 1 line with thousands of columns
+- Chrome DevTools breakpoints use `lineNumber` + `columnNumber`
+- Using beautified line numbers will set breakpoints at wrong locations
+- **ALWAYS** use `read_code_smart` to verify code logic AND extract original coordinates
 
 ### 3.3 Breakpoint Condition
 
@@ -173,7 +218,10 @@ function generateMapping(pc, opcode, vmInfo, irLine) {
 
 ## 6. Checklist
 
-- [ ] Call `find_jsvmp_dispatcher` first to get actual variable names
+- [ ] Call `find_jsvmp_dispatcher` first to get dispatcher location and variable names
+- [ ] **Use `read_code_smart` to read relevant code sections** (understand logic + get original coordinates)
+- [ ] **Extract ORIGINAL coordinates from `[Src Lx:xxx]` in `read_code_smart` output**
+- [ ] `source.line` and `source.column` use ORIGINAL coordinates for Chrome breakpoints
 - [ ] `breakpoint.condition` uses actual variable names (not hardcoded)
-- [ ] `irLine` = actual file line number for O(1) lookup
+- [ ] `irLine` = IR file line number for O(1) lookup
 - [ ] `watchExpressions` generated for each instruction

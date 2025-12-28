@@ -236,6 +236,43 @@ When generating IR/ASM output, you MUST also generate a Source Map:
    - Function header has `Source: L{line}:{column}`
    - **No special markers** - Source Map `irLine` IS the actual file line number
 3. Source Map: One mapping entry per instruction with irLine (= actual line number), irAddr, source, breakpoint
+
+### ⚠️ CRITICAL: Original Source Coordinates Workflow
+**`find_jsvmp_dispatcher` returns BEAUTIFIED line numbers. To get ORIGINAL coordinates for Source Map, you MUST use `read_code_smart` to read the relevant code!**
+
+**Workflow:**
+1. Call `find_jsvmp_dispatcher` → Get dispatcher location (beautified line numbers)
+2. Use `read_code_smart` to read the relevant code sections → Output includes `[Src Lx:xxx]` markers
+3. Extract ORIGINAL coordinates from `[Src Lx:xxx]` in `read_code_smart` output
+4. Use these ORIGINAL coordinates in Source Map `source.line` and `source.column`
+
+```javascript
+// Step 1: find_jsvmp_dispatcher returns beautified lines
+// dispatcher at [L:150] (beautified)
+
+// Step 2: read_code_smart to get original coordinates
+read_code_smart(file="source/main.js", start=148, end=155)
+// Output:
+// [L:148] [Src L1:28400]  function interpret() {
+// [L:149] [Src L1:28420]    var pc = 0;
+// [L:150] [Src L1:28456]    for (;;) {
+//                           ^^^^^^^^^ ORIGINAL coordinate for breakpoint!
+
+// Step 3: Extract and use in Source Map
+{
+  "source": { 
+    "line": 1,      // ← From [Src L1:xxx] - the line number
+    "column": 28456 // ← From [Src L1:28456] - the column number
+  }
+}
+```
+
+**Why This Matters:**
+- Minified JS files are typically 1 line with thousands of columns
+- Chrome DevTools breakpoints require exact `lineNumber` + `columnNumber`
+- Using beautified line numbers will set breakpoints at wrong locations
+- **ALWAYS** use `read_code_smart` to verify and extract original coordinates
+
 4. **CRITICAL**: Breakpoint conditions MUST use actual variable names from `find_jsvmp_dispatcher`:
    - Get `instructionPointer`, `bytecodeArray`, `stackPointer`, `virtualStack`, `scopeChain`, `constantsPool` names
    - Build condition like: `{ip} === {pc} && {bytecode}[{ip}] === {opcode}`
@@ -316,8 +353,7 @@ When generating IR/ASM output, you MUST also generate a Source Map:
 
 ## 阶段 3-6: 反编译流水线
 > **📚 参考**: `#[[file:skills/jsvmp-decompiler.md]]` + `#[[file:skills/jsvmp-ir-format.md]]` + `#[[file:skills/jsvmp-ir-sourcemap.md]]`
-- [ ] 🤖 编写反汇编器 (lib/decompiler.js)
-- [ ] 🤖 生成 LIR + Source Map: output/*_disasm.asm + output/*_disasm.asm.map
+- [ ] 🤖 编写反汇编器 (lib/decompiler.js)，生成 LIR + Source Map: output/*_disasm.asm + output/*_disasm.asm.map
 - [ ] 验证 Source Map: 测试断点映射是否正确
 - [ ] 🤖 栈分析 → output/*_mir.txt
 - [ ] 🤖 CFG 分析 → output/*_hir.txt
