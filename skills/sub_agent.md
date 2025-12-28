@@ -39,11 +39,6 @@ This provides:
 
 ### 2. Smart-FS as DEFAULT File Access (MANDATORY)
 
-**NEVER use these tools for reading files:**
-- `read_file` / `readFile` / `read`
-- `cat`, `head`, `tail`
-- `grep`, `rg` (ripgrep)
-
 **ALWAYS use Smart-FS tools:**
 
 | Action | Tool | Example |
@@ -275,16 +270,24 @@ Add to "待处理发现" section:
 
 ## 🚫 FORBIDDEN ACTIONS
 
-1. **DO NOT read TODO.md** — Main agent manages task flow
+1. **DO NOT modify TODO.md** — Main agent manages task flow
 2. **DO NOT continue to "next steps"** — Stop after assigned task
 3. **DO NOT decide what to do next** — Main agent's job
 4. **DO NOT close/navigate main browser page**
-5. **DO NOT use `read_file`/`readFile`/`read` on ANY file** — Use Smart-FS tools
+5. **DO NOT use `read_file`/`readFile`/`read` on CODE files** — Use Smart-FS tools for `.js/.ts/.json` etc.
 6. **DO NOT output unlimited data**
 7. **DO NOT create files in project root** — Use designated directory only
 8. **DO NOT read files outside designated directory**
 9. **DO NOT write large arrays/strings directly** — Use file extraction
 10. **DO NOT output array contents (>50 elements)** — Save to file, report path + count
+
+## ✅ ALLOWED FILE READS (readFile OK)
+
+These files CAN use `readFile` (not Smart-FS):
+- `NOTE.md` — **READ AT SESSION START** for previous findings
+- `TODO.md` — Read-only for task context (DO NOT modify)
+- `skills/*.md` — Skill docs
+- `*.asm`, `*.map` — IR output (⚠️ max 200 lines per read, use line ranges)
 
 ---
 

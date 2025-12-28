@@ -4,9 +4,17 @@
 
 ## 🎯 Task Execution Rules
 
-1. **SINGLE TASK ONLY**: Complete exactly ONE task, then STOP
-2. **NO TODO.md**: Don't read or modify TODO.md
-3. **NO NEXT STEPS**: Don't proceed to other work after completion
+1. **READ NOTE.md FIRST**: Use `readFile` to load previous findings before starting work
+2. **SINGLE TASK ONLY**: Complete exactly ONE task, then STOP
+3. **UPDATE NOTE.md**: Write discoveries with `[L:line] [Src L:col]` references
+4. **NO NEXT STEPS**: Don't proceed to other work after completion
+
+## 📖 Session Start (MANDATORY)
+
+```javascript
+// FIRST: Read NOTE.md for context
+readFile({ path: "artifacts/jsvmp/{domain}/NOTE.md" })
+```
 
 ## 🚫 Large Data Handling
 
@@ -85,9 +93,11 @@ Generate for each instruction:
 
 ## ✅ Completion Checklist
 
-- [ ] Read required skill files first?
-- [ ] Used Smart-FS tools (not read_file/cat/grep)?
+- [ ] Read NOTE.md first (with `readFile`)?
+- [ ] Read required skill files?
+- [ ] Used Smart-FS tools for code (not read_file/cat/grep)?
 - [ ] Large data saved to file (not embedded)?
 - [ ] All findings include `[L:line] [Src L:col]`?
 - [ ] New discoveries in "Pending Discoveries"?
+- [ ] Updated NOTE.md with findings?
 - [ ] Stopped after single task?

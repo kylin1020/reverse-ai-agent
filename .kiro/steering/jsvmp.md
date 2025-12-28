@@ -276,7 +276,7 @@ invokeSubAgent(
 ## 阶段 1: 代码预处理
 - [ ] 初始化工作区（创建目录）
 - [ ] 🤖 浏览器侦察: 访问 URL，捕获请求，识别 API 和参数，下载 JS 文件 → NOTE.md
-- [ ] 🤖 检测混淆类型 → NOTE.md
+- [ ] 🤖 检测混淆类型(不包括JSVMP) → NOTE.md
 - [ ] 编写去混淆脚本 (Babel Visitor)
 - [ ] 应用去混淆: `apply_custom_transform` → output/*_deob.js
 
@@ -284,11 +284,8 @@ invokeSubAgent(
 > **📚 参考**: `#[[file:skills/jsvmp-decompiler.md]]` 第 4 节
 - [ ] 🤖 定位 VM 调度器 (`find_jsvmp_dispatcher`) → NOTE.md
 - [ ] 🤖 分析调度器结构 → NOTE.md
-- [ ] 🤖 定位字节码来源 → NOTE.md
-- [ ] 🤖 分析字节码格式 → NOTE.md
-- [ ] 提取/解码字节码 → raw/bytecode.json (⚠️ 禁止直接输出)
-- [ ] 🤖 定位常量池 → NOTE.md
-- [ ] 提取常量池 → raw/constants.json (⚠️ 禁止直接输出)
+- [ ] 🤖 定位字节码来源/分析字节码格式 → NOTE.md
+- [ ] 🤖 提取/解码字节码,定位常量池并提取 → raw/bytecode.json,raw/constants.json (⚠️ 禁止直接输出)
 - [ ] 🤖 分析操作码语义 → NOTE.md
 
 ## 阶段 3-6: 反编译流水线
