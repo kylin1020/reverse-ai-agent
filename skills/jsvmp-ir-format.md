@@ -39,6 +39,8 @@ output/
 | `semantic` | variable | Human-readable description |
 | `constant_ref` | variable | `Z[{idx}]="{value}"` |
 
+> **Line Number = irLine**: Source Map `irLine` is the actual file line number. No special markers needed.
+
 > **断点映射**: 每条指令的断点信息（行号、列号、条件）存储在 `.asm.map` 文件中，不在 IR 文件内。
 > **📚 Source Map 规范**: See `#[[file:skills/jsvmp-ir-sourcemap.md]]`
 
@@ -120,8 +122,9 @@ Z[7]="Invalid attempt to spread non-..."
    41: RETURN                        // f2=2, l2=pop()
 ```
 
-> **断点调试**: 使用 Source Map 文件 (`*.asm.map`) 获取每条指令的断点位置和条件。
-> **📚 Source Map 规范**: See `#[[file:skills/jsvmp-ir-sourcemap.md]]`
+> **Line Number Mapping**: Source Map `irLine` is the actual file line number. Direct O(1) lookup.
+> **Breakpoint Info**: Use Source Map file (`*.asm.map`) to get breakpoint position and condition for each instruction.
+> **📚 Source Map Spec**: See `#[[file:skills/jsvmp-ir-sourcemap.md]]`
 
 ## Implementation Notes
 1. **Address calculation**: Track bytecode position, not instruction count

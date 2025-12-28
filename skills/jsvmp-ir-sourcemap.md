@@ -112,7 +112,9 @@ Extracted from `find_jsvmp_dispatcher` result:
       "ip": { "name": "a2", "description": "Instruction Pointer" },
       "sp": { "name": "p2", "description": "Stack Pointer" },
       "stack": { "name": "v2", "description": "Virtual Stack" },
-      "bytecode": { "name": "o2", "description": "Bytecode Array" }
+      "bytecode": { "name": "o2", "description": "Bytecode Array" },
+      "scope": { "name": "s2", "description": "Scope Chain Array" },
+      "constants": { "name": "Z", "description": "Constants Pool" }
     },
     "entryPoint": {
       "line": 3298,
@@ -142,7 +144,13 @@ Each IR instruction has one mapping entry:
   
   "breakpoint": {
     "condition": "a2 === 0 && o2[a2] === 17",  // Breakpoint condition (JS expression)
-    "logMessage": "PC:0 OP:17"     // Log breakpoint message
+    "logMessage": "PC:0 OP:17",    // Log breakpoint message
+    "watchExpressions": [          // Variables to watch when paused
+      { "name": "$stack[0]", "expr": "v2[p2]" },
+      { "name": "$stack[1]", "expr": "v2[p2-1]" },
+      { "name": "$opcode", "expr": "o2[a2]" },
+      { "name": "$pc", "expr": "a2" }
+    ]
   },
   
   "semantic": "Push Z[134]=\"1.0.1.19\""  // Semantic description
@@ -180,7 +188,131 @@ const bytecode = dispatcherInfo.bytecodeArray;     // e.g., "o2" or "_0x5678"
 const condition = `${ip} === ${pc} && ${bytecode}[${ip}] === ${opcode}`;
 ```
 
-### 3.4 `opcodeHandlers` - Opcode Handler Mappings
+### 3.4 `breakpoint.watchExpressions` - Debug Variable Extraction
+
+`watchExpressions` defines VM runtime variables to extract when paused at a breakpoint. This enables mapping JSVMP internal state to human-readable IR variables.
+
+**VM Runtime → IR Variable Mapping**:
+
+| VM Runtime | IR Variable | Description |
+|------------|-------------|-------------|
+| `{stack}[{sp}]` | `$stack[0]` | Stack top (TOS) |
+| `{stack}[{sp}-1]` | `$stack[1]` | Stack second |
+| `{stack}[{sp}-2]` | `$stack[2]` | Stack third |
+| `{scope}[depth]` | `$scope[depth]` | Scope at depth |
+| `{bytecode}[{ip}]` | `$opcode` | Current opcode |
+| `{ip}` | `$pc` | Program counter |
+| `{constants}[x]` | `$const[x]` | Constant pool value |
+
+**Standard Watch Expressions** (generated for every instruction):
+
+```json
+{
+  "watchExpressions": [
+    { "name": "$pc", "expr": "a2" },
+    { "name": "$opcode", "expr": "o2[a2]" },
+    { "name": "$stack[0]", "expr": "v2[p2]" },
+    { "name": "$stack[1]", "expr": "v2[p2-1]" },
+    { "name": "$stack[2]", "expr": "v2[p2-2]" },
+    { "name": "$sp", "expr": "p2" }
+  ]
+}
+```
+
+**Opcode-Specific Watch Expressions**:
+
+Different opcodes may need additional watches based on their operands:
+
+```javascript
+// LOAD_SCOPE depth=0, x=8 → also watch the scope being accessed
+{
+  "watchExpressions": [
+    // ... standard watches ...
+    { "name": "$scope[0]", "expr": "s2[0]" },
+    { "name": "$scope[0][8]", "expr": "s2[0][Z[8]]" }
+  ]
+}
+
+// CALL n=3 → watch the function and arguments
+{
+  "watchExpressions": [
+    // ... standard watches ...
+    { "name": "$fn", "expr": "v2[p2-3]" },
+    { "name": "$this", "expr": "v2[p2-4]" },
+    { "name": "$args", "expr": "[v2[p2-2], v2[p2-1], v2[p2]]" }
+  ]
+}
+```
+
+**Generation from VM Info**:
+
+```javascript
+function generateWatchExpressions(vmInfo, opcode, operands) {
+  const { ip, sp, stack, bytecode, scope, constants } = vmInfo.registers;
+  
+  // Standard watches (always included)
+  const watches = [
+    { name: "$pc", expr: ip.name },
+    { name: "$opcode", expr: `${bytecode.name}[${ip.name}]` },
+    { name: "$stack[0]", expr: `${stack.name}[${sp.name}]` },
+    { name: "$stack[1]", expr: `${stack.name}[${sp.name}-1]` },
+    { name: "$stack[2]", expr: `${stack.name}[${sp.name}-2]` },
+    { name: "$sp", expr: sp.name }
+  ];
+  
+  // Opcode-specific watches
+  if (opcode === 'LOAD_SCOPE' || opcode === 'SET_SCOPE') {
+    const [depth, idx] = operands;
+    watches.push({ 
+      name: `$scope[${depth}]`, 
+      expr: `${scope.name}[${depth}]` 
+    });
+  }
+  
+  if (opcode === 'CALL' || opcode === 'NEW') {
+    const argCount = operands[0];
+    watches.push({ 
+      name: "$fn", 
+      expr: `${stack.name}[${sp.name}-${argCount}]` 
+    });
+  }
+  
+  return watches;
+}
+```
+
+**Usage in Browser DevTools**:
+
+When paused at a breakpoint, use `evaluate_on_call_frame` to extract values:
+
+```javascript
+async function extractVMState(sourceMap, irLine) {
+  const mapping = sourceMap.mappings.find(m => m.irLine === irLine);
+  if (!mapping?.breakpoint?.watchExpressions) return null;
+  
+  const state = {};
+  for (const watch of mapping.breakpoint.watchExpressions) {
+    const result = await evaluate_on_call_frame({
+      expression: watch.expr,
+      maxOutputChars: 1000
+    });
+    state[watch.name] = result.value;
+  }
+  
+  return state;
+}
+
+// Example output:
+// {
+//   "$pc": 100,
+//   "$opcode": 17,
+//   "$stack[0]": "hello",
+//   "$stack[1]": 42,
+//   "$sp": 5
+// }
+```
+
+### 3.5 `opcodeHandlers` - Opcode Handler Mappings
 
 ```json
 {
@@ -207,7 +339,7 @@ const condition = `${ip} === ${pc} && ${bytecode}[${ip}] === ${opcode}`;
 
 ## 4. IR File Format (Clean Version)
 
-IR file stays clean, only function header has source mapping:
+IR file stays clean, only function header has source mapping. **Source Map uses actual line numbers for direct indexing**.
 
 ```javascript
 // JSVMP Disassembly - douyin.com bdms.js
@@ -222,7 +354,7 @@ IR file stays clean, only function header has source mapping:
 // Source: L3298:12
 // ========================================
 
-    0: PUSH_CONST       134          // Push Z[x] // Z[134]="1.0.1.19"
+    0: LOAD_CLOSURE       1          // D(x, s2) - create closure // Z[1]="Symbol"
     2: SET_SCOPE          0   8      // scope[depth][x] = val // depth=0, Z[8]="string"
    14: JMP                8          // Unconditional jump // -> 22
 ```
@@ -230,7 +362,22 @@ IR file stays clean, only function header has source mapping:
 **Key Points**:
 - Use `//` comments instead of `;;`
 - Function header has `Source: L{line}:{column}` for starting position
+- **No special markers needed** - Source Map `irLine` is the actual file line number
 - Individual instruction breakpoint info is ALL in `.asm.map` file
+
+**Matching Logic** (O(1) lookup):
+```javascript
+// Source Map stores actual line numbers, build index once
+const lineIndex = {};
+for (const mapping of sourceMap.mappings) {
+  lineIndex[mapping.irLine] = mapping;
+}
+
+// Direct lookup by line number
+function getBreakpointForLine(lineNumber) {
+  return lineIndex[lineNumber];
+}
+```
 
 ## 5. Usage Scenarios
 
@@ -537,7 +684,9 @@ const vmInfo = {
       "ip": { "name": "a2", "description": "Instruction Pointer, initialized to 0" },
       "sp": { "name": "p2", "description": "Stack Pointer, initialized to -1" },
       "stack": { "name": "v2", "description": "Virtual Stack, initialized to []" },
-      "bytecode": { "name": "o2", "description": "Bytecode Array, assigned from t4[0]" }
+      "bytecode": { "name": "o2", "description": "Bytecode Array, assigned from t4[0]" },
+      "scope": { "name": "s2", "description": "Scope Chain Array" },
+      "constants": { "name": "Z", "description": "Constants Pool" }
     },
     "entryPoint": {
       "line": 3298,
@@ -566,7 +715,15 @@ const vmInfo = {
       "source": { "line": 3298, "column": 12 },
       "breakpoint": {
         "condition": "a2 === 0 && o2[a2] === 17",
-        "logMessage": "PC:0 OP:17 PUSH_CONST Z[134]"
+        "logMessage": "PC:0 OP:17 PUSH_CONST Z[134]",
+        "watchExpressions": [
+          { "name": "$pc", "expr": "a2" },
+          { "name": "$opcode", "expr": "o2[a2]" },
+          { "name": "$stack[0]", "expr": "v2[p2]" },
+          { "name": "$stack[1]", "expr": "v2[p2-1]" },
+          { "name": "$sp", "expr": "p2" },
+          { "name": "$const[134]", "expr": "Z[134]" }
+        ]
       },
       "semantic": "Push Z[134]=\"1.0.1.19\""
     },
@@ -578,7 +735,15 @@ const vmInfo = {
       "source": { "line": 3298, "column": 12 },
       "breakpoint": {
         "condition": "a2 === 2 && o2[a2] === 23",
-        "logMessage": "PC:2 OP:23 SET_SCOPE depth=0 Z[8]"
+        "logMessage": "PC:2 OP:23 SET_SCOPE depth=0 Z[8]",
+        "watchExpressions": [
+          { "name": "$pc", "expr": "a2" },
+          { "name": "$opcode", "expr": "o2[a2]" },
+          { "name": "$stack[0]", "expr": "v2[p2]" },
+          { "name": "$stack[1]", "expr": "v2[p2-1]" },
+          { "name": "$sp", "expr": "p2" },
+          { "name": "$scope[0]", "expr": "s2[0]" }
+        ]
       },
       "semantic": "scope[0][Z[8]] = pop()"
     }
@@ -606,31 +771,33 @@ const vmInfo = {
 ### 9.2 Corresponding IR File
 
 ```javascript
-// JSVMP Disassembly - douyin.com bdms.js
-// Source Map: bdms_disasm.asm.map
-// Total Functions: 1
-// Total Constants: 256
-
-// ========================================
-// Function 0 (main)
-// Params: 0, Strict: true
-// Bytecode: [0, 1903]
-// Source: L3298:12
-// ========================================
-
-    0: PUSH_CONST       134          // Push Z[x] // Z[134]="1.0.1.19"
-    2: SET_SCOPE          0   8      // scope[depth][x] = val // depth=0, Z[8]="string"
-   14: JMP                8          // Unconditional jump // -> 22
+// JSVMP Disassembly - douyin.com bdms.js        // Line 1
+// Source Map: bdms_disasm.asm.map               // Line 2
+// Total Functions: 1                            // Line 3
+// Total Constants: 256                          // Line 4
+                                                 // Line 5
+// ========================================       // Line 6
+// Function 0 (main)                             // Line 7
+// Params: 0, Strict: true                       // Line 8
+// Bytecode: [0, 1903]                           // Line 9
+// Source: L3298:12                              // Line 10
+// ========================================       // Line 11
+                                                 // Line 12
+    0: PUSH_CONST       134          // ...      // Line 13 → irLine: 13
+    2: SET_SCOPE          0   8      // ...      // Line 14 → irLine: 14
+   14: JMP                8          // ...      // Line 15 → irLine: 15
 ```
+
+**Matching**: `irLine` in Source Map IS the actual file line number. Direct O(1) lookup.
 
 ## 10. Implementation Checklist
 
 - [ ] IR file uses `//` comments
 - [ ] IR file function header has `Source: L{line}:{column}`
-- [ ] IR instruction lines have NO breakpoint info (keep clean)
+- [ ] **Source Map `irLine` = actual file line number** (no special markers needed)
 - [ ] Source Map contains all instruction mappings
+- [ ] **Source Map `breakpoint.watchExpressions` generated for each instruction**
 - [ ] **CRITICAL**: Call `find_jsvmp_dispatcher` first to get actual variable names
 - [ ] Source Map breakpoint.condition uses actual variable names from dispatcher result
 - [ ] Condition combines IP + opcode: `{ip} === {pc} && {bytecode}[{ip}] === {opcode}`
-- [ ] Add Source Map reading utility functions
-- [ ] Add batch breakpoint setting functionality
+- [ ] Build line index for O(1) lookup: `lineIndex[irLine] = mapping`

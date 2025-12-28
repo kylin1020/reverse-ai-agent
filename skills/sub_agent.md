@@ -199,13 +199,23 @@ set_breakpoint(urlRegex=".*main.js.*", lineNumber=1, columnNumber=15847)
 
 ### 3. URL Regex Patterns
 
+**⚠️ CRITICAL: Do NOT use `\` escape characters in urlRegex/urlPattern!**
+
 ```javascript
-// ✅ CORRECT
+// ✅ BEST: Use complete filename (most reliable)
+urlRegex=".*bdms_1.0.1.19_fix.js.*"
+
+// ✅ CORRECT: Simple pattern with .*
 urlRegex=".*main.js.*"
 
-// ❌ WRONG (no escaping needed)
+// ❌ WRONG: No backslash escaping!
 urlRegex=".*main\\.js.*"
+
+// ❌ WRONG: Avoid complex regex
+urlRegex=".*bdms.*\\.js.*"
 ```
+
+**Best Practice**: Use the complete JS filename when possible for reliable matching.
 
 ### 4. Evaluate Script
 

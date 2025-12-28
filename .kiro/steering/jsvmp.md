@@ -231,13 +231,19 @@ invokeSubAgent(
 ## 🗺️ SOURCE MAP REQUIREMENTS (For IR Generation Tasks)
 When generating IR/ASM output, you MUST also generate a Source Map:
 1. Output files: `output/{name}_disasm.asm` + `output/{name}_disasm.asm.map`
-2. IR file: Clean format, function header has `Source: L{line}:{column}`, instruction lines have no breakpoint info
-3. Source Map: One mapping entry per instruction with irLine, irAddr, source, breakpoint
+2. IR file format:
+   - Clean format with `//` comments
+   - Function header has `Source: L{line}:{column}`
+   - **No special markers** - Source Map `irLine` IS the actual file line number
+3. Source Map: One mapping entry per instruction with irLine (= actual line number), irAddr, source, breakpoint
 4. **CRITICAL**: Breakpoint conditions MUST use actual variable names from `find_jsvmp_dispatcher`:
-   - Get `instructionPointer`, `bytecodeArray`, `stackPointer`, `virtualStack` names
+   - Get `instructionPointer`, `bytecodeArray`, `stackPointer`, `virtualStack`, `scopeChain`, `constantsPool` names
    - Build condition like: `{ip} === {pc} && {bytecode}[{ip}] === {opcode}`
    - Variable names vary per target (e.g., `a2`, `_0x1234`, `ip`, etc.)
-5. Use `//` comments instead of `;;`
+5. **watchExpressions**: Generate for each instruction to enable VM state extraction during debugging:
+   - Standard watches: `$pc`, `$opcode`, `$stack[0..2]`, `$sp`
+   - Opcode-specific: `$scope[depth]` for scope ops, `$fn`/`$this`/`$args` for CALL/NEW, `$const[x]` for constant ops
+   - See `#[[file:skills/jsvmp-ir-sourcemap.md]]` Section 3.4 for details
 
 ## Context
 - Domain: {domain}
