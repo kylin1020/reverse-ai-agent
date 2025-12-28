@@ -1,6 +1,22 @@
 # JSVMP Decompilation Phase Guide
 
 > Sub-Agent should read this file before executing phase-specific tasks.
+> **⚠️ ALL file paths in Smart-FS tools MUST be ABSOLUTE (starting with `/`)**
+
+## ⚠️ PATH RULE (CRITICAL)
+
+**Before using ANY Smart-FS tool, construct absolute path:**
+```javascript
+// Get workspace root first (from invokeSubAgent prompt or pwd)
+const WORKSPACE = "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com";
+
+// ALL tool calls use absolute paths:
+read_code_smart({ file_path: `${WORKSPACE}/source/main.js`, start_line: 1, end_line: 50 })
+search_code_smart({ file_path: `${WORKSPACE}/source/main.js`, query: "debugger" })
+find_usage_smart({ file_path: `${WORKSPACE}/source/main.js`, identifier: "x", line: 100 })
+find_jsvmp_dispatcher({ filePath: `${WORKSPACE}/source/main.js` })
+apply_custom_transform({ target_file: `${WORKSPACE}/source/main.js`, script_path: `${WORKSPACE}/transforms/fix.js` })
+```
 
 ## Phase 1: Code Preprocessing
 
@@ -18,14 +34,18 @@ curl cannot: Execute JS, handle cookies, capture XHR
 
 ### 1.2 Detect Obfuscation
 ```javascript
-read_code_smart(file_path="source/main.js", start_line=1, end_line=50)
-search_code_smart(file_path="source/main.js", query="debugger")
+// ABSOLUTE PATHS REQUIRED!
+read_code_smart({ file_path: "/abs/path/to/workspace/source/main.js", start_line: 1, end_line: 50 })
+search_code_smart({ file_path: "/abs/path/to/workspace/source/main.js", query: "debugger" })
 ```
 
 ### 1.3 Deobfuscate
 ```javascript
-// Create transforms/fix_strings.js
-apply_custom_transform(target_file="source/main.js", script_path="transforms/fix_strings.js")
+// Create transforms/fix_strings.js, then apply with ABSOLUTE PATHS
+apply_custom_transform({
+  target_file: "/abs/path/to/workspace/source/main.js",
+  script_path: "/abs/path/to/workspace/transforms/fix_strings.js"
+})
 ```
 
 ---
@@ -34,22 +54,22 @@ apply_custom_transform(target_file="source/main.js", script_path="transforms/fix
 
 ### 2.1 Locate Dispatcher
 ```javascript
-// PRIMARY: AI-powered detection
-find_jsvmp_dispatcher(filePath="source/main.js")
+// PRIMARY: AI-powered detection (ABSOLUTE PATH!)
+find_jsvmp_dispatcher({ filePath: "/abs/path/to/workspace/source/main.js" })
 
-// FALLBACK: Regex if AI fails
-search_code_smart(query="while\\s*\\(\\s*true")
-search_code_smart(query="switch\\s*\\(")
+// FALLBACK: Regex if AI fails (ABSOLUTE PATH!)
+search_code_smart({ file_path: "/abs/path/to/workspace/source/main.js", query: "while\\s*\\(\\s*true" })
+search_code_smart({ file_path: "/abs/path/to/workspace/source/main.js", query: "switch\\s*\\(" })
 ```
 
 ### 2.2 Data Extraction (Static First)
 
 **Priority: Static extraction > Browser extraction**
 
-1. **Smart-FS Locate:**
+1. **Smart-FS Locate (ABSOLUTE PATHS!):**
 ```javascript
-search_code_smart(query="\\[\\s*['\"].*['\"]\\s*,")  // String arrays
-find_usage_smart(file="source/main.js", identifier="bytecodeArray", line=100)
+search_code_smart({ file_path: "/abs/path/to/workspace/source/main.js", query: "\\[\\s*['\"].*['\"]\\s*," })  // String arrays
+find_usage_smart({ file_path: "/abs/path/to/workspace/source/main.js", identifier: "bytecodeArray", line: 100 })
 ```
 
 2. **AST Transform Extract (PREFERRED):**
@@ -67,7 +87,7 @@ module.exports = function({ types: t }) {
             return null;
           });
           require('fs').writeFileSync(
-            'artifacts/jsvmp/{target}/raw/constants.json',
+            '/abs/path/to/workspace/raw/constants.json',  // ABSOLUTE PATH!
             JSON.stringify(elements, null, 2)
           );
         }
@@ -76,16 +96,20 @@ module.exports = function({ types: t }) {
   };
 };
 
-apply_custom_transform(target="source/main.js", script="transforms/extract_constants.js")
+// Apply with ABSOLUTE PATHS
+apply_custom_transform({
+  target_file: "/abs/path/to/workspace/source/main.js",
+  script_path: "/abs/path/to/workspace/transforms/extract_constants.js"
+})
 ```
 
 3. **Browser Extract (ONLY for runtime data):**
 ```javascript
-// ⚠️ MUST use savePath
-evaluate_script(
-  script="JSON.stringify(window.bytecodeArray)",
-  savePath="raw/bytecode.json"
-)
+// ⚠️ MUST use savePath (ABSOLUTE PATH!)
+evaluate_script({
+  script: "JSON.stringify(window.bytecodeArray)",
+  savePath: "/abs/path/to/workspace/raw/bytecode.json"
+})
 ```
 
 ---
@@ -108,38 +132,42 @@ evaluate_script(
 
 ### Code Location (Use Smart-FS, NOT rg)
 ```javascript
-// 1. Search to get position
-search_code_smart(file="source/main.js", query="for\\(;;\\)")
+// 1. Search to get position (ABSOLUTE PATH!)
+search_code_smart({ file_path: "/abs/path/to/workspace/source/main.js", query: "for\\(;;\\)" })
 // Output: [Src L1:15847]
 
 // 2. Set breakpoint using [Src] coordinates
-set_breakpoint(urlRegex=".*main.js.*", lineNumber=1, columnNumber=15847)
+set_breakpoint({ urlRegex: ".*main.js.*", lineNumber: 1, columnNumber: 15847 })
 ```
 
 ### Call Stack Tracing
 ```javascript
-set_breakpoint(urlRegex=".*target.js.*", lineNumber=1, columnNumber=12345)
+set_breakpoint({ urlRegex: ".*target.js.*", lineNumber: 1, columnNumber: 12345 })
 // After trigger
-get_debugger_status(maxCallStackFrames=20)
+get_debugger_status({ maxCallStackFrames: 20 })
 ```
 
 ### Log Breakpoint (No Pause)
 ```javascript
-set_breakpoint(urlRegex=".*vm.js.*", lineNumber=1, columnNumber=123,
-    condition='console.log(`PC:${pc} OP:${op}`), false')
+set_breakpoint({
+  urlRegex: ".*vm.js.*",
+  lineNumber: 1,
+  columnNumber: 123,
+  condition: 'console.log(`PC:${pc} OP:${op}`), false'
+})
 ```
 
 ### Anti-Debug Bypass
 ```javascript
-replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
-navigate_page(type="reload", timeout=3000)
+replace_script({ urlPattern: ".*target.js.*", oldCode: "debugger;", newCode: "" })
+navigate_page({ type: "reload", timeout: 3000 })
 ```
 
 ### Runtime Value Extraction
 ```javascript
-// PREFERRED: Breakpoint + scope inspection
-find_usage_smart(file="source/main.js", identifier="targetVar", line=100)
-set_breakpoint(..., lineNumber=1, columnNumber=5000)
+// PREFERRED: Breakpoint + scope inspection (ABSOLUTE PATH!)
+find_usage_smart({ file_path: "/abs/path/to/workspace/source/main.js", identifier: "targetVar", line: 100 })
+set_breakpoint({ urlRegex: ".*main.js.*", lineNumber: 1, columnNumber: 5000 })
 get_scope_variables()
 ```
 
@@ -161,7 +189,8 @@ get_scope_variables()
 | Issue | Solution |
 |-------|----------|
 | File too big | `read_code_smart` handles automatically |
-| Variable soup | `find_usage_smart(..., line=X)` for specific scope |
+| Variable soup | `find_usage_smart({ file_path: "/abs/path/...", identifier: "x", line: X })` for specific scope |
 | Line mismatch | Trust `[L:line] [Src L:col]` from Smart Tool |
 | Unknown opcode | Set breakpoint at `[Src]` location to trace handler |
 | Can't find dispatcher | Use `find_jsvmp_dispatcher` |
+| **Path error** | **ALWAYS use absolute paths starting with `/`** |

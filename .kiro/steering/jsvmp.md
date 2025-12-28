@@ -19,10 +19,18 @@ inclusion: manual
 **On session start, run `pwd` and use absolute paths for ALL operations:**
 
 ```javascript
-// ✅ CORRECT
+// ✅ CORRECT - ALWAYS use absolute paths like these:
 read_code_smart({ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/source/main.js" })
+search_code_smart({ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/source/main.js", query: "debugger" })
+find_usage_smart({ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/source/main.js", identifier: "_0xabc", line: 105 })
+find_jsvmp_dispatcher({ filePath: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/source/main.js" })
+apply_custom_transform({ target_file: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/source/main.js", script_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/transforms/fix.js" })
 fsWrite({ path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/raw/bytecode.json" })
 invokeSubAgent({ prompt: `Workspace: /Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/` })
+
+// ❌ WRONG - NEVER use relative paths:
+read_code_smart({ file_path: "source/main.js" })  // ❌ WILL FAIL
+search_code_smart({ file_path: "artifacts/jsvmp/example.com/source/main.js" })  // ❌ WILL FAIL
 ```
 
 > **ROLE**: You are NOT a decompilation expert. You are a **State Machine Executor**.
@@ -118,13 +126,27 @@ fsWrite("raw/data.json", JSON.stringify(hugeArray)); // ❌ Don't embed in code
 
 **Concept**: You work with a **Virtual View**. Read `source/main.js` (minified) → Tool shows beautified view.
 
-| Action | Tool | Usage |
-|--------|------|-------|
-| Read Code | `read_code_smart` | `file="source/main.js", start=1, end=50` |
-| Search Text | `search_code_smart` | `file="source/main.js", query="debugger"` |
-| Trace Var | `find_usage_smart` | `file="...", identifier="_0xabc", line=105` |
-| Deobfuscate | `apply_custom_transform` | `target="...", script="transforms/fix.js"` |
-| Find JSVMP | `find_jsvmp_dispatcher` | `filePath="source/main.js"` |
+**⚠️ ALL file_path/filePath parameters MUST be ABSOLUTE paths starting with `/`**
+
+| Action | Tool | Usage (ABSOLUTE PATH REQUIRED) |
+|--------|------|--------------------------------|
+| Read Code | `read_code_smart` | `file_path="/abs/path/source/main.js", start_line=1, end_line=50` |
+| Search Text | `search_code_smart` | `file_path="/abs/path/source/main.js", query="debugger"` |
+| Trace Var | `find_usage_smart` | `file_path="/abs/path/source/main.js", identifier="_0xabc", line=105` |
+| Deobfuscate | `apply_custom_transform` | `target_file="/abs/path/source/main.js", script_path="/abs/path/transforms/fix.js"` |
+| Find JSVMP | `find_jsvmp_dispatcher` | `filePath="/abs/path/source/main.js"` |
+
+**Example with real workspace:**
+```javascript
+// After running pwd → /Users/xxx/reverse-ai-agent
+const WORKSPACE = "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com";
+
+read_code_smart({ file_path: `${WORKSPACE}/source/main.js`, start_line: 1, end_line: 50 })
+search_code_smart({ file_path: `${WORKSPACE}/source/main.js`, query: "for\\(;;\\)" })
+find_usage_smart({ file_path: `${WORKSPACE}/source/main.js`, identifier: "_0xabc", line: 105 })
+find_jsvmp_dispatcher({ filePath: `${WORKSPACE}/source/main.js` })
+apply_custom_transform({ target_file: `${WORKSPACE}/source/main.js`, script_path: `${WORKSPACE}/transforms/fix.js` })
+```
 
 ---
 
@@ -179,12 +201,12 @@ fsWrite("raw/data.json", JSON.stringify(hugeArray)); // ❌ Don't embed in code
 
 ### Key Technique: Locate Code Position
 ```javascript
-// 1. Search in Virtual View
-search_code_smart(file="source/main.js", query="for\\(;;\\)")
+// 1. Search in Virtual View (ABSOLUTE PATH!)
+search_code_smart({ file_path: "/abs/path/source/main.js", query: "for\\(;;\\)" })
 // Output: [Src L1:15847]
 
 // 2. Set Breakpoint using [Src] coordinates
-set_breakpoint(urlRegex=".*main.js.*", lineNumber=1, columnNumber=15847)
+set_breakpoint({ urlRegex: ".*main.js.*", lineNumber: 1, columnNumber: 15847 })
 ```
 
 > **📚 More techniques**: See `#[[file:skills/jsvmp-phase-guide.md]]`
@@ -253,13 +275,25 @@ invokeSubAgent(
 
 ## 📍 Context
 - Domain: {domain}
-- Workspace: artifacts/jsvmp/{domain}/
+- Workspace (ABSOLUTE PATH): /Users/xxx/reverse-ai-agent/artifacts/jsvmp/{domain}/
 - NOTE.md: artifacts/jsvmp/{domain}/NOTE.md
+
+## ⚠️ ABSOLUTE PATH RULE (CRITICAL)
+ALL Smart-FS tool calls MUST use ABSOLUTE paths:
+- Source file: /Users/xxx/reverse-ai-agent/artifacts/jsvmp/{domain}/source/main.js
+- Transforms: /Users/xxx/reverse-ai-agent/artifacts/jsvmp/{domain}/transforms/
+- Output: /Users/xxx/reverse-ai-agent/artifacts/jsvmp/{domain}/output/
+
+Example:
+```javascript
+read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{domain}/source/main.js" }})
+```
 
 ## ⛔ RULES
 - Complete ONLY this task, then STOP
 - Write findings to NOTE.md with [L:line] [Src L:col]
 - Flag new discoveries in "Pending Discoveries" section
+- **NEVER use relative paths for Smart-FS tools**
 """,
   explanation="Delegate 🤖 task: {task summary}"
 )

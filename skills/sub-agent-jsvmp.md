@@ -2,6 +2,28 @@
 
 > **Prerequisites**: Read `sub_agent.md` first for common rules.
 
+## ⚠️ ABSOLUTE PATH RULE (CRITICAL)
+
+**ALL file paths for Smart-FS tools MUST be ABSOLUTE (starting with `/`)!**
+
+```javascript
+// ✅ CORRECT - Absolute paths
+read_code_smart({ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/source/main.js" })
+search_code_smart({ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/source/main.js", query: "..." })
+find_jsvmp_dispatcher({ filePath: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/source/main.js" })
+
+// ❌ WRONG - Relative paths WILL FAIL
+read_code_smart({ file_path: "source/main.js" })  // ❌
+search_code_smart({ file_path: "artifacts/jsvmp/example.com/source/main.js" })  // ❌
+```
+
+**Get workspace path from invokeSubAgent prompt, then construct absolute paths:**
+```javascript
+// From prompt: "Workspace: /Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/"
+const WORKSPACE = "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com";
+const SOURCE_FILE = `${WORKSPACE}/source/main.js`;
+```
+
 ## 🎯 Task Execution Rules
 
 1. **READ NOTE.md FIRST**: Use `readFile` to load previous findings before starting work
@@ -12,8 +34,12 @@
 ## 📖 Session Start (MANDATORY)
 
 ```javascript
-// FIRST: Read NOTE.md for context
+// FIRST: Read NOTE.md for context (relative path OK for readFile)
 readFile({ path: "artifacts/jsvmp/{domain}/NOTE.md" })
+
+// For Smart-FS tools, use ABSOLUTE paths:
+const WORKSPACE = "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{domain}";
+read_code_smart({ file_path: `${WORKSPACE}/source/main.js`, start_line: 1, end_line: 50 })
 ```
 
 ## 🚫 Large Data Handling
@@ -53,9 +79,14 @@ When generating IR/ASM output:
 
 ```javascript
 // Step 1: find_jsvmp_dispatcher → beautified line (e.g., L:150)
-// Step 2: read_code_smart → get [Src Lx:xxx] markers
-// Step 3: Extract ORIGINAL coordinates for Source Map
+// ABSOLUTE PATH REQUIRED!
+find_jsvmp_dispatcher({ filePath: "/abs/path/to/workspace/source/main.js" })
 
+// Step 2: read_code_smart → get [Src Lx:xxx] markers
+// ABSOLUTE PATH REQUIRED!
+read_code_smart({ file_path: "/abs/path/to/workspace/source/main.js", start_line: 148, end_line: 155 })
+
+// Step 3: Extract ORIGINAL coordinates for Source Map
 // Example output from read_code_smart:
 // [L:150] [Src L1:28456]    for (;;) {
 //         ^^^^^^^^^^^^
@@ -67,7 +98,8 @@ When generating IR/ASM output:
 **MUST use actual variable names from `find_jsvmp_dispatcher`:**
 
 ```javascript
-const info = find_jsvmp_dispatcher({ filePath: "main.js" });
+// ABSOLUTE PATH REQUIRED!
+const info = find_jsvmp_dispatcher({ filePath: "/abs/path/to/workspace/source/main.js" });
 // Use: info.instructionPointer, info.bytecodeArray, etc.
 // Build: `${ip} === ${pc} && ${bytecode}[${ip}] === ${opcode}`
 ```
@@ -95,6 +127,7 @@ Generate for each instruction:
 
 - [ ] Read NOTE.md first (with `readFile`)?
 - [ ] Read required skill files?
+- [ ] **Used ABSOLUTE paths for all Smart-FS tools?**
 - [ ] Used Smart-FS tools for code (not read_file/cat/grep)?
 - [ ] Large data saved to file (not embedded)?
 - [ ] All findings include `[L:line] [Src L:col]`?

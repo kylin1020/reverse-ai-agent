@@ -4,7 +4,32 @@
 
 > **⚠️ RULE #1: NEVER use `read_file/readFile`, `cat`, `head`, `tail`, `grep`, or `rg` for reading files. ALWAYS use Smart-FS tools (`read_code_smart`, `search_code_smart`, `find_usage_smart`) as your DEFAULT file access method. Smart-FS supports JS/TS (full AST + beautify + source map), JSON/HTML/XML/CSS (beautify), and all other text files.**
 
-> **⚠️ RULE #2: ALL file operations MUST use paths within the designated working directory (e.g., `artifacts/`). NEVER read from or write to project root or arbitrary locations.**
+> **⚠️ RULE #2: ALL file paths for Smart-FS tools MUST be ABSOLUTE (starting with `/`). Get workspace path from invokeSubAgent prompt, then construct full paths.**
+
+---
+
+## ⚠️ ABSOLUTE PATH RULE (CRITICAL - READ FIRST)
+
+**ALL Smart-FS tool calls MUST use ABSOLUTE paths starting with `/`!**
+
+```javascript
+// Get workspace from invokeSubAgent prompt:
+// "Workspace: /Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/"
+const WORKSPACE = "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com";
+
+// ✅ CORRECT - Absolute paths
+read_code_smart({ file_path: `${WORKSPACE}/source/main.js`, start_line: 1, end_line: 50 })
+search_code_smart({ file_path: `${WORKSPACE}/source/main.js`, query: "encrypt" })
+find_usage_smart({ file_path: `${WORKSPACE}/source/main.js`, identifier: "_0xabc", line: 105 })
+find_jsvmp_dispatcher({ filePath: `${WORKSPACE}/source/main.js` })
+apply_custom_transform({ target_file: `${WORKSPACE}/source/main.js`, script_path: `${WORKSPACE}/transforms/fix.js` })
+
+// ❌ WRONG - Relative paths WILL FAIL
+read_code_smart({ file_path: "source/main.js" })  // ❌
+search_code_smart({ file_path: "artifacts/jsvmp/example.com/source/main.js" })  // ❌
+```
+
+**Note**: `readFile` for markdown files (NOTE.md, TODO.md, skills/*.md) can use relative paths.
 
 ---
 
@@ -39,13 +64,13 @@ This provides:
 
 ### 2. Smart-FS as DEFAULT File Access (MANDATORY)
 
-**ALWAYS use Smart-FS tools:**
+**ALWAYS use Smart-FS tools with ABSOLUTE paths:**
 
-| Action | Tool | Example |
-|--------|------|---------|
-| Read code | `read_code_smart` | `file_path="source/main.js", start_line=1, end_line=50` |
-| Search text | `search_code_smart` | `file_path="source/main.js", query="encrypt"` |
-| Trace variable | `find_usage_smart` | `file_path="...", identifier="_0xabc", line=105` (JS/TS only) |
+| Action | Tool | Example (ABSOLUTE PATH!) |
+|--------|------|--------------------------|
+| Read code | `read_code_smart` | `file_path="/abs/path/source/main.js", start_line=1, end_line=50` |
+| Search text | `search_code_smart` | `file_path="/abs/path/source/main.js", query="encrypt"` |
+| Trace variable | `find_usage_smart` | `file_path="/abs/path/source/main.js", identifier="_0xabc", line=105` (JS/TS only) |
 
 **Supported File Types:**
 | File Type | Capabilities |
@@ -108,8 +133,8 @@ This includes:
 
 **✅ CORRECT: Static Extraction**
 ```javascript
-// Step 1: Locate the array
-search_code_smart(file_path="source/main.js", query="var\\s+_0x[a-f0-9]+\\s*=\\s*\\[")
+// Step 1: Locate the array (ABSOLUTE PATH!)
+search_code_smart({ file_path: "/abs/path/source/main.js", query: "var\\s+_0x[a-f0-9]+\\s*=\\s*\\[" })
 // Output: [L:150] [Src L1:8234] var _0xabc123 = ["function", "Symbol", ...]
 
 // Step 2: Write extraction transform (transforms/extract_constants.js)
@@ -119,7 +144,7 @@ module.exports = function({ types: t }) {
       VariableDeclarator(path) {
         if (path.node.id.name === '_0xabc123') {
           const elements = path.node.init.elements.map(e => e.value);
-          require('fs').writeFileSync('raw/constants.json', JSON.stringify(elements));
+          require('fs').writeFileSync('/abs/path/raw/constants.json', JSON.stringify(elements));
           console.log(`Extracted ${elements.length} elements`);
         }
       }
@@ -127,21 +152,24 @@ module.exports = function({ types: t }) {
   };
 };
 
-// Step 3: Run extraction
-apply_custom_transform(target_file="source/main.js", script_path="transforms/extract_constants.js")
+// Step 3: Run extraction (ABSOLUTE PATHS!)
+apply_custom_transform({
+  target_file: "/abs/path/source/main.js",
+  script_path: "/abs/path/transforms/extract_constants.js"
+})
 ```
 
 **✅ CORRECT: Browser Extraction (when static fails)**
 ```javascript
-// ALWAYS use savePath — NEVER output large data
-evaluate_script(
-  script="JSON.stringify(window._0xabc123 || targetArray)",
-  savePath="raw/constants.json",
-  maxOutputChars=100  // Only show confirmation
-)
+// ALWAYS use savePath — NEVER output large data (ABSOLUTE PATH!)
+evaluate_script({
+  script: "JSON.stringify(window._0xabc123 || targetArray)",
+  savePath: "/abs/path/raw/constants.json",
+  maxOutputChars: 100  // Only show confirmation
+})
 
-// For scope variables at breakpoint
-save_scope_variables(filePath="raw/scope_dump.json", includeGlobal=false)
+// For scope variables at breakpoint (ABSOLUTE PATH!)
+save_scope_variables({ filePath: "/abs/path/raw/scope_dump.json", includeGlobal: false })
 ```
 
 **❌ FORBIDDEN:**
@@ -179,15 +207,15 @@ NOT the actual array contents!
 
 ### 2. Breakpoint Coordinates
 
-**Always use `[L:line] [Src L:col]` from Smart-FS:**
+**Always use `[L:line] [Src L:col]` from Smart-FS (ABSOLUTE PATH!):**
 
 ```javascript
-// 1. Get coordinates from Smart-FS
-search_code_smart(file_path="source/main.js", query="targetFunc")
+// 1. Get coordinates from Smart-FS (ABSOLUTE PATH!)
+search_code_smart({ file_path: "/abs/path/source/main.js", query: "targetFunc" })
 // Output: [Src L1:15847]
 
 // 2. Set breakpoint
-set_breakpoint(urlRegex=".*main.js.*", lineNumber=1, columnNumber=15847)
+set_breakpoint({ urlRegex: ".*main.js.*", lineNumber: 1, columnNumber: 15847 })
 ```
 
 **DO NOT guess line/column numbers.**
@@ -294,7 +322,7 @@ These files CAN use `readFile` (not Smart-FS):
 ## ✅ COMPLETION CHECKLIST
 
 Before finishing:
-- [ ] ALL paths within designated directory (e.g., `artifacts/`)?
+- [ ] **ALL Smart-FS paths are ABSOLUTE (starting with `/`)?**
 - [ ] Used Smart-FS for ALL file reading (never `read_file`/`read`)?
 - [ ] All findings include `[L:line] [Src L:col]` for JS/TS files?
 - [ ] Output lengths within limits?
@@ -306,21 +334,22 @@ Before finishing:
 
 ## 🔧 QUICK REFERENCE
 
-### Smart-FS Tools
-```
-read_code_smart(file_path, start_line, end_line)
-search_code_smart(file_path, query)
-find_usage_smart(file_path, identifier, line)
-apply_custom_transform(target_file, script_path)
+### Smart-FS Tools (ABSOLUTE PATHS REQUIRED!)
+```javascript
+read_code_smart({ file_path: "/abs/path/file.js", start_line: 1, end_line: 50 })
+search_code_smart({ file_path: "/abs/path/file.js", query: "pattern" })
+find_usage_smart({ file_path: "/abs/path/file.js", identifier: "varName", line: 100 })
+apply_custom_transform({ target_file: "/abs/path/file.js", script_path: "/abs/path/transform.js" })
+find_jsvmp_dispatcher({ filePath: "/abs/path/file.js" })
 ```
 
 ### Browser Tools
-```
-set_breakpoint(urlRegex, lineNumber, columnNumber, condition)
+```javascript
+set_breakpoint({ urlRegex: ".*target.js.*", lineNumber: 1, columnNumber: 123, condition: "..." })
 get_scope_variables()
-evaluate_script(script, savePath)
+evaluate_script({ script: "...", savePath: "/abs/path/output.json" })
 list_network_requests()
-get_network_request(reqid)
+get_network_request({ reqid: "..." })
 take_snapshot()
 ```
 
