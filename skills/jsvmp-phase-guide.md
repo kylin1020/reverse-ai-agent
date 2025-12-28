@@ -52,6 +52,20 @@ apply_custom_transform({
 
 ## Phase 2: VM Structure Analysis
 
+### ⚠️ CRITICAL: ANALYZE CODE FIRST, NEVER GUESS!
+
+**FORBIDDEN:**
+- ❌ Assuming variable names like `_0xabc123` without reading code
+- ❌ Guessing bytecode format (e.g., "5 bytes per instruction") without evidence
+- ❌ Assuming constant pool structure without tracing actual usage
+- ❌ Writing extraction scripts based on "common patterns"
+
+**REQUIRED WORKFLOW:**
+1. **READ the actual deobfuscated code** using `read_code_smart`
+2. **TRACE variable usage** using `find_usage_smart` to understand data flow
+3. **DOCUMENT findings** in NOTE.md with exact variable names and line numbers
+4. **THEN write extraction scripts** based on actual code structure
+
 ### 2.1 Locate Dispatcher
 ```javascript
 // PRIMARY: AI-powered detection (ABSOLUTE PATH!)
@@ -62,54 +76,130 @@ search_code_smart({ file_path: "/abs/path/to/workspace/source/main.js", query: "
 search_code_smart({ file_path: "/abs/path/to/workspace/source/main.js", query: "switch\\s*\\(" })
 ```
 
-### 2.2 Data Extraction (Static First)
+### 2.2 Data Extraction (ANALYZE → TRACE → EXTRACT)
 
-**Priority: Static extraction > Browser extraction**
+**⚠️ NEVER write extraction code without first understanding the actual code structure!**
 
-1. **Smart-FS Locate (ABSOLUTE PATHS!):**
+#### Step 1: ANALYZE - Read and understand the code
+
 ```javascript
-search_code_smart({ file_path: "/abs/path/to/workspace/source/main.js", query: "\\[\\s*['\"].*['\"]\\s*," })  // String arrays
-find_usage_smart({ file_path: "/abs/path/to/workspace/source/main.js", identifier: "bytecodeArray", line: 100 })
+// First, read the dispatcher area to understand VM structure
+read_code_smart({ file_path: "/abs/path/source/main.js", start_line: 100, end_line: 200 })
+
+// Look for: How is bytecode accessed? What variables hold constants?
+// Example output might show:
+// [L:150] var pc = 0;
+// [L:151] var bytecode = params.b;  // ← Found! bytecode comes from params.b
+// [L:152] var constants = params.d; // ← Found! constants come from params.d
 ```
 
-2. **AST Transform Extract (PREFERRED):**
+#### Step 2: TRACE - Follow variable definitions
+
 ```javascript
-// Create transforms/extract_constants.js
+// Trace where 'params' comes from
+find_usage_smart({ file_path: "/abs/path/source/main.js", identifier: "params", line: 150 })
+
+// Trace the actual bytecode variable
+find_usage_smart({ file_path: "/abs/path/source/main.js", identifier: "bytecode", line: 151 })
+
+// Document in NOTE.md:
+// - params defined at [L:50] [Src L1:1234]
+// - params.b = encoded bytecode string
+// - params.d = constants array
+```
+
+#### Step 3: UNDERSTAND - Analyze bytecode format
+
+```javascript
+// Read the decode function to understand bytecode format
+search_code_smart({ file_path: "/abs/path/source/main.js", query: "decode|atob|charCodeAt" })
+
+// Read the instruction fetch logic
+read_code_smart({ file_path: "/abs/path/source/main.js", start_line: 160, end_line: 180 })
+
+// Example: You might find:
+// [L:165] opcode = bytecode[pc];
+// [L:166] arg1 = bytecode[pc + 1];
+// [L:167] arg2 = bytecode[pc + 2];
+// → This tells you: 3 bytes per instruction, not 5!
+```
+
+#### Step 4: EXTRACT - Write scripts based on actual findings
+
+```javascript
+// NOW you can write extraction script with REAL variable names from Step 1-3
+// transforms/extract_constants.js
 module.exports = function({ types: t }) {
   return {
     visitor: {
-      VariableDeclarator(path) {
-        if (path.node.id.name === '_0xabc123' && 
-            t.isArrayExpression(path.node.init)) {
-          const elements = path.node.init.elements.map(e => {
-            if (t.isStringLiteral(e)) return e.value;
-            if (t.isNumericLiteral(e)) return e.value;
-            return null;
-          });
-          require('fs').writeFileSync(
-            '/abs/path/to/workspace/raw/constants.json',  // ABSOLUTE PATH!
-            JSON.stringify(elements, null, 2)
-          );
+      ObjectExpression(path) {
+        // Use ACTUAL structure found in code analysis
+        // e.g., if you found { b: "...", d: [...] } structure:
+        const props = path.node.properties;
+        const bProp = props.find(p => p.key.name === 'b' || p.key.value === 'b');
+        const dProp = props.find(p => p.key.name === 'd' || p.key.value === 'd');
+        
+        if (bProp && dProp) {
+          // Extract based on ACTUAL code structure
+          const bytecode = bProp.value.value;
+          const constants = dProp.value.elements.map(e => e.value);
+          
+          require('fs').writeFileSync('/abs/path/raw/bytecode.txt', bytecode);
+          require('fs').writeFileSync('/abs/path/raw/constants.json', JSON.stringify(constants));
         }
       }
     }
   };
 };
-
-// Apply with ABSOLUTE PATHS
-apply_custom_transform({
-  target_file: "/abs/path/to/workspace/source/main.js",
-  script_path: "/abs/path/to/workspace/transforms/extract_constants.js"
-})
 ```
 
-3. **Browser Extract (ONLY for runtime data):**
+### 2.3 Opcode Analysis (TRACE HANDLERS, DON'T GUESS!)
+
+**⚠️ NEVER assume opcode meanings! Each VM has different opcode mappings.**
+
 ```javascript
-// ⚠️ MUST use savePath (ABSOLUTE PATH!)
-evaluate_script({
-  script: "JSON.stringify(window.bytecodeArray)",
-  savePath: "/abs/path/to/workspace/raw/bytecode.json"
-})
+// Step 1: Find the switch/if-else dispatcher
+search_code_smart({ file_path: "/abs/path/source/main.js", query: "switch\\s*\\(\\s*opcode" })
+
+// Step 2: Read each case to understand what each opcode does
+read_code_smart({ file_path: "/abs/path/source/main.js", start_line: 200, end_line: 300 })
+
+// Example output:
+// [L:210] case 0: stack.push(constants[arg1]); break;  // ← opcode 0 = PUSH_CONST
+// [L:215] case 1: stack.push(stack.pop() + stack.pop()); break;  // ← opcode 1 = ADD
+// [L:220] case 2: pc = arg1; break;  // ← opcode 2 = JMP
+
+// Document ACTUAL opcode meanings in NOTE.md, not guessed ones!
+```
+
+### 2.4 NOTE.md Documentation Template
+
+After analysis, document findings like this:
+
+```markdown
+## VM Structure Analysis
+
+### Bytecode Source
+- Variable: `params.b` at [L:151] [Src L1:5000]
+- Format: Base64 encoded string
+- Decode function: `decode()` at [L:80] [Src L1:3000]
+
+### Constants Pool
+- Variable: `params.d` at [L:152] [Src L1:5020]
+- Type: Array of mixed values (strings, numbers, null)
+- Count: (to be extracted)
+
+### Instruction Format (from code analysis)
+- Bytes per instruction: 3 (found at [L:165-167])
+- Format: [opcode, arg1, arg2]
+
+### Opcode Mapping (from switch cases at [L:200-300])
+| Opcode | Handler | Meaning |
+|--------|---------|---------|
+| 0 | [L:210] | PUSH_CONST: stack.push(constants[arg1]) |
+| 1 | [L:215] | ADD: stack.push(pop() + pop()) |
+| 2 | [L:220] | JMP: pc = arg1 |
+| ... | ... | ... |
 ```
 
 ---

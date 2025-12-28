@@ -122,6 +122,55 @@ This includes:
 - Often results in truncated/corrupted data
 - Makes code unreadable
 
+### 6. ⚠️ ANALYZE CODE FIRST, NEVER GUESS! (CRITICAL)
+
+**Before extracting ANY data (bytecode, constants, opcodes):**
+
+1. **READ the actual code** to understand its structure
+2. **TRACE variables** to find where data is defined
+3. **DOCUMENT findings** with exact variable names and line numbers
+4. **THEN write extraction scripts** based on actual code
+
+**FORBIDDEN:**
+- ❌ Assuming variable names like `_0xabc123` without reading code
+- ❌ Guessing data formats (e.g., "5 bytes per instruction") without evidence
+- ❌ Writing extraction scripts based on "common patterns"
+- ❌ Assuming opcode meanings without reading handler code
+
+**Example - WRONG vs RIGHT:**
+```javascript
+// ❌ WRONG: Guessing structure
+module.exports = function() {
+  return {
+    visitor: {
+      VariableDeclarator(path) {
+        if (path.node.id.name.match(/_0x[a-f0-9]+/)) {  // Guessing!
+          // ...
+        }
+      }
+    }
+  };
+};
+
+// ✅ RIGHT: First analyze code to find actual variable names
+// Step 1: Read code
+read_code_smart({ file_path: "/abs/path/source/main.js", start_line: 100, end_line: 150 })
+// Output: [L:120] var vmParams = { b: "...", d: [...] };
+
+// Step 2: Now write extraction based on ACTUAL findings
+module.exports = function() {
+  return {
+    visitor: {
+      VariableDeclarator(path) {
+        if (path.node.id.name === 'vmParams') {  // Real name from code!
+          // ...
+        }
+      }
+    }
+  };
+};
+```
+
 **Extraction Priority (Static > Dynamic):**
 
 | Priority | Method | When to Use | Example |
@@ -323,6 +372,8 @@ These files CAN use `readFile` (not Smart-FS):
 
 Before finishing:
 - [ ] **ALL Smart-FS paths are ABSOLUTE (starting with `/`)?**
+- [ ] **Analyzed actual code before writing extraction scripts?**
+- [ ] **Used real variable names from code, not guessed ones?**
 - [ ] Used Smart-FS for ALL file reading (never `read_file`/`read`)?
 - [ ] All findings include `[L:line] [Src L:col]` for JS/TS files?
 - [ ] Output lengths within limits?

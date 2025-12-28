@@ -31,6 +31,33 @@ const SOURCE_FILE = `${WORKSPACE}/source/main.js`;
 3. **UPDATE NOTE.md**: Write discoveries with `[L:line] [Src L:col]` references
 4. **NO NEXT STEPS**: Don't proceed to other work after completion
 
+## ⚠️ ANALYZE CODE FIRST, NEVER GUESS! (CRITICAL)
+
+**When extracting bytecode, constants, or opcodes:**
+
+1. **READ the actual code** using `read_code_smart` to understand structure
+2. **TRACE variables** using `find_usage_smart` to find definitions
+3. **DOCUMENT findings** with exact variable names and line numbers
+4. **THEN extract** based on actual code, not assumptions
+
+**FORBIDDEN:**
+- ❌ Assuming variable names like `_0xabc123` without reading code
+- ❌ Guessing bytecode format without evidence from code
+- ❌ Writing extraction scripts based on "common patterns"
+- ❌ Assuming opcode meanings without reading handler code
+
+**Example - WRONG vs RIGHT:**
+```javascript
+// ❌ WRONG: Guessing variable name
+search_code_smart({ query: "_0x[a-f0-9]+" })  // Too generic!
+
+// ✅ RIGHT: First read dispatcher, find actual variable names
+read_code_smart({ file_path: "/abs/path/source/main.js", start_line: 100, end_line: 150 })
+// Output shows: var bytecode = params.b;
+// Now you know the actual variable name!
+find_usage_smart({ file_path: "/abs/path/source/main.js", identifier: "params", line: 100 })
+```
+
 ## 📖 Session Start (MANDATORY)
 
 ```javascript
@@ -128,6 +155,8 @@ Generate for each instruction:
 - [ ] Read NOTE.md first (with `readFile`)?
 - [ ] Read required skill files?
 - [ ] **Used ABSOLUTE paths for all Smart-FS tools?**
+- [ ] **Analyzed actual code before writing extraction scripts?**
+- [ ] **Used real variable names from code, not guessed ones?**
 - [ ] Used Smart-FS tools for code (not read_file/cat/grep)?
 - [ ] Large data saved to file (not embedded)?
 - [ ] All findings include `[L:line] [Src L:col]`?
