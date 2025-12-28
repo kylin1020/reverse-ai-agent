@@ -222,11 +222,12 @@ invokeSubAgent(
 2. Save to file: `evaluate_script(..., savePath="raw/data.json")`
 3. Reference by path in NOTE.md, NOT actual contents
 
-## 📚 REQUIRED READING (Before Implementation)
-- IR/ASM format: `#[[file:skills/jsvmp-ir-format.md]]`
-- IR Source Map: `#[[file:skills/jsvmp-ir-sourcemap.md]]`
-- Decompiler impl: `#[[file:skills/jsvmp-decompiler.md]]`
-- Phase guide: `#[[file:skills/jsvmp-phase-guide.md]]`
+## 📚 MANDATORY: READ SKILL FILES FIRST!
+**⚠️ Use `readFile` to read these BEFORE starting work:**
+- `skills/jsvmp-phase-guide.md` - Phase workflow
+- `skills/jsvmp-ir-format.md` - IR output format
+- `skills/jsvmp-ir-sourcemap.md` - Source Map format
+- `skills/jsvmp-decompiler.md` - Decompiler implementation
 
 ## 🗺️ SOURCE MAP REQUIREMENTS (For IR Generation Tasks)
 When generating IR/ASM output, you MUST also generate a Source Map:
