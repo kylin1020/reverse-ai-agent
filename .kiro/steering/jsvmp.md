@@ -390,7 +390,8 @@ Use IR debugger tools to debug JSVMP at IR level instead of raw JS. Requires Sou
 ### Workflow
 ```javascript
 // 1. Create IR debugger session
-create_ir_debugger(sourceMapPath="output/main_disasm.asm.map", urlPattern=".*main.js.*")
+// 需要确保js已加载再设置
+create_ir_debugger(sourceMapPath="output/main_disasm.asm.map")
 // Returns: sessionId
 
 // 2. Set breakpoint at IR line
