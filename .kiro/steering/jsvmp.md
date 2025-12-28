@@ -224,8 +224,20 @@ invokeSubAgent(
 
 ## 📚 REQUIRED READING (Before Implementation)
 - IR/ASM format: `#[[file:skills/jsvmp-ir-format.md]]`
+- IR Source Map: `#[[file:skills/jsvmp-ir-sourcemap.md]]`
 - Decompiler impl: `#[[file:skills/jsvmp-decompiler.md]]`
 - Phase guide: `#[[file:skills/jsvmp-phase-guide.md]]`
+
+## 🗺️ SOURCE MAP REQUIREMENTS (For IR Generation Tasks)
+When generating IR/ASM output, you MUST also generate a Source Map:
+1. Output files: `output/{name}_disasm.asm` + `output/{name}_disasm.asm.map`
+2. IR file: Clean format, function header has `Source: L{line}:{column}`, instruction lines have no breakpoint info
+3. Source Map: One mapping entry per instruction with irLine, irAddr, source, breakpoint
+4. **CRITICAL**: Breakpoint conditions MUST use actual variable names from `find_jsvmp_dispatcher`:
+   - Get `instructionPointer`, `bytecodeArray`, `stackPointer`, `virtualStack` names
+   - Build condition like: `{ip} === {pc} && {bytecode}[{ip}] === {opcode}`
+   - Variable names vary per target (e.g., `a2`, `_0x1234`, `ip`, etc.)
+5. Use `//` comments instead of `;;`
 
 ## Context
 - Domain: {domain}
@@ -297,9 +309,10 @@ invokeSubAgent(
 - [ ] 🤖 分析操作码语义 → NOTE.md
 
 ## 阶段 3-6: 反编译流水线
-> **📚 参考**: `#[[file:skills/jsvmp-decompiler.md]]` + `#[[file:skills/jsvmp-ir-format.md]]`
+> **📚 参考**: `#[[file:skills/jsvmp-decompiler.md]]` + `#[[file:skills/jsvmp-ir-format.md]]` + `#[[file:skills/jsvmp-ir-sourcemap.md]]`
 - [ ] 🤖 编写反汇编器 (lib/decompiler.js)
-- [ ] 🤖 生成 LIR: output/*_disasm.asm
+- [ ] 🤖 生成 LIR + Source Map: output/*_disasm.asm + output/*_disasm.asm.map
+- [ ] 验证 Source Map: 测试断点映射是否正确
 - [ ] 🤖 栈分析 → output/*_mir.txt
 - [ ] 🤖 CFG 分析 → output/*_hir.txt
 - [ ] 🤖 代码生成 → output/*_decompiled.js
