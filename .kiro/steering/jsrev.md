@@ -18,13 +18,16 @@ inclusion: manual
 ```
 1. Read TODO.md → Find FIRST unchecked [ ] task
 2. Check: Does it have 🤖 prefix?
-   - YES → STOP. Call invokeSubAgent(). Do NOT proceed manually.
+   - YES → Call invokeSubAgent(). After completion, continue to step 3.
    - NO  → Execute the task yourself.
 3. After task completion:
    a. Read NOTE.md → Check "待处理发现" section for new items
    b. If new discoveries exist → Add corresponding tasks to TODO.md
    c. Clear processed items from "待处理发现"
-   d. Update TODO.md [x] → STOP turn.
+   d. Update TODO.md [x]
+   e. Check if you should STOP or CONTINUE:
+      - STOP if: Need human input (🆘), hit phase gate with incomplete tasks, or all tasks complete
+      - CONTINUE: Automatically proceed to next [ ] task
 ```
 
 ### 🚫 FORBIDDEN ACTIONS
@@ -213,7 +216,7 @@ Only use `read_file`/`rg` when:
 > **快速通道**: 如果通过 `search_code_smart` 能直接搜到关键算法特征 (如 `MD5`, `SHA`, `AES`, `HMAC`, `Base64`, `encodeURIComponent`, 明文函数名等)，且代码可读性足够分析，则标记 `[SKIP]` 并直接进入阶段 3。
 > **判断标准**: 能否在 5 分钟内定位到核心算法位置？能 → 跳过；不能 → 去混淆
 
-- [ ] 🤖 **快速评估**: 搜索常见算法关键词，评估是否需要去混淆
+- [ ] **快速评估**: 搜索常见算法关键词，评估是否需要去混淆
   - 搜索: `MD5|SHA|AES|HMAC|Base64|encrypt|sign|hash|digest|secret|key`
   - 如果找到且上下文可读 → 标记 `[SKIP-DEOB]`，跳过后续去混淆任务
   - 如果代码严重混淆无法理解 → 继续去混淆流程
@@ -231,7 +234,7 @@ Only use `read_file`/`rg` when:
 
 ## 阶段 5: 验证 (⛔ 需完成阶段 4)
 - [ ] 🤖 捕获真实请求 → 保存到 raw/reference.txt
-- [ ] 集成测试: 使用生成的签名发起真实 API 请求 → 验证 200 OK
+- [ ] 🤖 集成测试: 使用生成的签名发起真实 API 请求 → 验证 200 OK
 
 ## 阶段 6: 验证循环 (⛔ 重复直到通过)
 - [ ] 测试失败 → 🤖 调试: 对比生成值与期望值, 定位差异
@@ -439,9 +442,9 @@ replace_script(urlPattern=".*target.js.*", oldCode="debugger;", newCode="")
 ### Decision Tree (Execute on EVERY turn)
 1. Read TODO.md → Find first `[ ]` task
 2. Does task have 🤖 prefix?
-   - YES → STOP! Call `invokeSubAgent()` immediately. Do NOT read files, open browser, or do ANY analysis yourself.
+   - YES → Call `invokeSubAgent()` immediately. Do NOT read files, open browser, or do ANY analysis yourself.
    - NO → Execute task yourself
-3. After completion: Update TODO.md `[x]`, then STOP
+3. After completion: Update TODO.md `[x]`, check for new discoveries, then CONTINUE to next task (unless STOP condition met)
 
 ### 🚨 COMMON MISTAKE
 ```
@@ -550,6 +553,19 @@ Write findings to NOTE.md, then STOP.
 - [ ] Did I convert pending discoveries to TODO.md tasks?
 - [ ] Did I clear processed items from "待处理发现"?
 - [ ] Did I mark the current task `[x]`?
+- [ ] Should I STOP (need human input, phase gate, all done) or CONTINUE to next task?
+
+### When to STOP vs CONTINUE:
+**STOP if:**
+- Need human assistance (🆘 CAPTCHA, login, trigger action)
+- Hit a phase gate with incomplete prerequisite tasks
+- All TODO tasks are complete
+- Sub-agent reports blocking issue
+
+**CONTINUE automatically if:**
+- Next task is ready to execute
+- No blocking conditions exist
+- Still have unchecked [ ] tasks
 
 ### Code Reading
 **MUST use `read_code_smart` tool instead of `read_file` for ALL file reading.**
