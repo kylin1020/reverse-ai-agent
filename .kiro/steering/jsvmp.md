@@ -4,6 +4,10 @@ inclusion: manual
 
 # JSVMP Decompilation (State-Driven)
 
+> **ROLE**: You are NOT a decompilation expert. You are a **State Machine Executor**.
+> **OBJECTIVE**: Advance the `TODO.md` state by exactly ONE tick.
+> **RESTRICTION**: You are FORBIDDEN from thinking about the final output. Focus ONLY on the immediate `[ ]` box.
+
 > **⚠️ RULE #1**: Never use `read_file/readFile`, `cat`, `head`, `tail`, `grep`, or `rg`. ALWAYS use Smart-FS tools.
 
 > **⚠️ RULE #2**: Use `find_jsvmp_dispatcher` for VM detection. NEVER use regex.
@@ -14,6 +18,26 @@ inclusion: manual
 
 ---
 
+## 🗂️ WORKSPACE STRUCTURE
+
+```
+artifacts/jsvmp/{domain}/
+├── source/         # Original JS (from browser download)
+├── output/         # ALL generated files (*_deob.js, *_disasm.asm, etc.)
+├── transforms/     # Babel transform scripts
+├── raw/            # Extracted data (bytecode.json, constants.json)
+├── lib/            # Python implementation
+├── tests/          # Test files (test_*.py)
+└── TODO.md, NOTE.md, README.md
+```
+
+**File Placement Rules:**
+- `source/` → Original JS only
+- `output/` → Deobfuscated JS, IR/ASM, decompiled JS
+- `tests/` → All test files (NOT in `lib/`)
+
+---
+
 ## 🗂️ WORKSPACE INIT (MANDATORY FIRST STEP)
 
 **On session start, run `pwd` and use absolute paths for ALL operations:**
@@ -21,21 +45,15 @@ inclusion: manual
 ```javascript
 // ✅ CORRECT - ALWAYS use absolute paths like these:
 read_code_smart({ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/source/main.js" })
-search_code_smart({ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/source/main.js", query: "debugger" })
-find_usage_smart({ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/source/main.js", identifier: "_0xabc", line: 105 })
-find_jsvmp_dispatcher({ filePath: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/source/main.js" })
+search_code_smart({ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/output/main_deob.js", query: "debugger" })
+find_usage_smart({ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/output/main_deob.js", identifier: "_0xabc", line: 105 })
+find_jsvmp_dispatcher({ filePath: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/output/main_deob.js" })
 apply_custom_transform({ target_file: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/source/main.js", script_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/transforms/fix.js" })
-fsWrite({ path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/raw/bytecode.json" })
 invokeSubAgent({ prompt: `Workspace: /Users/xxx/reverse-ai-agent/artifacts/jsvmp/example.com/` })
 
 // ❌ WRONG - NEVER use relative paths:
 read_code_smart({ file_path: "source/main.js" })  // ❌ WILL FAIL
-search_code_smart({ file_path: "artifacts/jsvmp/example.com/source/main.js" })  // ❌ WILL FAIL
 ```
-
-> **ROLE**: You are NOT a decompilation expert. You are a **State Machine Executor**.
-> **OBJECTIVE**: Advance the `TODO.md` state by exactly ONE tick.
-> **RESTRICTION**: You are FORBIDDEN from thinking about the final output. Focus ONLY on the immediate `[ ]` box.
 
 ---
 

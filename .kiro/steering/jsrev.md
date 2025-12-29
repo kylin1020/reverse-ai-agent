@@ -12,6 +12,26 @@ inclusion: manual
 
 ---
 
+## 🗂️ WORKSPACE STRUCTURE
+
+```
+artifacts/jsrev/{domain}/
+├── source/         # Original JS (from browser download)
+├── output/         # ALL generated files (*_deob.js, etc.)
+├── transforms/     # Babel transform scripts
+├── raw/            # Extracted data, reference captures
+├── lib/            # Python implementation
+├── tests/          # Test files (test_*.py)
+└── TODO.md, NOTE.md, README.md
+```
+
+**File Placement Rules:**
+- `source/` → Original JS only
+- `output/` → Deobfuscated JS and all transformed outputs
+- `tests/` → All test files (NOT in `lib/`)
+
+---
+
 ## 🛑 SAFETY PROTOCOL (READ FIRST)
 
 ### ⚠️ MANDATORY FIRST ACTION ON EVERY TURN
