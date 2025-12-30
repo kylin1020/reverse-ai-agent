@@ -364,7 +364,7 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 ## 阶段 3-6: 反编译流水线
 > **📚 参考**: `#[[file:skills/jsvmp-decompiler.md]]` + `#[[file:skills/jsvmp-ir-format.md]]` + `#[[file:skills/jsvmp-ir-sourcemap.md]]`
 - [ ] 🤖 编写反汇编器 (lib/decompiler.js)，生成 LIR + Source Map: output/*_disasm.asm + output/*_disasm.asm.map
-- [ ] 🤖 验证 Source Map: 测试断点映射是否正确
+- [ ] 🤖 验证 Source Map: 简单 3 步验证 (见下方 "Source Map 验证流程")
 - [ ] 🤖 栈分析 → output/*_mir.txt
 - [ ] 🤖 CFG 分析 → output/*_hir.txt
 - [ ] 🤖 代码生成 → output/*_decompiled.js
