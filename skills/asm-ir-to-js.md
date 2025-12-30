@@ -5,31 +5,26 @@
 
 ---
 
-## ⚠️ CRITICAL: MAIN AGENT RESPONSIBILITIES
+## ⚠️ MAIN AGENT RESPONSIBILITIES
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  DURING ANALYSIS PHASE - MAIN AGENT IS FORBIDDEN FROM:          │
-│  ✗ Reading ASM function bodies                                  │
-│  ✗ Analyzing instruction logic                                  │
-│  ✗ Tracing stack operations                                     │
-│                                                                 │
-│  MAIN AGENT DISPATCH DUTIES:                                    │
-│  ✓ Scan function boundaries (line numbers only)                 │
-│  ✓ Load constants table (for sub-agent context)                 │
-│  ✓ Create TODO checklist                                        │
-│  ✓ Batch-dispatch sub-agents (5-10 concurrent)                  │
-│  ✓ Collect and track sub-agent results                          │
-│                                                                 │
-│  AFTER ALL SUB-AGENTS COMPLETE - MAIN AGENT DOES:               │
-│  ✓ Read all sub-agent analysis notes and code                   │
-│  ✓ Resolve cross-references between functions                   │
-│  ✓ Rename TODO placeholders to actual function names            │
-│  ✓ Build module structure with proper exports                   │
-│  ✓ Write final integrated decompiled.js                         │
-│  ✓ Add module documentation and scope chain comments            │
-└─────────────────────────────────────────────────────────────────┘
-```
+**PHASE 1 - DISPATCH (节省上下文)**
+
+调度阶段尽量少读 ASM，避免过早消耗上下文空间：
+- 用 grep/search 扫描函数边界（取行号）
+- 加载常量表
+- 创建 TODO 清单
+- 批量并发派发 sub-agent（5-10 个同时）
+- 收集 sub-agent 结果
+
+**PHASE 2 - INTEGRATION (所有 sub-agent 完成后)**
+
+整合阶段主 agent 负责最终代码编写：
+- 读取 sub-agent 的分析笔记和代码
+- 可以读 ASM 来理解和补充细节
+- 解析函数间的交叉引用
+- 将 `/* TODO: fn{x} */` 替换为实际函数名
+- 按依赖顺序组织函数
+- 编写完整的 `output/decompiled.js`
 
 ---
 
@@ -366,29 +361,22 @@ Output functions in dependency order:
 
 ## COORDINATOR CHECKLIST
 
-```
 DISPATCH PHASE:
-[ ] 1. pwd - get absolute path
-[ ] 2. Load constants.json
-[ ] 3. Scan function boundaries (grep for headers only)
-[ ] 4. Create _index.md with all functions
-[ ] 5. Batch dispatch sub-agents (5-10 per batch)
-[ ] 6. Wait and collect results
-[ ] 7. Repeat until all [ ] -> [x]
+1. `pwd` 获取绝对路径
+2. 加载 constants.json
+3. 扫描函数边界（只 grep header）
+4. 创建 _index.md 清单
+5. 批量派发 sub-agent（5-10 并发）
+6. 等待并收集结果
+7. 重复直到所有函数完成
 
 INTEGRATION PHASE:
-[ ] 8. Read all sub-agent analysis notes
-[ ] 9. Read all sub-agent code files
-[ ] 10. Build call graph from reports
-[ ] 11. Resolve all /* TODO: fn{x} */ placeholders
-[ ] 12. Resolve unresolved scope references
-[ ] 13. Topological sort by dependencies
-[ ] 14. Write output/decompiled.js with:
-       - Module header and documentation
-       - Functions in dependency order
-       - All cross-references resolved
-       - Chinese comments preserved
-       - Module exports
-[ ] 15. Write output/README.md
-[ ] 16. Final verification - no TODOs remaining
-```
+8. 读取所有 sub-agent 分析笔记
+9. 读取所有 sub-agent 代码文件
+10. 从报告构建调用图
+11. 解析所有 `/* TODO: fn{x} */` 占位符
+12. 解析未解决的 scope 引用
+13. 按依赖拓扑排序
+14. 编写 output/decompiled.js（模块头、依赖顺序、中文注释、导出）
+15. 编写 output/README.md
+16. 最终验证 - 无遗留 TODO

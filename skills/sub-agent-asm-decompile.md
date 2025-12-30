@@ -1,17 +1,24 @@
 # Sub-Agent: ASM IR Function Decompiler
 
-> **ROLE**: Analyze assigned ASM IR function(s) and produce equivalent JavaScript.
-> **SCOPE**: Focus ONLY on assigned line range. Mark external calls as TODO.
+> **ROLE**: 分析指定的 ASM IR 函数，输出完整可运行的 JavaScript 代码。
+> **SCOPE**: 只处理分配的行范围，外部调用标记为 TODO。
 
 ---
 
-## ⚠️ SUB-AGENT RULES
+## ⚠️ SUB-AGENT 核心要求
 
-1. **NEVER read outside assigned line range** (except constants.json)
-2. **Read in chunks**: 100-200 lines per read, max 500 for single function
-3. **Chinese comments REQUIRED**: `// [ASM:L{line}] fn{id}: {说明}`
-4. **NO simplification**: Every instruction must be represented
-5. **Mark unknowns**: `/* TODO: fn{x} */` for unanalyzed calls
+**输出完整的代码和分析，方便主 agent 整合。**
+
+Sub-agent 必须：
+- 输出完整的函数定义，包含所有逻辑
+- 每条 ASM 指令都要体现在代码中，不能省略
+- 中文注释标注 ASM 来源：`// [ASM:L{line}] fn{id}: {说明}`
+- 分析笔记要详细，包含 scope 解析和控制流
+
+**读取规则**：
+- 每次读取 100-200 行，最大 500 行
+- 只读取分配的行范围（常量表除外）
+- 标记外部调用：`/* TODO: fn{x} - {猜测用途} */`
 
 ---
 
@@ -114,26 +121,50 @@ Output to: `analysis/fn_{id}_{name}.md`
 
 Output to: `analysis/fn_{id}_{name}.js`
 
+**代码必须完整可用，不是片段。主 agent 会直接合并这些文件，不会补充任何逻辑。**
+
 ```javascript
 /**
  * {功能描述 - 中文}
  * [ASM:L{start}-L{end}] fn{id}
+ * 
+ * @param {type} param1 - 参数说明
+ * @returns {type} 返回值说明
  */
 function {name}({params}) {
-  // [ASM:L{x}-L{y}] fn{id}: {这段代码的作用}
-  {decompiled_code}
+  // [ASM:L{x}] fn{id}: 初始化局部变量
+  let localVar = null;
+  
+  // [ASM:L{y}-L{z}] fn{id}: 类型检查
+  if (typeof Symbol !== "undefined" && input[Symbol.iterator] != null) {
+    // [ASM:L{a}] fn{id}: 使用迭代器转数组
+    return Array.from(input);
+  }
+  
+  // [ASM:L{b}] fn{id}: 调用切片函数
+  return /* TODO: fn14 - sliceToArray */ (input, length);
 }
 ```
+
+**输出要求**：
+- 函数定义完整，包含 function 关键字和花括号
+- 所有分支、循环、返回语句都要有
+- 每个逻辑块都有 ASM 行号注释
+- 变量名要有意义，不要用 v0, v1
+- scope 引用要解析为具体变量名并注释来源
 
 ---
 
 ## OUTPUT REQUIREMENTS
 
-1. **Comments MUST be Chinese**
-2. **Every ASM line must be represented** - no simplification
-3. **Source reference format**: `// [ASM:L{line}] fn{id}: {说明}`
-4. **Unresolved calls**: `/* TODO: fn{id} - {猜测的用途} */`
-5. **Uncertain scope**: `/* scope[{d}][{i}] - 可能是{guess} */`
+**代码和分析都要完整详细。**
+
+1. 输出的 JS 代码必须是完整函数
+2. 每条 ASM 指令都要在代码中体现，绝不省略
+3. 中文注释格式：`// [ASM:L{line}] fn{id}: {说明}`
+4. 外部调用标记：`/* TODO: fn{id} - {猜测用途} */`
+5. 不确定的 scope：`/* scope[{d}][{i}] - 可能是{guess} */`
+6. 变量名要有意义，基于用途推断命名
 
 ---
 
