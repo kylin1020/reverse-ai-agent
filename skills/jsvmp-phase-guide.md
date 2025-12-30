@@ -215,6 +215,31 @@ After analysis, document findings like this:
 
 > **📚 IR Format**: See `#[[file:skills/jsvmp-ir-format.md]]`
 > **📚 Decompiler Implementation**: See `#[[file:skills/jsvmp-decompiler.md]]`
+> **📚 Code Generation (HIR→JS)**: See `#[[file:skills/jsvmp-codegen.md]]` ⚠️ **CRITICAL**
+
+### ⚠️ Phase 6 (HIR → JS) Common Pitfalls
+
+**This is the most error-prone phase! Code loss is common if not handled correctly.**
+
+| Problem | Symptom | Solution |
+|---------|---------|----------|
+| else branch lost | `if` without `else` | Separate visited sets for then/else |
+| Loop body incomplete | Empty or partial `while` body | Process ALL loop nodes |
+| Nested if flattened | Nested `if` becomes sequential | Calculate correct merge point (IPDOM) |
+| Code order wrong | Statements out of order | Sort blocks by startAddr |
+
+**Validation (MANDATORY after code generation):**
+```bash
+# Compare line counts - ratio should be 0.5-1.5
+echo "HIR:" && wc -l output/bdms_hir.txt
+echo "JS:" && wc -l output/bdms_decompiled.js
+
+# Compare specific function
+awk '/^\/\/ Function 150$/,/^\/\/ Function 151$/' output/bdms_hir.txt | wc -l
+awk '/^function func_150\(/,/^function func_151\(/' output/bdms_decompiled.js | wc -l
+
+# If JS lines < 50% of HIR lines → CODE LOSS! Fix the generator.
+```
 
 ---
 
