@@ -1,19 +1,30 @@
 # Sub-Agent: ASM IR Function Decompiler
 
 > **ROLE**: 分析一批 ASM IR 函数，输出单个 md 文件包含分析和代码。
-> **SCOPE**: 处理分配的函数范围，外部调用标记为 TODO。
 
 ---
 
-## ⚠️ SUB-AGENT 核心要求
+## ⚠️ 输出规则（必须遵守）
 
-**一个 sub-agent 分析多个函数，输出一个 md 文件，包含所有分析和完整代码。**
+**只输出一个文件：`analysis/batch_{n}.md`**
 
-Sub-agent 必须：
+禁止：
+- 禁止为每个函数创建单独的 .js 文件
+- 禁止为每个函数创建单独的 .md 文件
+- 禁止创建 fn_xxx.js 或 fn_xxx.md
+
+必须：
+- 所有函数的分析和代码都写入同一个 batch_{n}.md 文件
+- 代码用 markdown 代码块包裹在 md 文件中
+
+---
+
+## 核心要求
+
+一个 sub-agent 分析多个函数，全部内容写入单个 md 文件：
 - 分析分配范围内的所有函数
 - 每个函数输出完整代码和分析
 - 中文注释标注 ASM 来源：`// [ASM:L{line}] fn{id}: {说明}`
-- 所有内容写入单个 `analysis/batch_{n}.md` 文件
 
 **读取规则**：
 - 每次读取 100-200 行，最大 500 行
@@ -143,11 +154,15 @@ function {name}({params}) {
 
 ## OUTPUT REQUIREMENTS
 
+**只创建一个文件：`analysis/batch_{n}.md`**
+
 1. 单个 md 文件包含所有函数的分析和代码
-2. 每个函数的代码必须完整
+2. 代码用 ```javascript 代码块包裹
 3. 中文注释格式：`// [ASM:L{line}] fn{id}: {说明}`
 4. 外部调用标记：`/* TODO: fn{id} - {猜测用途} */`
 5. 变量名要有意义，基于用途推断命名
+
+**再次强调：禁止创建 fn_xxx.js 或 fn_xxx.md 文件**
 
 ---
 
