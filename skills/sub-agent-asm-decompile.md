@@ -1,23 +1,22 @@
 # Sub-Agent: ASM IR Function Decompiler
 
-> **ROLE**: 分析指定的 ASM IR 函数，输出完整可运行的 JavaScript 代码。
-> **SCOPE**: 只处理分配的行范围，外部调用标记为 TODO。
+> **ROLE**: 分析一批 ASM IR 函数，输出单个 md 文件包含分析和代码。
+> **SCOPE**: 处理分配的函数范围，外部调用标记为 TODO。
 
 ---
 
 ## ⚠️ SUB-AGENT 核心要求
 
-**输出完整的代码和分析，方便主 agent 整合。**
+**一个 sub-agent 分析多个函数，输出一个 md 文件，包含所有分析和完整代码。**
 
 Sub-agent 必须：
-- 输出完整的函数定义，包含所有逻辑
-- 每条 ASM 指令都要体现在代码中，不能省略
+- 分析分配范围内的所有函数
+- 每个函数输出完整代码和分析
 - 中文注释标注 ASM 来源：`// [ASM:L{line}] fn{id}: {说明}`
-- 分析笔记要详细，包含 scope 解析和控制流
+- 所有内容写入单个 `analysis/batch_{n}.md` 文件
 
 **读取规则**：
 - 每次读取 100-200 行，最大 500 行
-- 只读取分配的行范围（常量表除外）
 - 标记外部调用：`/* TODO: fn{x} - {猜测用途} */`
 
 ---
@@ -25,11 +24,11 @@ Sub-agent 必须：
 ## INPUT CONTEXT (Provided by Coordinator)
 
 ```
-- Function ID: {id}
+- Batch Number: {n}
+- Function Range: fn{start_id} to fn{end_id}
 - Line Range: L{start}-L{end}
 - Workspace: {absolute_path}
 - Constants Path: raw/constants.json
-- Parent Scope Info: {scope_chain_description}
 ```
 
 ---
@@ -89,82 +88,66 @@ Name should be descriptive: `validateArrayInput`, `createIteratorWrapper`, etc.
 | scope[0][3] | maxLength | Second param, compared with length |
 | scope[1][14] | sliceToArray | Called as function, from parent |
 
-### Step 7: Write Analysis Notes
+### Step 7: Write Output File
 
-Output to: `analysis/fn_{id}_{name}.md`
+**所有函数的分析和代码写入单个文件**: `analysis/batch_{n}.md`
 
 ```markdown
-# Function {id}: {name}
+# Batch {n}: fn{start_id} - fn{end_id}
 
-## 元信息
-- ASM 行号: L{start}-L{end}
-- 参数数量: {n}
-- 严格模式: {yes/no}
+## 概览
+- 函数数量: {count}
+- ASM 行范围: L{start}-L{end}
 
-## 作用域分析
-{scope_table}
+---
 
-## 控制流
-{control_flow_description}
+## fn{id}: {inferred_name}
 
-## 调用的函数
-- fn{x}: {用途} (L{line})
+### 元信息
+- ASM: L{start}-L{end}
+- 参数: {n}
 
-## 关键栈状态
-{stack_trace_table}
+### Scope 分析
+| 引用 | 解析名 | 说明 |
+|------|--------|------|
+| scope[0][2] | input | 第一个参数 |
+| scope[1][14] | sliceToArray | 父级闭包函数 |
 
-## 分析备注
-{any_uncertainties_or_observations}
-```
-
-### Step 8: Write Decompiled JS
-
-Output to: `analysis/fn_{id}_{name}.js`
-
-**代码必须完整可用，不是片段。主 agent 会直接合并这些文件，不会补充任何逻辑。**
+### 代码
 
 ```javascript
 /**
- * {功能描述 - 中文}
+ * {功能描述}
  * [ASM:L{start}-L{end}] fn{id}
- * 
- * @param {type} param1 - 参数说明
- * @returns {type} 返回值说明
  */
 function {name}({params}) {
-  // [ASM:L{x}] fn{id}: 初始化局部变量
-  let localVar = null;
+  // [ASM:L{x}] fn{id}: 初始化
+  let result = null;
   
-  // [ASM:L{y}-L{z}] fn{id}: 类型检查
-  if (typeof Symbol !== "undefined" && input[Symbol.iterator] != null) {
-    // [ASM:L{a}] fn{id}: 使用迭代器转数组
-    return Array.from(input);
+  // [ASM:L{y}] fn{id}: 类型检查
+  if (Array.isArray(input)) {
+    return /* TODO: fn14 */ (input, length);
   }
-  
-  // [ASM:L{b}] fn{id}: 调用切片函数
-  return /* TODO: fn14 - sliceToArray */ (input, length);
+  return result;
 }
-```
+` ` `
 
-**输出要求**：
-- 函数定义完整，包含 function 关键字和花括号
-- 所有分支、循环、返回语句都要有
-- 每个逻辑块都有 ASM 行号注释
-- 变量名要有意义，不要用 v0, v1
-- scope 引用要解析为具体变量名并注释来源
+---
+
+## fn{next_id}: {next_name}
+
+...（继续下一个函数）
+```
 
 ---
 
 ## OUTPUT REQUIREMENTS
 
-**代码和分析都要完整详细。**
-
-1. 输出的 JS 代码必须是完整函数
-2. 每条 ASM 指令都要在代码中体现，绝不省略
+1. 单个 md 文件包含所有函数的分析和代码
+2. 每个函数的代码必须完整
 3. 中文注释格式：`// [ASM:L{line}] fn{id}: {说明}`
 4. 外部调用标记：`/* TODO: fn{id} - {猜测用途} */`
-5. 不确定的 scope：`/* scope[{d}][{i}] - 可能是{guess} */`
-6. 变量名要有意义，基于用途推断命名
+5. 变量名要有意义，基于用途推断命名
 
 ---
 
@@ -250,23 +233,13 @@ CALL 1
 
 ## REPORT FORMAT TO COORDINATOR
 
-**MUST report back with this exact format:**
+完成后报告：
 
 ```
 STATUS: COMPLETED
-FUNCTION_ID: {id}
-INFERRED_NAME: {name}
-OUTPUT_FILES:
-  - analysis/fn_{id}_{name}.md
-  - analysis/fn_{id}_{name}.js
-CALLS: [fn{x}, fn{y}, ...]
-SCOPE_REFS:
-  - scope[1][14]: sliceToArray (resolved)
-  - scope[2][3]: unknown (unresolved)
-NOTES: {any issues or observations}
+BATCH: {n}
+FUNCTIONS: fn{start_id} - fn{end_id}
+OUTPUT: analysis/batch_{n}.md
+CALLS: [fn{x}, fn{y}, ...] (跨批次调用)
+NOTES: {问题或备注}
 ```
-
-This report enables coordinator to:
-- Update checklist
-- Build call graph
-- Pass scope context to dependent functions

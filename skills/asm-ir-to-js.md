@@ -48,8 +48,7 @@
 │   └── {name}_disasm.asm       # Source ASM IR file
 ├── analysis/
 │   ├── _index.md               # Master function checklist
-│   ├── fn_{id}_{name}.md       # Per-function analysis notes
-│   └── fn_{id}_{name}.js       # Per-function decompiled code
+│   └── batch_{n}.md            # Sub-agent output (analysis + code)
 └── output/
     └── decompiled.js           # Final merged output
 ```
@@ -91,83 +90,46 @@ Total: {N} functions | Dispatched: 0 | Completed: 0
 
 ### Dispatch Strategy
 
-```
-BATCH_SIZE = 5-10 sub-agents (adjust based on function complexity)
+每个 sub-agent 分析一批函数（按行范围划分，比如每批 50-100 个函数或 2000-5000 行 ASM）。
 
-while uncompleted functions exist:
-    1. Select next BATCH_SIZE functions from checklist
-    2. For each function, invoke sub-agent with:
-       - Function ID
-       - Line range (start, end)
-       - Absolute workspace path
-       - Constants table (or path to it)
-       - Known scope context (if parent already analyzed)
-    3. Wait for all sub-agents in batch to complete
-    4. Update _index.md with results
-    5. Collect cross-reference info for next batch
+```
+BATCH_COUNT = 根据总函数数和 ASM 行数划分，通常 5-15 个 batch
+
+while uncompleted batches exist:
+    1. 选择下一批函数（按行范围连续）
+    2. 并发派发多个 sub-agent
+    3. 每个 sub-agent 输出一个 batch_{n}.md 文件
+    4. 等待完成，更新 _index.md
 ```
 
 ### Sub-Agent Invocation Template
 
 ```
-Invoke sub-agent for function {id}:
-
-TASK: Analyze ASM IR function and produce equivalent JavaScript.
+分析 ASM IR 函数批次，输出 JavaScript 代码。
 
 CONTEXT:
 - Workspace: {absolute_path}
 - ASM File: {absolute_path}/debug/{name}_disasm.asm
-- Function ID: {id}
+- Function Range: fn{start_id} to fn{end_id}
 - Line Range: L{start} to L{end}
 - Constants: {absolute_path}/raw/constants.json
 
-OUTPUT FILES:
-- Analysis: {absolute_path}/analysis/fn_{id}_INFERRED_NAME.md
-- Code: {absolute_path}/analysis/fn_{id}_INFERRED_NAME.js
+OUTPUT:
+- 单个文件: {absolute_path}/analysis/batch_{n}.md
+- 包含所有函数的分析和完整代码
 
 REQUIREMENTS:
-- Read ASM in chunks (100-200 lines, max 500)
-- Chinese comments with ASM source refs
-- Resolve scope[d][i] to concrete variable names
-- Mark unanalyzed function calls as: /* TODO: fn{x} */
-- Do NOT simplify any logic
-
-REPORT BACK:
-- Inferred function name
-- List of called functions (fn IDs)
-- Any unresolved scope references
-```
-
-### Parallel Dispatch Example
-
-```
-# Batch 1: Functions 0-9
-invokeSubAgent(fn=0, lines=L13-L100)
-invokeSubAgent(fn=1, lines=L105-L150)
-invokeSubAgent(fn=2, lines=L155-L200)
-... (up to 10 concurrent)
-
-# Wait for batch completion, then:
-# Batch 2: Functions 10-19
-...
+- 分块读取 ASM（100-200 行/次，最大 500）
+- 中文注释带 ASM 行号
+- 解析 scope 为具体变量名
+- 外部调用标记: /* TODO: fn{x} */
 ```
 
 ---
 
 ## PHASE 3: PROGRESS TRACKING (Main Agent)
 
-After each batch completes:
-
-1. Read sub-agent reports
-2. Update `_index.md`:
-   ```markdown
-   | 0 | L13-L100 | [x] | batch1 | fn_0_initModule.js |
-   | 1 | L105-L150 | [x] | batch1 | fn_1_arraySlice.js |
-   ```
-3. Collect cross-references:
-   - Which functions call which
-   - Unresolved scope references
-4. Pass context to next batch if needed
+每个 sub-agent 完成后更新 `_index.md`，标记对应函数范围为已完成。
 
 ---
 
