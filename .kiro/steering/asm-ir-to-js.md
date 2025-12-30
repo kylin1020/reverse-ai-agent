@@ -17,7 +17,7 @@ inclusion: manual
 ### Mandatory Requirements
 
 1. **Exact function count at initialization** - Extract from ASM header, record in `_index.md`
-2. **Every function MUST have analysis files** - `fn_{id}_{name}.md` + `fn_{id}_{name}.js`
+2. **Every function MUST be in batch files** - All analysis + JS code in `batch_{NNN}_fn{start}-fn{end}.md`
 3. **Pre-merge integrity check is MANDATORY** - Invoke sub-agent to verify completeness
 4. **Immediately analyze missing functions** - No function may be skipped, even empty or trivial ones
 
@@ -28,7 +28,7 @@ BEFORE executing PHASE 5 (MERGE), you MUST:
 
 1. Invoke sub-agent for integrity check:
    - Re-scan ASM file to get complete function ID list
-   - Compare against fn_*.js files in analysis/ directory
+   - Compare against batch files in analysis/ directory
    - List ALL missing function IDs
 
 2. If ANY function is missing:
@@ -68,8 +68,9 @@ BEFORE executing PHASE 5 (MERGE), you MUST:
 │   └── {name}_disasm.asm       # Source ASM IR file
 ├── analysis/
 │   ├── _index.md               # Master function index (function count MUST be exact)
-│   ├── fn_{id}_{name}.md       # Per-function analysis notes
-│   └── fn_{id}_{name}.js       # Per-function decompiled code
+│   ├── batch_001_fn0-fn19.md   # Batch 1: analysis + JS code for fn0-fn19
+│   ├── batch_002_fn20-fn39.md  # Batch 2: analysis + JS code for fn20-fn39
+│   └── ...                     # More batches as needed
 └── output/
     └── decompiled.js           # Final merged output
 ```
@@ -119,16 +120,16 @@ Total: {N} functions | Completed: 0 | Remaining: {N}
 
 ### Sub-Agent Dispatch Rules
 
-1. **One function per sub-agent** (or small related group)
-2. **Provide context**: function ID, line range, relevant scope info
-3. **Sub-agent output**: analysis notes + decompiled JS
+1. **Dispatch by batch** (~20 functions per batch, or a group of related functions)
+2. **Provide context**: function IDs, line ranges, relevant scope info
+3. **Sub-agent output**: All analysis notes + JS code consolidated into `analysis/batch_{NNN}_fn{start}-fn{end}.md`
 4. **Cross-references**: If calling another function, write placeholder: `/* TODO: fn{id} */`
 5. **NEVER skip any function** - Even if it appears simple or redundant
 
 ### Sub-Agent Prompt Template
 
 ```
-Analyze ASM IR function {id} (lines {start}-{end}).
+Analyze ASM IR functions {id_start}-{id_end} (batch {NNN}).
 
 CONTEXT:
 - Workspace: {abs_path}
@@ -136,94 +137,124 @@ CONTEXT:
 - Scope inheritance: {parent_scope_info}
 
 TASK:
-1. Read ASM lines {start}-{end} (chunk if >200 lines)
-2. Trace stack operations and control flow
-3. Identify:
-   - Function purpose/name (infer from behavior)
-   - Parameters (scope[0][2], scope[0][3], ...)
-   - Local variables
-   - Closure captures (scope[1][x], scope[2][x], ...)
-   - Return value
-4. Write analysis to: analysis/fn_{id}_{inferred_name}.md
-5. Write JS code to: analysis/fn_{id}_{inferred_name}.js
+1. Read ASM lines for each function in this batch
+2. For each function:
+   - Trace stack operations and control flow
+   - Identify purpose, params, locals, closures, return value
+3. Write everything to: analysis/batch_{NNN}_fn{id_start}-fn{id_end}.md
+   - Include both analysis metadata AND decompiled JS code
 
 OUTPUT FORMAT:
-- Function name: descriptive, camelCase (e.g., `arrayFromIterable`)
+- Function names: descriptive, camelCase
 - Comments: Chinese, with ASM source reference
-- Placeholders for unanalyzed function calls
+- Batch file: contains analysis (Chinese) + JS code (Chinese comments) for all functions in batch
 
 RULES:
 - Do NOT simplify any logic
 - Resolve ALL scope references to concrete names
-- Track stack state at each instruction
+- Write in batches due to AI output line limits
 ```
 
 ---
 
-## PHASE 3: ANALYSIS NOTE FORMAT
+## PHASE 3: BATCH FILE FORMAT
 
-### analysis/fn_{id}_{name}.md
+### File Organization
+
+**DO NOT create separate files for each function!** Consolidate everything into batch files.
+
+File structure:
+```
+analysis/
+├── _index.md                    # Master index (required)
+├── batch_001_fn0-fn19.md        # Batch 1: analysis + JS for fn0-fn19
+├── batch_002_fn20-fn39.md       # Batch 2: analysis + JS for fn20-fn39
+└── ...                          # More batches
+```
+
+### Batch File Format: analysis/batch_{NNN}_fn{start}-fn{end}.md
+
+Each batch contains ~20 functions (adjust based on AI output limits):
 
 ```markdown
-# Function {id}: {inferred_name}
-
-## Metadata
-- ASM Lines: L{start}-L{end}
-- Params: {count}
-- Strict: {true/false}
-- Source: {source_ref}
-
-## Scope Analysis
-| Ref | Type | Resolved Name | Description |
-|-----|------|---------------|-------------|
-| scope[0][2] | param | input | First parameter |
-| scope[0][3] | param | length | Second parameter |
-| scope[1][14] | closure | sliceToArray | Parent fn reference |
-
-## Control Flow
-- L0-L10: Parameter validation
-- L11-L25: Type check branch
-- L26-L40: Main logic
-- L41: Return
-
-## Called Functions
-- fn{x}: {purpose} (line L{n})
-- fn{y}: {purpose} (line L{m})
-
-## Stack Trace (key points)
-| Line | Op | Stack State |
-|------|-----|-------------|
-| 0 | PUSH_STR 22 | ["undefined"] |
-| 2 | TYPEOF_GLOBAL 1 | ["undefined", typeof Symbol] |
-...
-```
+# Batch {NNN}: Functions {start}-{end}
 
 ---
 
-## PHASE 4: DECOMPILED JS FORMAT
+## fn{id}: {inferred_name}
 
-### analysis/fn_{id}_{name}.js
+**元数据**
+- ASM: L{start}-L{end}
+- 参数: {count}
+- 作用域: scope[0][2]=param1, scope[1][14]=closureRef
+- 调用: fn{x}, fn{y}
+
+**代码**
+\`\`\`javascript
+function inferredFunctionName(param1, param2) {
+  // [ASM:L0-L5] fn{id}: 初始化
+  let localVar = null;
+  
+  // [ASM:L6-L15] fn{id}: 主逻辑
+  return result;
+}
+\`\`\`
+
+---
+
+## fn{id+1}: {inferred_name}
+
+**元数据**
+- ASM: L{start}-L{end}
+- 参数: {count}
+- 作用域: ...
+- 调用: ...
+
+**代码**
+\`\`\`javascript
+function anotherFunction() {
+  // ...
+}
+\`\`\`
+
+---
+
+... (继续该批次的其他函数)
+```
+
+### Batch Rules
+
+1. **~20 functions per batch** (adjust based on function complexity)
+2. **Three-digit batch numbers**: 001, 002, 003...
+3. **Filename includes function range**: `batch_001_fn0-fn19.md`
+4. **Write in batches**: Due to AI output line limits, write one batch file at a time
+
+---
+
+## PHASE 4: JS CODE FORMAT
+
+Within each batch file, use this format for the JS code blocks (comments in Chinese):
 
 ```javascript
 /**
- * {description}
- * @param {type} paramName - parameter description
- * @returns {type} return value description
+ * {功能描述}
+ * @param {type} paramName - 参数描述
+ * @returns {type} 返回值描述
  * 
  * [ASM:L{start}-L{end}] fn{id}
  */
 function inferredFunctionName(param1, param2) {
-  // [ASM:L0-L5] fn{id}: initialize local variables
+  // [ASM:L0-L5] fn{id}: 初始化局部变量
   let localVar = null;
   
-  // [ASM:L6-L15] fn{id}: type check
+  // [ASM:L6-L15] fn{id}: 类型检查
   if (typeof Symbol !== "undefined" && input[Symbol.iterator] != null) {
-    // [ASM:L16-L20] fn{id}: use iterator
+    // [ASM:L16-L20] fn{id}: 使用迭代器
     return Array.from(input);
   }
   
-  // [ASM:L21-L30] fn{id}: call other function
-  return sliceToArray(input, length); /* from scope[1][14] */
+  // [ASM:L21-L30] fn{id}: 调用其他函数
+  return sliceToArray(input, length); /* 来自 scope[1][14] */
 }
 ```
 
@@ -242,13 +273,14 @@ Execute function integrity check.
 
 TASK:
 1. Read ASM file header, extract declared total function count
-2. Scan analysis/ directory, list all fn_*.js files
-3. Compare both lists, identify missing function IDs
-4. Output verification report
+2. Scan analysis/ directory, parse all batch_*.md files
+3. Extract function IDs from each batch file
+4. Compare both lists, identify missing function IDs
+5. Output verification report
 
 OUTPUT FORMAT:
 - Total functions in ASM: {N}
-- Found in analysis/: {M}
+- Found in batch files: {M}
 - Missing function IDs: [list] or "None"
 - Status: PASS / FAIL
 ---
@@ -263,7 +295,7 @@ If check result is FAIL:
 2. For each missing function ID:
    a. Locate function's line range in ASM file
    b. Invoke sub-agent to analyze that function
-   c. Confirm analysis/fn_{id}_*.js has been generated
+   c. Add to appropriate batch file (or create new batch)
 3. Re-run integrity check
 4. Repeat until Status = PASS
 ```
@@ -272,7 +304,7 @@ If check result is FAIL:
 
 ```
 Merge is ONLY permitted when ALL conditions are met:
-- [ ] ASM declared function count = number of fn_*.js files in analysis/
+- [ ] ASM declared function count = total functions across all batch files
 - [ ] All functions in _index.md marked as [x]
 - [ ] No [ ] incomplete markers remain
 ```
@@ -335,7 +367,7 @@ Merge is ONLY permitted when ALL conditions are met:
    └─> Repeat check until PASS
 
 5. MERGE (ONLY after check passes)
-   └─> Combine all analysis/*.js into output/decompiled.js
+   └─> Extract JS code from all batch files into output/decompiled.js
 
 6. FINAL VERIFY
    └─> Confirm output/decompiled.js contains all N functions
@@ -364,7 +396,7 @@ Verify ALL ASM IR functions have been analyzed. Ensure ZERO omissions.
 ## Steps
 
 1. Read ASM file header, find total function count declaration (usually in header comments or metadata)
-2. List all fn_*.js files in analysis/ directory, extract function IDs
+2. Parse all batch_*.md files in analysis/ directory, extract function IDs from `## fn{id}:` headers
 3. Generate complete function ID sequence [0, 1, 2, ..., N-1]
 4. Compare to find missing IDs
 
@@ -384,6 +416,6 @@ If FAIL, functions requiring analysis:
 
 ## Rules
 - MUST check every ID from 0 to N-1
-- Empty functions MUST also have analysis files
+- Empty functions MUST also be included in batch files
 - NO function may be skipped
 ```
