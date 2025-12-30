@@ -115,14 +115,18 @@ Only use `read_file`/`rg` when:
 - `console.log` output: limit to 500 chars per value.
 - Large data: save to file via `savePath` or `fs` tools.
 
-### 4. Output Limits
-| Tool | Limit |
-|------|-------|
-| `search_code_smart` | Returns truncated context automatically |
-| `rg` (non-JS) | `-M 200 -m 10` |
-| `head/tail` (non-JS) | `-c 2000` or `-n 50` |
-| `cat` | ❌ NEVER |
-| `evaluate_script` | `.slice(0, 2000)` or use `savePath` |
+### 4. Command Output Limits
+
+**所有命令必须限制输出长度:**
+
+| Command | Limit | Example |
+|---------|-------|---------|
+| `rg`/`grep` | `-M 200 -m 20` | `rg -M 200 -m 20 "pattern" file` |
+| `head`/`tail` | `-c 5000` or `-n 100` | `head -c 5000 file.txt` |
+| `cat` | ❌ 禁用 (用 `head -c 5000`) | — |
+| `find` | `-maxdepth 3 \| head -n 100` | `find . -maxdepth 3 -name "*.js" \| head -n 100` |
+| `evaluate_script` | `.slice(0, 2000)` or `savePath` | — |
+| `get_scope_variables` | `maxOutputLines=100` | — |
 
 ---
 
@@ -391,16 +395,18 @@ uv run python repro.py
 
 ## TOOL QUICK REF
 
-| Task | Tool | Usage |
-|------|------|-------|
-| **Read Code** | `read_code_smart` | `file="...", start=1, end=50` |
-| **Search Text** | `search_code_smart` | `file="...", query="pattern"` |
-| **Trace Var** | `find_usage_smart` | `file="...", id="x", line=10` |
-| **Deobfuscate** | `apply_custom_transform` | `target="...", script="..."` |
-| **Breakpoint** | `set_breakpoint` | Use `[Src]` coords from Smart Tools (L:行号 for read_code_smart, Src L:列 for Chrome) |
-| **Read Runtime** | `get_scope_variables` | After hitting breakpoint |
-| **Global Var** | `evaluate_script` | Only for globals |
-| **Search Non-JS**| `rg` | `-M 200 -m 10` |
+| Task | Tool | Usage | Output Limit |
+|------|------|-------|--------------|
+| **Read Code** | `read_code_smart` | `file="...", start=1, end=50` | Auto-truncates |
+| **Search Text** | `search_code_smart` | `file="...", query="pattern"` | Auto-truncates |
+| **Trace Var** | `find_usage_smart` | `file="...", id="x", line=10` | Auto-truncates |
+| **Deobfuscate** | `apply_custom_transform` | `target="...", script="..."` | — |
+| **Breakpoint** | `set_breakpoint` | Use `[Src]` coords from Smart Tools | — |
+| **Read Runtime** | `get_scope_variables` | `maxOutputLines=100` | 100 lines |
+| **Global Var** | `evaluate_script` | `.slice(0, 2000)` or `savePath` | 2000 chars |
+| **Search Non-JS**| `rg` | `-M 200 -m 20 "pattern" file` | 200 chars/line, 20 matches |
+| **Preview File** | `head` | `head -c 5000 file.txt` | 5KB |
+| **Check Size** | `wc` | `wc -l file.txt` | Safe (count only) |
 
 ---
 
