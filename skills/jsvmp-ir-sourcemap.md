@@ -2,6 +2,10 @@
 
 > Maps IR instructions to original JS locations for browser breakpoint generation.
 
+## ⚠️ CRITICAL FORMAT REQUIREMENT
+
+**When generating IR source maps, you MUST follow the EXACT format specified in Section 2 below. This format is required for proper breakpoint generation and IR debugging. Do NOT use any other format or structure.**
+
 ## 1. File Structure
 
 ```
@@ -10,58 +14,182 @@ output/
 └── {name}_disasm.asm.map  # Source Map (JSON)
 ```
 
-## 2. Source Map Format
+## 2. Source Map Format (REQUIRED STRUCTURE)
+
+**⚠️ CRITICAL: This is the EXACT format that MUST be generated. Do NOT deviate from this structure.**
 
 ```json
 {
   "version": 1,
-  "file": "main_disasm.asm",
-  "sourceFile": "source/main.js",
-  "sourceFileUrl": "https://example.com/main.js",
+  "file": "example.asm",
+  "sourceFile": "src/example.js",
+  "sourceFileUrl": "http://localhost:3000/src/example.js",
   
   "vm": {
     "dispatcher": {
-      "function": "interpret",
-      "line": 1000,
-      "column": 8
+      "function": "dispatch",
+      "line": 42,
+      "column": 8,
+      "description": "Main VM dispatcher loop"
     },
     "registers": {
-      "ip": { "name": "pc", "description": "Instruction Pointer" },
-      "sp": { "name": "sp", "description": "Stack Pointer" },
-      "stack": { "name": "stk", "description": "Virtual Stack" },
-      "bytecode": { "name": "code", "description": "Bytecode Array" },
-      "scope": { "name": "env", "description": "Scope Chain" },
-      "constants": { "name": "K", "description": "Constants Pool" }
+      "ip": {
+        "name": "pc",
+        "description": "Program Counter / Instruction Pointer"
+      },
+      "sp": {
+        "name": "sp",
+        "description": "Stack Pointer"
+      },
+      "stack": {
+        "name": "stack",
+        "description": "Virtual Machine Stack"
+      },
+      "bytecode": {
+        "name": "bytecode",
+        "description": "Bytecode Array"
+      },
+      "scope": {
+        "name": "scope",
+        "description": "Scope Chain Array"
+      },
+      "constants": {
+        "name": "constants",
+        "description": "Constants Pool"
+      }
+    },
+    "entryPoint": {
+      "line": 10,
+      "column": 0,
+      "description": "VM entry point"
     }
   },
   
   "functions": [
-    { "id": 0, "name": "main", "bytecodeRange": [0, 100], "irLineRange": [10, 50] }
+    {
+      "id": 0,
+      "name": "main",
+      "bytecodeRange": [0, 15],
+      "irLineRange": [1, 8],
+      "params": 0,
+      "strict": true
+    },
+    {
+      "id": 1,
+      "name": "add",
+      "bytecodeRange": [16, 25],
+      "irLineRange": [9, 14],
+      "params": 2,
+      "strict": false
+    }
   ],
   
   "mappings": [
     {
-      "irLine": 10,
+      "irLine": 1,
       "irAddr": 0,
       "opcode": 1,
       "opcodeName": "PUSH_CONST",
-      "source": { "line": 1000, "column": 8 },
+      "source": {
+        "line": 5,
+        "column": 12
+      },
       "breakpoint": {
-        "condition": "pc === 0 && code[pc] === 1",
-        "logMessage": "PC:0 OP:1 PUSH_CONST",
+        "condition": "pc === 0",
+        "logMessage": "Pushing constant to stack",
         "watchExpressions": [
-          { "name": "$pc", "expr": "pc" },
-          { "name": "$opcode", "expr": "code[pc]" },
-          { "name": "$stack[0]", "expr": "stk[sp]" }
+          {
+            "name": "$pc",
+            "expr": "pc"
+          },
+          {
+            "name": "$sp",
+            "expr": "sp"
+          },
+          {
+            "name": "$stack[0]",
+            "expr": "stack[0]"
+          }
         ]
       },
-      "semantic": "Push K[0]"
+      "semantic": "Push constant 42 onto stack"
+    },
+    {
+      "irLine": 2,
+      "irAddr": 2,
+      "opcode": 2,
+      "opcodeName": "LOAD_VAR",
+      "source": {
+        "line": 6,
+        "column": 8
+      },
+      "breakpoint": {
+        "condition": "pc === 2",
+        "logMessage": "Loading variable",
+        "watchExpressions": [
+          {
+            "name": "$pc",
+            "expr": "pc"
+          },
+          {
+            "name": "$scope[0]",
+            "expr": "scope[0]"
+          }
+        ]
+      },
+      "semantic": "Load variable 'x' from scope"
+    },
+    {
+      "irLine": 3,
+      "irAddr": 4,
+      "opcode": 10,
+      "opcodeName": "ADD",
+      "source": {
+        "line": 6,
+        "column": 14
+      },
+      "breakpoint": {
+        "condition": "pc === 4",
+        "logMessage": "Performing addition",
+        "watchExpressions": [
+          {
+            "name": "$stack[sp-1]",
+            "expr": "stack[sp-1]"
+          },
+          {
+            "name": "$stack[sp]",
+            "expr": "stack[sp]"
+          }
+        ]
+      },
+      "semantic": "Add top two stack values"
+    },
+    {
+      "irLine": 4,
+      "irAddr": 5,
+      "opcode": 20,
+      "opcodeName": "CALL",
+      "source": {
+        "line": 7,
+        "column": 4
+      },
+      "breakpoint": {
+        "condition": "pc === 5",
+        "logMessage": "Calling function",
+        "watchExpressions": [
+          {
+            "name": "$pc",
+            "expr": "pc"
+          },
+          {
+            "name": "$args",
+            "expr": "stack.slice(sp-2, sp)"
+          }
+        ]
+      },
+      "semantic": "Call function with 2 arguments"
     }
-  ],
-  
-  "opcodeHandlers": {
-    "1": { "name": "PUSH_CONST", "handlerLine": 1050, "stackEffect": "+1" }
-  }
+  ]
 }
 ```
 
@@ -193,35 +321,126 @@ async function extractVMState(mapping) {
 
 ## 5. Generation
 
+**IMPORTANT: Follow the exact structure from Section 2. All fields are REQUIRED.**
+
 ```javascript
-function generateMapping(pc, opcode, vmInfo, irLine) {
-  const { ip, bytecode, stack, sp } = vmInfo.registers;
+function generateSourceMap(vmInfo, functions, mappings) {
+  return {
+    version: 1,
+    file: `${vmInfo.name}_disasm.asm`,
+    sourceFile: vmInfo.sourceFile,
+    sourceFileUrl: vmInfo.sourceFileUrl,
+    
+    vm: {
+      dispatcher: {
+        function: vmInfo.dispatcher.function,
+        line: vmInfo.dispatcher.line,
+        column: vmInfo.dispatcher.column,
+        description: vmInfo.dispatcher.description || "Main VM dispatcher loop"
+      },
+      registers: {
+        ip: {
+          name: vmInfo.registers.ip.name,
+          description: vmInfo.registers.ip.description || "Program Counter / Instruction Pointer"
+        },
+        sp: {
+          name: vmInfo.registers.sp.name,
+          description: vmInfo.registers.sp.description || "Stack Pointer"
+        },
+        stack: {
+          name: vmInfo.registers.stack.name,
+          description: vmInfo.registers.stack.description || "Virtual Machine Stack"
+        },
+        bytecode: {
+          name: vmInfo.registers.bytecode.name,
+          description: vmInfo.registers.bytecode.description || "Bytecode Array"
+        },
+        scope: {
+          name: vmInfo.registers.scope.name,
+          description: vmInfo.registers.scope.description || "Scope Chain Array"
+        },
+        constants: {
+          name: vmInfo.registers.constants.name,
+          description: vmInfo.registers.constants.description || "Constants Pool"
+        }
+      },
+      entryPoint: {
+        line: vmInfo.entryPoint.line,
+        column: vmInfo.entryPoint.column,
+        description: vmInfo.entryPoint.description || "VM entry point"
+      }
+    },
+    
+    functions: functions.map(fn => ({
+      id: fn.id,
+      name: fn.name,
+      bytecodeRange: fn.bytecodeRange,
+      irLineRange: fn.irLineRange,
+      params: fn.params,
+      strict: fn.strict
+    })),
+    
+    mappings: mappings.map(m => ({
+      irLine: m.irLine,
+      irAddr: m.irAddr,
+      opcode: m.opcode,
+      opcodeName: m.opcodeName,
+      source: {
+        line: m.source.line,
+        column: m.source.column
+      },
+      breakpoint: {
+        condition: m.breakpoint.condition,
+        logMessage: m.breakpoint.logMessage,
+        watchExpressions: m.breakpoint.watchExpressions.map(w => ({
+          name: w.name,
+          expr: w.expr
+        }))
+      },
+      semantic: m.semantic
+    }))
+  };
+}
+
+function generateMapping(pc, opcode, vmInfo, irLine, sourceLoc, semantic) {
+  const { ip, bytecode, stack, sp, scope } = vmInfo.registers;
   
   return {
     irLine,
     irAddr: pc,
     opcode,
     opcodeName: OPCODE_TABLE[opcode].name,
-    source: { line: vmInfo.dispatcher.line, column: vmInfo.dispatcher.column },
+    source: {
+      line: sourceLoc.line,
+      column: sourceLoc.column
+    },
     breakpoint: {
-      condition: `${ip.name} === ${pc} && ${bytecode.name}[${ip.name}] === ${opcode}`,
-      logMessage: `PC:${pc} OP:${opcode}`,
+      condition: `${ip.name} === ${pc}`,
+      logMessage: `PC:${pc} OP:${opcode} ${OPCODE_TABLE[opcode].name}`,
       watchExpressions: [
         { name: "$pc", expr: ip.name },
-        { name: "$opcode", expr: `${bytecode.name}[${ip.name}]` },
-        { name: "$stack[0]", expr: `${stack.name}[${sp.name}]` }
+        { name: "$sp", expr: sp.name },
+        { name: "$stack[0]", expr: `${stack.name}[${sp.name}]` },
+        { name: "$stack[1]", expr: `${stack.name}[${sp.name}-1]` }
       ]
-    }
+    },
+    semantic
   };
 }
 ```
 
 ## 6. Checklist
 
+- [ ] **MUST follow EXACT format from Section 2** - all fields are required
 - [ ] Call `find_jsvmp_dispatcher` first to get dispatcher location and variable names
 - [ ] **Use `read_code_smart` to read relevant code sections** (understand logic + get original coordinates)
 - [ ] **Extract ORIGINAL coordinates from `[Src Lx:xxx]` in `read_code_smart` output**
 - [ ] `source.line` and `source.column` use ORIGINAL coordinates for Chrome breakpoints
 - [ ] `breakpoint.condition` uses actual variable names (not hardcoded)
+- [ ] `breakpoint.logMessage` is descriptive and includes PC/opcode info
+- [ ] `breakpoint.watchExpressions` includes at minimum: $pc, $sp, $stack[0]
+- [ ] `semantic` field describes what the instruction does in plain language
 - [ ] `irLine` = IR file line number for O(1) lookup
-- [ ] `watchExpressions` generated for each instruction
+- [ ] `vm.entryPoint` is populated with correct line/column
+- [ ] `functions` array includes all discovered functions with correct ranges
+- [ ] All register descriptions are filled in (ip, sp, stack, bytecode, scope, constants)
