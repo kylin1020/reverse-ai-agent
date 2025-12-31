@@ -24,7 +24,7 @@ inclusion: manual
 ### Pre-Merge Verification Protocol
 
 ```
-BEFORE executing PHASE 5 (MERGE), you MUST:
+BEFORE executing PHASE 6 (SYNTHESIS), you MUST:
 
 1. Invoke sub-agent for integrity check:
    - Re-scan ASM file to get complete function ID list
@@ -36,7 +36,7 @@ BEFORE executing PHASE 5 (MERGE), you MUST:
    - Invoke sub-agent for each missing function
    - Re-run integrity check after completion
 
-3. Merge is ONLY permitted when check returns "0 missing functions"
+3. Synthesis is ONLY permitted when check returns "0 missing functions"
 ```
 
 ### Violation Consequences
@@ -72,7 +72,7 @@ BEFORE executing PHASE 5 (MERGE), you MUST:
 │   ├── batch_002_fn20-fn39.md  # Batch 2: analysis + JS code for fn20-fn39
 │   └── ...                     # More batches as needed
 └── output/
-    └── decompiled.js           # Final merged output
+    └── decompiled.js           # Final synthesized output
 ```
 
 ---
@@ -260,12 +260,12 @@ function inferredFunctionName(param1, param2) {
 
 ---
 
-## PHASE 5: PRE-MERGE INTEGRITY CHECK (MANDATORY)
+## PHASE 5: PRE-SYNTHESIS INTEGRITY CHECK (MANDATORY)
 
 ### 5.1 Invoke Sub-Agent for Completeness Verification
 
 ```
-BEFORE merging, you MUST invoke sub-agent with this check:
+BEFORE synthesizing, you MUST invoke sub-agent with this check:
 
 SUB-AGENT PROMPT:
 ---
@@ -303,7 +303,7 @@ If check result is FAIL:
 ### 5.3 Pass Conditions
 
 ```
-Merge is ONLY permitted when ALL conditions are met:
+Synthesis is ONLY permitted when ALL conditions are met:
 - [ ] ASM declared function count = total functions across all batch files
 - [ ] All functions in _index.md marked as [x]
 - [ ] No [ ] incomplete markers remain
@@ -311,16 +311,185 @@ Merge is ONLY permitted when ALL conditions are met:
 
 ---
 
-## PHASE 6: MERGE & FINALIZE
+## PHASE 6: INTELLIGENT SYNTHESIS (COORDINATOR RESPONSIBILITY)
+
+> ⚠️ **CRITICAL**: This phase is NOT simple file concatenation!
+> The Coordinator (main agent) MUST deeply understand the ASM IR and batch analysis to produce correct, coherent output.
+
+### 6.1 Why Simple Merge Fails
+
+Sub-agents analyze functions in isolation. They may:
+- Use inconsistent variable names for the same scope reference
+- Miss cross-function dependencies
+- Leave unresolved placeholders (`/* TODO: fn{id} */`)
+- Have incomplete closure chain understanding
+- Use different naming conventions across batches
+
+**The Coordinator MUST fix these issues through intelligent synthesis.**
+
+### 6.2 Coordinator's Synthesis Responsibilities
 
 **PREREQUISITE: PHASE 5 integrity check MUST pass**
 
-1. Update `analysis/_index.md` - mark all `[x]`
-2. Resolve all `/* TODO: fn{id} */` placeholders
-3. Order functions by dependency (callees before callers)
-4. Merge into `output/decompiled.js`
-5. Add module header with scope chain documentation
-6. Final verification: Confirm output file contains all {N} functions
+#### Step 1: Build Global Understanding
+
+```
+1. Read ALL batch files in analysis/ directory
+2. Build a mental model of:
+   - Complete function call graph (who calls whom)
+   - Scope chain relationships (which functions share closures)
+   - Variable naming across batches (detect inconsistencies)
+   - Entry points and module structure
+```
+
+#### Step 2: Cross-Reference Validation
+
+```
+For EACH function in batch files:
+1. Verify scope references match actual variable definitions
+2. Check that fn{id} placeholders can be resolved to real function names
+3. Validate closure captures are correctly identified
+4. Ensure parameter counts match call sites
+```
+
+#### Step 3: Inconsistency Resolution
+
+```
+When inconsistencies are found:
+1. Re-read relevant ASM sections to determine correct interpretation
+2. Choose the most accurate naming/implementation
+3. Document resolution decisions in output comments
+
+Common issues to fix:
+- scope[1][5] called "config" in batch_001 but "options" in batch_003
+  → Read ASM, determine actual usage, unify naming
+- fn23 returns object in batch_002 but caller in batch_004 expects array
+  → Re-analyze fn23's ASM to verify return type
+- Closure variable captured but never used
+  → Check if sub-agent missed usage, or if it's truly dead code
+```
+
+#### Step 4: Dependency-Ordered Output
+
+```
+1. Topologically sort functions by call dependencies
+2. Place utility/helper functions before their callers
+3. Group related functions (same closure scope) together
+4. Add section comments for logical groupings
+```
+
+#### Step 5: Final Code Generation
+
+```
+Write output/decompiled.js with:
+1. Module header documenting scope chain structure
+2. Constants section (if needed)
+3. Functions in dependency order
+4. All placeholders resolved to actual function names
+5. Consistent naming throughout
+6. Chinese comments preserved with ASM references
+```
+
+### 6.3 Synthesis Checklist
+
+Before writing final output, verify:
+
+```
+[ ] Read and understood ALL batch files (not just extracted code)
+[ ] Built complete function call graph
+[ ] Identified all scope chain relationships
+[ ] Resolved ALL naming inconsistencies
+[ ] Verified ALL fn{id} placeholders can be resolved
+[ ] Checked parameter counts match between definitions and call sites
+[ ] Validated closure captures are correct
+[ ] Determined correct function ordering
+[ ] Total function count in output matches ASM declaration
+```
+
+### 6.4 Output Format
+
+```javascript
+/**
+ * Decompiled from ASM IR
+ * Total functions: {N}
+ * 
+ * Scope Chain Structure:
+ * - Global scope: [list of global variables]
+ * - fn0 creates scope with: [variables]
+ *   - fn1, fn2, fn3 share this scope
+ * - fn5 creates nested scope with: [variables]
+ *   - fn6, fn7 share this nested scope
+ * 
+ * Generated by ASM IR Decompiler
+ */
+
+// ============================================
+// Section: Utility Functions
+// ============================================
+
+/**
+ * {description}
+ * [ASM:L{x}-L{y}] fn{id}
+ */
+function utilityFunction() {
+  // ...
+}
+
+// ============================================
+// Section: Core Logic
+// ============================================
+
+/**
+ * {description}
+ * [ASM:L{x}-L{y}] fn{id}
+ */
+function coreFunction() {
+  // Calls utilityFunction (resolved from fn{id} placeholder)
+  return utilityFunction();
+}
+
+// ... more functions in dependency order
+```
+
+### 6.5 When to Re-Analyze
+
+If during synthesis you discover:
+- A function's behavior doesn't match its callers' expectations
+- Scope references that don't make sense
+- Missing variable definitions
+- Logical contradictions
+
+**DO NOT GUESS. Re-read the relevant ASM sections and correct the analysis.**
+
+```
+Example:
+- batch_002 says fn15 takes 2 parameters
+- batch_004 shows fn15 being called with 3 arguments
+- Action: Read fn15's ASM (lines L{x}-L{y}), verify actual parameter count
+- If batch_002 was wrong, fix it in final output
+```
+
+---
+
+## PHASE 7: FINAL VERIFICATION
+
+After synthesis, perform final checks:
+
+```
+1. Count functions in output/decompiled.js
+   - MUST equal ASM declared count
+   
+2. Verify no unresolved placeholders
+   - Search for "TODO:" or "fn{" patterns
+   - All must be resolved to actual names
+   
+3. Syntax validation
+   - Output should be valid JavaScript
+   
+4. Update analysis/_index.md
+   - Mark all functions as [x] completed
+   - Record final function names
+```
 
 ---
 
@@ -344,7 +513,7 @@ Merge is ONLY permitted when ALL conditions are met:
 
 ---
 
-## COORDINATOR WORKFLOW (Updated)
+## COORDINATOR WORKFLOW SUMMARY
 
 ```
 1. INIT
@@ -352,25 +521,27 @@ Merge is ONLY permitted when ALL conditions are met:
    └─> Record EXACT function count N
 
 2. DISPATCH (loop until all done)
-   ├─> Select next uncompleted function from _index.md
-   ├─> Invoke sub-agent with function context
-   ├─> Sub-agent writes to analysis/
+   ├─> Select next uncompleted batch from _index.md
+   ├─> Invoke sub-agent with batch context
+   ├─> Sub-agent writes to analysis/batch_*.md
    └─> Update _index.md status
 
-3. RESOLVE
-   ├─> Cross-reference all fn{id} placeholders
-   └─> Fill in actual function names
-
-4. ⚠️ INTEGRITY CHECK (MANDATORY)
+3. ⚠️ INTEGRITY CHECK (MANDATORY)
    ├─> Invoke sub-agent to verify function completeness
    ├─> If any missing, immediately analyze them
    └─> Repeat check until PASS
 
-5. MERGE (ONLY after check passes)
-   └─> Extract JS code from all batch files into output/decompiled.js
+4. 🧠 INTELLIGENT SYNTHESIS (COORDINATOR DOES THIS)
+   ├─> Read ALL batch files deeply (not just extract code)
+   ├─> Build global understanding of call graph & scope chains
+   ├─> Resolve naming inconsistencies across batches
+   ├─> Fix any errors found through cross-reference
+   ├─> Re-analyze ASM sections when contradictions found
+   └─> Generate coherent, correctly-ordered output
 
-6. FINAL VERIFY
+5. FINAL VERIFY
    └─> Confirm output/decompiled.js contains all N functions
+   └─> Verify no unresolved placeholders remain
 ```
 
 ---
@@ -382,6 +553,7 @@ Merge is ONLY permitted when ALL conditions are met:
 - **Circular calls**: Mark in _index.md, process in dependency order
 - **Large function (>500 lines)**: Split into logical blocks, analyze sequentially
 - **Missing function detected**: HALT immediately, analyze missing function, do NOT skip
+- **Cross-batch inconsistency**: Re-read ASM, determine correct interpretation, document decision
 
 ---
 
