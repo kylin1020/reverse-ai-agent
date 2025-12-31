@@ -81,6 +81,71 @@ const constants = ["str1", "str2", ... /* 1000+ items */];
 evaluate_script(script="JSON.stringify(data)", savePath="raw/data.json")
 ```
 
+## ⚠️ Constants Type Rules (CRITICAL)
+
+**When generating LIR from constants.json, type must match JSON.parse result exactly!**
+
+```javascript
+// constants.json 内容:
+["function", "0", "1.0.1.19-fix.01", 123, true, null]
+
+// ✅ 正确的 LIR 输出:
+@const K[0] = String("function")       // typeof === "string"
+@const K[1] = String("0")              // typeof === "string" (不是 Number!)
+@const K[2] = String("1.0.1.19-fix.01") // typeof === "string" (版本号是字符串!)
+@const K[3] = Number(123)              // typeof === "number"
+@const K[4] = Boolean(true)            // typeof === "boolean"
+@const K[5] = Null                     // value === null
+
+// ❌ 错误: 尝试将字符串解析为数字
+@const K[1] = Number(0)                // 错! JSON 中是 "0" 字符串
+@const K[2] = Number(1.0.1.19-fix.01)  // 错! 这是版本号字符串
+```
+
+**类型判断代码**:
+```javascript
+function getConstantType(value) {
+  if (value === null) return 'Null';
+  // 直接使用 typeof，禁止做任何额外的类型推断!
+  switch (typeof value) {
+    case 'string':  return 'String';
+    case 'number':  return 'Number';
+    case 'boolean': return 'Boolean';
+    case 'object':  return 'Object';
+    default:        return 'Unknown';
+  }
+}
+```
+
+## ⚠️ Global Address Rules (CRITICAL)
+
+**LIR 中必须使用全局地址，每条指令的地址必须唯一！**
+
+```javascript
+// 计算全局地址
+let globalOffset = 0;
+for (const func of bytecodeData) {
+  func.globalStart = globalOffset;
+  for (let i = 0; i < func.bytecode.length; ) {
+    const addr = globalOffset + i;  // 全局地址
+    // ... 反汇编指令
+    i += instructionLength;
+  }
+  globalOffset += func.bytecode.length;
+}
+```
+
+**示例**:
+```vmasm
+;; Function 0: Bytecode [0x0000, 0x0147]
+0x0000: CREATE_FUNC 1
+0x0147: RETURN
+
+;; Function 1: Bytecode [0x0148, 0x016D]  ← 紧接函数0之后!
+0x0148: PUSH_UNDEF                        ← 不是 0x0000!
+0x016D: RETURN
+```
+
 ## 📚 Skill Files Reference
 
 **Read relevant files BEFORE starting work:**

@@ -107,11 +107,50 @@ output/
 | `Null` | `Null` | `@const K[3] = Null` |
 | `Object` | `Object({...})` | `@const K[4] = Object({"key":"val"})` |
 
+### ⚠️ 类型判断规则 (CRITICAL)
+
+**常量池类型必须严格按照 JSON 解析后的 JavaScript 原生类型判断，禁止做任何额外的类型推断！**
+
+```javascript
+// ✅ 正确: 直接使用 typeof 判断 JSON.parse 后的值
+function getConstantType(value) {
+  if (value === null) return 'Null';
+  if (value === undefined) return 'Undefined';
+  
+  // 直接使用 typeof，不做任何额外检测
+  switch (typeof value) {
+    case 'string':  return 'String';   // "0", "1.0.1", "hello" 都是 String
+    case 'number':  return 'Number';   // 0, 1.5, NaN 都是 Number
+    case 'boolean': return 'Boolean';
+    case 'object':  return 'Object';
+    default:        return 'Unknown';
+  }
+}
+
+// ❌ 错误: 尝试将字符串解析为数字
+function getConstantType_WRONG(value) {
+  if (typeof value === 'string') {
+    const num = parseFloat(value);
+    if (!isNaN(num)) return 'Number';  // ❌ 这会把 "0" 错误识别为 Number!
+  }
+}
+```
+
+**常见错误示例:**
+| JSON 值 | 正确类型 | 错误类型 | 原因 |
+|---------|----------|----------|------|
+| `"0"` | `String("0")` | `Number(0)` | JSON 中是字符串 |
+| `"1.0.1.19-fix.01"` | `String("1.0.1.19-fix.01")` | `Number(...)` | 版本号是字符串 |
+| `"true"` | `String("true")` | `Boolean(true)` | JSON 中是字符串 |
+| `0` | `Number(0)` | - | JSON 中是数字 |
+| `true` | `Boolean(true)` | - | JSON 中是布尔值 |
+
 ### 约束
 1. **索引连续**: K[0], K[1], K[2]... 必须连续
 2. **类型显式**: 必须标注类型，便于后续代码还原
-3. **引用一致**: 指令段中的 `K[n]` 必须与常量池中的索引对应
-4. **长字符串**: 超过 50 字符的字符串建议截断显示，完整值在 Source Map 中
+3. **类型准确**: 类型必须与 `constants.json` 中 JSON.parse 后的原生类型一致
+4. **引用一致**: 指令段中的 `K[n]` 必须与常量池中的索引对应
+5. **长字符串**: 超过 50 字符的字符串建议截断显示，完整值在 Source Map 中
 
 ---
 
@@ -122,8 +161,66 @@ output/
 @section code
 @entry 0x{entry_address}
 
+;; ==========================================
+;; Function {id}
+;; Params: {argCount}, Strict: {isStrict}
+;; Bytecode: [0x{global_start}, 0x{global_end}]
+;; ==========================================
+
 {hex_addr}: {OPCODE} {operands}    ; {comment}    [sp:{depth} | {stack_state}]
 ```
+
+### ⚠️ 函数地址规则 (CRITICAL)
+
+**必须使用全局地址！每条指令的地址必须是唯一的，类似真实 CPU 的 PC/IP。**
+
+```javascript
+// 计算全局地址的方法
+let globalOffset = 0;
+for (const func of bytecodeData) {
+  func.globalStart = globalOffset;
+  func.globalEnd = globalOffset + func.bytecode.length - 1;
+  globalOffset += func.bytecode.length;
+}
+```
+
+**示例**:
+```vmasm
+;; ==========================================
+;; Function 0
+;; Params: 0, Strict: true
+;; Bytecode: [0x0000, 0x0147]    ← 全局地址 0-327
+;; ==========================================
+
+0x0000: CREATE_FUNC        1               ; 全局地址 0x0000
+0x0002: STORE_SCOPE        0 8             ; 全局地址 0x0002
+...
+0x0147: RETURN                             ; 全局地址 0x0147
+
+;; ==========================================
+;; Function 1
+;; Params: 1, Strict: true
+;; Bytecode: [0x0148, 0x016D]    ← 全局地址 328-365 (紧接函数0之后!)
+;; ==========================================
+
+0x0148: PUSH_UNDEF                         ; 全局地址 0x0148 (不是 0x0000!)
+0x0149: GET_GLOBAL         K[12]           ; 全局地址 0x0149
+...
+```
+
+**地址计算规则**:
+| 函数 ID | 本地范围 | 全局范围 | 长度 |
+|---------|----------|----------|------|
+| 0 | [0, 327] | [0x0000, 0x0147] | 328 |
+| 1 | [0, 37] | [0x0148, 0x016D] | 38 |
+| 2 | [0, 4] | [0x016E, 0x0172] | 5 |
+| ... | ... | ... | ... |
+
+**为什么使用全局地址**:
+1. 每条指令有唯一标识，便于调试和断点设置
+2. 跨函数引用更清晰（如 `CREATE_FUNC` 引用的函数地址）
+3. 与真实 CPU 的 PC/IP 概念一致
+4. Source Map 映射更准确
 
 ### 指令格式
 
