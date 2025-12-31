@@ -331,7 +331,7 @@ v1.1 格式为 IDE 插件提供以下能力：
 3. **常量**: 内嵌在文件头部，不再依赖外部 JSON
 4. **跳转**: 目标地址 = 当前地址 + 偏移 + 指令长度
 5. **Source Map**: 生成 `.vmap` 用于断点映射
-6. **解析器**: 使用 Chevrotain，参见 `#[[file:skills/jsvmp-ir-parser.md]]`
+6. **解析器**: 使用 Chevrotain，参见 `skills/jsvmp-ir-parser.md`
 
 ---
 

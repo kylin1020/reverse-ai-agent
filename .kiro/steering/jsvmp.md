@@ -136,7 +136,7 @@ fsWrite("raw/data.json", JSON.stringify(hugeArray)); // ❌ Don't embed in code
 | 3️⃣ | Browser savePath | Runtime-generated or encrypted data |
 | 4️⃣ | Browser scope dump | Complex nested objects at breakpoint |
 
-> **📚 Detailed examples**: See `#[[file:skills/jsvmp-phase-guide.md]]`
+> **📚 Detailed examples**: See `skills/jsvmp-phase-guide.md`
 
 ---
 
@@ -227,7 +227,7 @@ search_code_smart({ file_path: "/abs/path/source/main.js", query: "for\\(;;\\)" 
 set_breakpoint({ urlRegex: ".*main.js.*", lineNumber: 1, columnNumber: 15847 })
 ```
 
-> **📚 More techniques**: See `#[[file:skills/jsvmp-phase-guide.md]]`
+> **📚 More techniques**: See `skills/jsvmp-phase-guide.md`
 
 ---
 
@@ -353,7 +353,7 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 - [ ] 应用去混淆: `apply_custom_transform` → output/*_deob.js
 
 ## 阶段 2: VM 结构分析 (⛔ 需要完成阶段 1)
-> **📚 参考**: `#[[file:skills/jsvmp-decompiler.md]]` 第 4 节
+> **📚 参考**: `skills/jsvmp-decompiler.md` 第 4 节
 > **⚠️ 核心原则**: 先分析代码逻辑，再提取数据。禁止猜测！
 > **🚀 并行提示**: 前 3 个任务可并行执行，最后 1 个需等待前面完成
 - [ ] 🤖 定位 VM 调度器 (`find_jsvmp_dispatcher`) → NOTE.md  ⚡可并行
@@ -362,7 +362,7 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 - [ ] 🤖 **根据分析结果**提取/解码字节码和常量池 → raw/bytecode.json, raw/constants.json (⏳依赖上面的分析)
 
 ## 阶段 3: 句法分析 + 中间代码生成 (LIR) - 反汇编器
-> **📚 参考**: `#[[file:skills/jsvmp-ir-format.md]]` + `#[[file:skills/jsvmp-ir-sourcemap.md]]` + `#[[file:skills/jsvmp-ir-parser.md]]`
+> **📚 参考**: `skills/jsvmp-ir-format.md` + `skills/jsvmp-ir-sourcemap.md` + `skills/jsvmp-ir-parser.md`
 > **目标**: 将字节码转换为低级中间表示 (LIR)，保留显式栈操作
 > **理论基础**: 句法分析将字节码序列解析为指令流，中间代码生成将其转换为三地址码形式
 > **v1.1 格式**: 自包含 `.vmasm` 文件，内嵌常量池和寄存器映射
@@ -386,10 +386,10 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
     ```
   - 关键: 十六进制地址，类型化常量池，保留栈操作语义
 
-> **⚠️ IR Parsing**: Use Chevrotain for ALL IR parsing (LIR/MIR/HIR). See `#[[file:skills/jsvmp-ir-parser.md]]`
+> **⚠️ IR Parsing**: Use Chevrotain for ALL IR parsing (LIR/MIR/HIR). See `skills/jsvmp-ir-parser.md`
 
 ## 阶段 4: 语义分析 + 基本块划分 (MIR) - 栈分析器
-> **📚 参考**: `#[[file:skills/jsvmp-decompiler.md]]` 第 5 节
+> **📚 参考**: `skills/jsvmp-decompiler.md` 第 5 节
 > **目标**: 消除栈操作，构建表达式树，划分基本块
 > **理论基础**: 
 >   - 语义分析: 栈模拟追踪每条指令的栈状态，将栈操作转换为显式变量赋值
@@ -404,7 +404,7 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
   - 关键: 消除栈操作，生成 `t0 = a + b` 形式的三地址码
 
 ## 阶段 5: 控制流图生成 + 控制流分析 (HIR) - CFG 分析器
-> **📚 参考**: `#[[file:skills/jsvmp-decompiler.md]]` 第 6-7 节
+> **📚 参考**: `skills/jsvmp-decompiler.md` 第 6-7 节
 > **目标**: 构建 CFG，识别循环和条件结构，恢复高级控制流
 > **理论基础** (参考 androguard dad 反编译器):
 >   - **支配树 (Dominator Tree)**: Lengauer-Tarjan 算法，O(n·α(n)) 复杂度
@@ -426,7 +426,7 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
   - 关键: 正确识别循环类型和 follow 节点
 
 ## 阶段 6: 数据流分析 (可选优化) - 变量优化器
-> **📚 参考**: `#[[file:skills/jsvmp-decompiler.md]]` 第 8 节
+> **📚 参考**: `skills/jsvmp-decompiler.md` 第 8 节
 > **目标**: 构建 DU/UD 链，进行变量优化，提高代码可读性
 > **理论基础** (参考 androguard dad 反编译器):
 >   - **到达定义分析 (Reaching Definition)**: 数据流方程迭代求解
@@ -449,7 +449,7 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
   - 关键: 正确处理 φ 函数和循环中的变量
 
 ## 阶段 7: 代码生成 (HIR → JS) - 代码生成器
-> **📚 参考**: `#[[file:skills/jsvmp-codegen.md]]` ⚠️ **必读**
+> **📚 参考**: `skills/jsvmp-codegen.md` ⚠️ **必读**
 > **目标**: 将 HIR 转换为可读的 JavaScript 代码
 > **理论基础**:
 >   - **区域化生成**: 每个控制结构 (if-else, loop) 是独立区域

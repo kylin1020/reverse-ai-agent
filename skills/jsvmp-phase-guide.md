@@ -217,9 +217,9 @@ After analysis, document findings like this:
 | 6 (OPT) | HIR | `_hir_opt.txt` | 数据流分析 (可选) | DU/UD 链、SSA、常量传播 |
 | 7 (JS) | HIR/OPT | `_decompiled.js` | 代码生成 | 区域化生成、结构化输出 |
 
-> **📚 IR Format**: See `#[[file:skills/jsvmp-ir-format.md]]`
-> **📚 Decompiler Implementation**: See `#[[file:skills/jsvmp-decompiler.md]]`
-> **📚 Code Generation (HIR→JS)**: See `#[[file:skills/jsvmp-codegen.md]]` ⚠️ **CRITICAL**
+> **📚 IR Format**: See `skills/jsvmp-ir-format.md`
+> **📚 Decompiler Implementation**: See `skills/jsvmp-decompiler.md`
+> **📚 Code Generation (HIR→JS)**: See `skills/jsvmp-codegen.md` ⚠️ **CRITICAL**
 
 ### Phase 5 Key Algorithms (CFG + Control Flow Analysis)
 
