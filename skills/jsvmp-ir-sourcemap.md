@@ -2,445 +2,237 @@
 
 > Maps IR instructions to original JS locations for browser breakpoint generation.
 
-## ⚠️ CRITICAL FORMAT REQUIREMENT
+## ⚠️ CRITICAL: Use Compact Format (v2)
 
-**When generating IR source maps, you MUST follow the EXACT format specified in Section 2 below. This format is required for proper breakpoint generation and IR debugging. Do NOT use any other format or structure.**
+**Source Map 是连接静态分析（IR）与动态调试（浏览器运行时）的唯一桥梁。** 但必须使用紧凑格式以减少 90%+ 的体积。
+
+---
 
 ## 1. File Structure
 
 ```
 output/
-├── {name}_disasm.asm      # IR assembly
-└── {name}_disasm.asm.map  # Source Map (JSON)
+├── {name}.vmasm      # IR assembly (contains @reg header)
+└── {name}.vmap       # Compact Source Map (JSON)
 ```
 
-## 2. Source Map Format (REQUIRED STRUCTURE)
+---
 
-**⚠️ CRITICAL: This is the EXACT format that MUST be generated. Do NOT deviate from this structure.**
+## 2. Compact Source Map Format v2 (REQUIRED)
+
+**⚠️ 必须使用此扁平化数组结构，禁止使用冗余的 v1 格式。**
+
+```json
+{
+  "version": 2,
+  "file": "main.vmasm",
+  "sourceFile": "main.js",
+  "sourceUrl": "http://example.com/js/main.js",
+  "entry": [1, 28456],
+  "dispatcher": [1, 28500],
+  "mappings": [
+    [10, 0, 1, 28456, 1],
+    [11, 5, 1, 28460, 2],
+    [12, 10, 1, 28465, 10]
+  ]
+}
+```
+
+### 2.1 Field Definitions
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `version` | number | Always `2` |
+| `file` | string | Corresponding `.vmasm` filename |
+| `sourceFile` | string | Original JS filename |
+| `sourceUrl` | string | Full URL for browser debugging |
+| `entry` | `[line, col]` | VM entry point in original JS |
+| `dispatcher` | `[line, col]` | Dispatcher loop location |
+| `mappings` | array | Instruction mappings (see below) |
+
+### 2.2 Mappings Array Format
+
+Each mapping is a 5-element array:
+
+```
+[irLine, addr, srcLine, srcCol, opcode]
+  │       │      │        │       │
+  │       │      │        │       └── Opcode value (for validation)
+  │       │      │        └── Original JS column
+  │       │      └── Original JS line
+  │       └── Bytecode address (IP value)
+  └── IR assembly line number (1-based)
+```
+
+**Example:**
+```json
+[10, 0, 1, 28456, 1]
+// IR line 10, addr=0, original JS L1:28456, opcode=1
+```
+
+---
+
+## 3. Why v2 Works
+
+### 3.1 Dynamic Breakpoint Condition Generation
+
+旧格式在每行存储 `"condition": "pc === 0"`。
+
+**v2 做法：** 调试工具读取 `.vmasm` 头部的 `@reg ip=a`，结合 `mappings[1]`（addr），动态生成：
+
+```javascript
+// .vmasm header: @reg ip=a, bc=o
+// mapping: [10, 0, 1, 28456, 1]
+const condition = `a === 0 && o[a] === 1`;  // 自动生成
+```
+
+### 3.2 Dynamic Watch Expression Generation
+
+旧格式在每行重复存储 `$stack[sp]`。
+
+**v2 做法：** 调试工具读取 `.vmasm` 头部的 `@reg stack=v, sp=p`，统一应用监控模板：
+
+```javascript
+// 自动生成的 watch expressions
+const watches = [`v[p]`, `v[p-1]`, `a`, `p`];
+```
+
+### 3.3 Semantic Info Already in .vmasm
+
+`.vmasm` 文件本身包含指令名和注释，无需在 Map 中重复存储。
+
+---
+
+## 4. Generation Logic
+
+### 4.1 Extracting Original Coordinates
+
+**必须从 `read_code_smart` 输出的 `[Src Lx:xxx]` 提取原始坐标：**
+
+```javascript
+function createMapping(irLine, addr, opcode, readCodeSmartOutput) {
+  // 从 [Src L1:28456] 提取坐标
+  const match = readCodeSmartOutput.match(/\[Src L(\d+):(\d+)\]/);
+  const srcLine = parseInt(match[1]);
+  const srcCol = parseInt(match[2]);
+  
+  return [irLine, addr, srcLine, srcCol, opcode];
+}
+```
+
+### 4.2 Complete Generation Example
+
+```javascript
+function generateVmap(vmInfo, instructions) {
+  return {
+    version: 2,
+    file: `${vmInfo.name}.vmasm`,
+    sourceFile: vmInfo.sourceFile,
+    sourceUrl: vmInfo.sourceUrl,
+    entry: [vmInfo.entry.line, vmInfo.entry.col],
+    dispatcher: [vmInfo.dispatcher.line, vmInfo.dispatcher.col],
+    mappings: instructions.map(inst => [
+      inst.irLine,
+      inst.addr,
+      inst.srcLine,
+      inst.srcCol,
+      inst.opcode
+    ])
+  };
+}
+```
+
+---
+
+## 5. Debugger Usage
+
+当在 `.vmasm` 第 10 行设置断点时，调试插件执行：
+
+```javascript
+// 1. 查表：找到 irLine === 10 的映射
+const [irLine, addr, srcL, srcC, op] = vmap.mappings.find(m => m[0] === 10);
+
+// 2. 读取 .vmasm 头部声明
+// @reg ip=a, bc=o, stack=v, sp=p
+const regs = parseVmasmHeader(vmasmContent);
+
+// 3. 构造断点
+const breakpoint = {
+  url: vmap.sourceUrl,
+  lineNumber: srcL - 1,  // CDP uses 0-based
+  columnNumber: srcC,
+  condition: `${regs.ip} === ${addr} && ${regs.bc}[${regs.ip}] === ${op}`
+};
+
+// 4. 构造 watch expressions
+const watches = [
+  `${regs.ip}`,           // IP
+  `${regs.sp}`,           // SP
+  `${regs.stack}[${regs.sp}]`,     // TOS
+  `${regs.stack}[${regs.sp}-1]`    // TOS-1
+];
+```
+
+---
+
+## 6. Validation Constraints
+
+生成 `.vmap` 时必须满足：
+
+1. **Filename**: 必须是 `{name}.vmap`
+2. **Format**: 使用 `mappings` 数组 `[irLine, addr, srcL, srcC, op]`
+3. **Source Coordinates**: 必须从 `read_code_smart` 的 `[Src Lx:xxx]` 提取，禁止使用美化后的行号
+4. **Self-Reference**: `.vmap` 不存储寄存器名，依赖 `.vmasm` 的 `@reg` 头部
+5. **Size**: `.vmap` 体积应 < `.vmasm` 的 50%
+
+---
+
+## 7. Checklist
+
+- [ ] 使用 v2 格式（扁平化数组）
+- [ ] `mappings` 每项为 5 元素数组
+- [ ] 坐标从 `[Src Lx:xxx]` 提取（原始坐标）
+- [ ] 不存储 `condition`、`watchExpressions`、`semantic`
+- [ ] 对应的 `.vmasm` 包含 `@reg` 头部声明
+- [ ] 文件后缀为 `.vmap`
+
+---
+
+## Appendix A: Legacy v1 Format (Deprecated)
+
+<details>
+<summary>点击展开 v1 格式（仅供参考，禁止使用）</summary>
+
+v1 格式过于臃肿，每条指令重复存储大量字符串：
 
 ```json
 {
   "version": 1,
-  "file": "example.asm",
-  "sourceFile": "src/example.js",
-  "sourceFileUrl": "http://localhost:3000/src/example.js",
-  
-  "vm": {
-    "dispatcher": {
-      "function": "dispatch",
-      "line": 42,
-      "column": 8,
-      "description": "Main VM dispatcher loop"
-    },
-    "registers": {
-      "ip": {
-        "name": "pc",
-        "description": "Program Counter / Instruction Pointer"
-      },
-      "sp": {
-        "name": "sp",
-        "description": "Stack Pointer"
-      },
-      "stack": {
-        "name": "stack",
-        "description": "Virtual Machine Stack"
-      },
-      "bytecode": {
-        "name": "bytecode",
-        "description": "Bytecode Array"
-      },
-      "scope": {
-        "name": "scope",
-        "description": "Scope Chain Array"
-      },
-      "constants": {
-        "name": "constants",
-        "description": "Constants Pool"
-      }
-    },
-    "entryPoint": {
-      "line": 10,
-      "column": 0,
-      "description": "VM entry point"
-    }
-  },
-  
-  "functions": [
-    {
-      "id": 0,
-      "name": "main",
-      "bytecodeRange": [0, 15],
-      "irLineRange": [1, 8],
-      "params": 0,
-      "strict": true
-    },
-    {
-      "id": 1,
-      "name": "add",
-      "bytecodeRange": [16, 25],
-      "irLineRange": [9, 14],
-      "params": 2,
-      "strict": false
-    }
-  ],
-  
   "mappings": [
     {
       "irLine": 1,
       "irAddr": 0,
       "opcode": 1,
       "opcodeName": "PUSH_CONST",
-      "source": {
-        "line": 5,
-        "column": 12
-      },
+      "source": { "line": 5, "column": 12 },
       "breakpoint": {
         "condition": "pc === 0",
         "logMessage": "Pushing constant to stack",
         "watchExpressions": [
-          {
-            "name": "$pc",
-            "expr": "pc"
-          },
-          {
-            "name": "$sp",
-            "expr": "sp"
-          },
-          {
-            "name": "$stack[0]",
-            "expr": "stack[0]"
-          }
+          { "name": "$pc", "expr": "pc" },
+          { "name": "$sp", "expr": "sp" }
         ]
       },
       "semantic": "Push constant 42 onto stack"
-    },
-    {
-      "irLine": 2,
-      "irAddr": 2,
-      "opcode": 2,
-      "opcodeName": "LOAD_VAR",
-      "source": {
-        "line": 6,
-        "column": 8
-      },
-      "breakpoint": {
-        "condition": "pc === 2",
-        "logMessage": "Loading variable",
-        "watchExpressions": [
-          {
-            "name": "$pc",
-            "expr": "pc"
-          },
-          {
-            "name": "$scope[0]",
-            "expr": "scope[0]"
-          }
-        ]
-      },
-      "semantic": "Load variable 'x' from scope"
-    },
-    {
-      "irLine": 3,
-      "irAddr": 4,
-      "opcode": 10,
-      "opcodeName": "ADD",
-      "source": {
-        "line": 6,
-        "column": 14
-      },
-      "breakpoint": {
-        "condition": "pc === 4",
-        "logMessage": "Performing addition",
-        "watchExpressions": [
-          {
-            "name": "$stack[sp-1]",
-            "expr": "stack[sp-1]"
-          },
-          {
-            "name": "$stack[sp]",
-            "expr": "stack[sp]"
-          }
-        ]
-      },
-      "semantic": "Add top two stack values"
-    },
-    {
-      "irLine": 4,
-      "irAddr": 5,
-      "opcode": 20,
-      "opcodeName": "CALL",
-      "source": {
-        "line": 7,
-        "column": 4
-      },
-      "breakpoint": {
-        "condition": "pc === 5",
-        "logMessage": "Calling function",
-        "watchExpressions": [
-          {
-            "name": "$pc",
-            "expr": "pc"
-          },
-          {
-            "name": "$args",
-            "expr": "stack.slice(sp-2, sp)"
-          }
-        ]
-      },
-      "semantic": "Call function with 2 arguments"
     }
   ]
 }
 ```
 
-## 3. Key Fields
+**问题：**
+- 每行重复存储相同的 `watchExpressions`
+- `condition` 字符串可动态生成
+- `semantic` 已在 `.vmasm` 中存在
+- 体积是 v2 的 20 倍以上
 
-### 3.1 `vm` - VM Structure
-
-From `find_jsvmp_dispatcher` result. Variable names vary per target.
-
-### 3.2 `mappings` - IR to JS Mappings
-
-| Field | Description |
-|-------|-------------|
-| `irLine` | IR file line number (1-based) |
-| `irAddr` | Bytecode address (0-based) |
-| `opcode` | Raw opcode value |
-| `source` | **ORIGINAL** JS location (from `[Src Lx:xxx]` in `read_code_smart` output) |
-| `breakpoint.condition` | JS expression for conditional breakpoint |
-| `breakpoint.watchExpressions` | Variables to extract when paused |
-
-### ⚠️ 3.2.1 CRITICAL: Extracting Original Source Coordinates
-
-**`find_jsvmp_dispatcher` returns BEAUTIFIED line numbers. You MUST use `read_code_smart` to read the code and extract ORIGINAL coordinates from `[Src Lx:xxx]` markers!**
-
-**Workflow:**
-```javascript
-// Step 1: find_jsvmp_dispatcher gives beautified line (e.g., L:150)
-const dispatcherInfo = find_jsvmp_dispatcher({ filePath: "source/main.js" });
-// Returns: dispatcher at beautified line 150
-
-// Step 2: Use read_code_smart to read the code and get original coordinates
-read_code_smart({ file: "source/main.js", start: 148, end: 155 });
-// Output:
-// [L:148] [Src L1:28400]  function interpret() {
-// [L:149] [Src L1:28420]    var pc = 0;
-// [L:150] [Src L1:28456]    for (;;) {
-//  ^^^^    ^^^^^^^^^^^^
-//  |       └── ORIGINAL: line=1, column=28456 (USE THIS for Source Map!)
-//  └── BEAUTIFIED line (for human reading only, DO NOT use for breakpoints)
-
-// Step 3: Extract and use ORIGINAL coordinates in Source Map
-{
-  "source": { 
-    "line": 1,       // ← From [Src L1:xxx] - extract the line number after "L"
-    "column": 28456  // ← From [Src L1:28456] - extract the column number after ":"
-  }
-}
-```
-
-**Extraction Pattern:**
-```javascript
-// Parse [Src Lx:xxx] from read_code_smart output
-const srcMatch = line.match(/\[Src L(\d+):(\d+)\]/);
-if (srcMatch) {
-  const originalLine = parseInt(srcMatch[1]);    // e.g., 1
-  const originalColumn = parseInt(srcMatch[2]);  // e.g., 28456
-}
-```
-
-**Why This Matters:**
-- Minified JS files are typically 1 line with thousands of columns
-- Chrome DevTools breakpoints use `lineNumber` + `columnNumber`
-- Using beautified line numbers will set breakpoints at wrong locations
-- **ALWAYS** use `read_code_smart` to verify code logic AND extract original coordinates
-
-### 3.3 Breakpoint Condition
-
-**MUST use actual variable names from `find_jsvmp_dispatcher`**:
-
-```javascript
-const info = await find_jsvmp_dispatcher({ filePath: "main.js" });
-const ip = info.instructionPointer;      // e.g., "pc", "a2", "_0x1234"
-const bytecode = info.bytecodeArray;     // e.g., "code", "o2", "_0x5678"
-
-// Build condition
-const condition = `${ip} === ${addr} && ${bytecode}[${ip}] === ${opcode}`;
-```
-
-| Scenario | Template |
-|----------|----------|
-| Specific PC + opcode | `{ip} === {pc} && {bytecode}[{ip}] === {opcode}` |
-| PC only | `{ip} === {pc}` |
-| Log breakpoint | `console.log(\`PC:\${${ip}}\`), false` |
-
-### 3.4 Watch Expressions
-
-Standard watches for every instruction:
-
-```json
-{
-  "watchExpressions": [
-    { "name": "$pc", "expr": "{ip}" },
-    { "name": "$opcode", "expr": "{bytecode}[{ip}]" },
-    { "name": "$stack[0]", "expr": "{stack}[{sp}]" },
-    { "name": "$stack[1]", "expr": "{stack}[{sp}-1]" },
-    { "name": "$sp", "expr": "{sp}" }
-  ]
-}
-```
-
-## 4. Usage
-
-### Set Breakpoint at IR Line
-
-```javascript
-const map = JSON.parse(fs.readFileSync('output/main_disasm.asm.map'));
-const mapping = map.mappings.find(m => m.irLine === targetLine);
-
-set_breakpoint({
-  urlRegex: `.*${path.basename(map.sourceFile)}.*`,
-  lineNumber: mapping.source.line,
-  columnNumber: mapping.source.column,
-  condition: mapping.breakpoint.condition
-});
-```
-
-### Extract VM State When Paused
-
-```javascript
-async function extractVMState(mapping) {
-  const state = {};
-  for (const watch of mapping.breakpoint.watchExpressions) {
-    const result = await evaluate_on_call_frame({ expression: watch.expr });
-    state[watch.name] = result.value;
-  }
-  return state;
-}
-```
-
-## 5. Generation
-
-**IMPORTANT: Follow the exact structure from Section 2. All fields are REQUIRED.**
-
-```javascript
-function generateSourceMap(vmInfo, functions, mappings) {
-  return {
-    version: 1,
-    file: `${vmInfo.name}_disasm.asm`,
-    sourceFile: vmInfo.sourceFile,
-    sourceFileUrl: vmInfo.sourceFileUrl,
-    
-    vm: {
-      dispatcher: {
-        function: vmInfo.dispatcher.function,
-        line: vmInfo.dispatcher.line,
-        column: vmInfo.dispatcher.column,
-        description: vmInfo.dispatcher.description || "Main VM dispatcher loop"
-      },
-      registers: {
-        ip: {
-          name: vmInfo.registers.ip.name,
-          description: vmInfo.registers.ip.description || "Program Counter / Instruction Pointer"
-        },
-        sp: {
-          name: vmInfo.registers.sp.name,
-          description: vmInfo.registers.sp.description || "Stack Pointer"
-        },
-        stack: {
-          name: vmInfo.registers.stack.name,
-          description: vmInfo.registers.stack.description || "Virtual Machine Stack"
-        },
-        bytecode: {
-          name: vmInfo.registers.bytecode.name,
-          description: vmInfo.registers.bytecode.description || "Bytecode Array"
-        },
-        scope: {
-          name: vmInfo.registers.scope.name,
-          description: vmInfo.registers.scope.description || "Scope Chain Array"
-        },
-        constants: {
-          name: vmInfo.registers.constants.name,
-          description: vmInfo.registers.constants.description || "Constants Pool"
-        }
-      },
-      entryPoint: {
-        line: vmInfo.entryPoint.line,
-        column: vmInfo.entryPoint.column,
-        description: vmInfo.entryPoint.description || "VM entry point"
-      }
-    },
-    
-    functions: functions.map(fn => ({
-      id: fn.id,
-      name: fn.name,
-      bytecodeRange: fn.bytecodeRange,
-      irLineRange: fn.irLineRange,
-      params: fn.params,
-      strict: fn.strict
-    })),
-    
-    mappings: mappings.map(m => ({
-      irLine: m.irLine,
-      irAddr: m.irAddr,
-      opcode: m.opcode,
-      opcodeName: m.opcodeName,
-      source: {
-        line: m.source.line,
-        column: m.source.column
-      },
-      breakpoint: {
-        condition: m.breakpoint.condition,
-        logMessage: m.breakpoint.logMessage,
-        watchExpressions: m.breakpoint.watchExpressions.map(w => ({
-          name: w.name,
-          expr: w.expr
-        }))
-      },
-      semantic: m.semantic
-    }))
-  };
-}
-
-function generateMapping(pc, opcode, vmInfo, irLine, sourceLoc, semantic) {
-  const { ip, bytecode, stack, sp, scope } = vmInfo.registers;
-  
-  return {
-    irLine,
-    irAddr: pc,
-    opcode,
-    opcodeName: OPCODE_TABLE[opcode].name,
-    source: {
-      line: sourceLoc.line,
-      column: sourceLoc.column
-    },
-    breakpoint: {
-      condition: `${ip.name} === ${pc}`,
-      logMessage: `PC:${pc} OP:${opcode} ${OPCODE_TABLE[opcode].name}`,
-      watchExpressions: [
-        { name: "$pc", expr: ip.name },
-        { name: "$sp", expr: sp.name },
-        { name: "$stack[0]", expr: `${stack.name}[${sp.name}]` },
-        { name: "$stack[1]", expr: `${stack.name}[${sp.name}-1]` }
-      ]
-    },
-    semantic
-  };
-}
-```
-
-## 6. Checklist
-
-- [ ] **MUST follow EXACT format from Section 2** - all fields are required
-- [ ] Call `find_jsvmp_dispatcher` first to get dispatcher location and variable names
-- [ ] **Use `read_code_smart` to read relevant code sections** (understand logic + get original coordinates)
-- [ ] **Extract ORIGINAL coordinates from `[Src Lx:xxx]` in `read_code_smart` output**
-- [ ] `source.line` and `source.column` use ORIGINAL coordinates for Chrome breakpoints
-- [ ] `breakpoint.condition` uses actual variable names (not hardcoded)
-- [ ] `breakpoint.logMessage` is descriptive and includes PC/opcode info
-- [ ] `breakpoint.watchExpressions` includes at minimum: $pc, $sp, $stack[0]
-- [ ] `semantic` field describes what the instruction does in plain language
-- [ ] `irLine` = IR file line number for O(1) lookup
-- [ ] `vm.entryPoint` is populated with correct line/column
-- [ ] `functions` array includes all discovered functions with correct ranges
-- [ ] All register descriptions are filled in (ip, sp, stack, bytecode, scope, constants)
+</details>
