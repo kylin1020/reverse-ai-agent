@@ -41,15 +41,38 @@ const lodash = require('lodash');       // 工具函数
 
 ## 2. 反编译流程 (7 阶段)
 
-| 阶段 | 输入 | 输出 | 描述 | 关键文档 |
+> **理论基础**: 参考 androguard dad 反编译器
+> - 句法分析 → 语义分析 → 中间代码生成 → 控制流图生成 → 数据流分析 → 控制流分析 → 代码生成
+
+| 阶段 | 输入 | 输出 | 描述 | 关键算法 |
 |------|------|------|------|----------|
 | 1. 句法分析 | JS 源码 | AST | `@babel/parser` | |
-| 2. 语义分析 | AST | 参数提取 | 提取 bytecode/constants | |
-| 3. 中间代码生成 | bytecode | LIR 指令 | opcode → IRForm | `jsvmp-ir-format.md` |
-| 4. 控制流图生成 | LIR | MIR (BasicBlock[]) | 基本块划分 + 栈分析 | |
-| 5. 控制流分析 | MIR | HIR (结构化 CFG) | 循环/条件识别 | |
-| 6. 数据流分析 | HIR | DU/UD 链 | 变量追踪 | |
-| 7. 代码生成 | HIR | JS 源码 | **⚠️ 最易出错** | `jsvmp-codegen.md` |
+| 2. 语义分析 | AST | 参数提取 | 提取 bytecode/constants | AST 遍历 |
+| 3. 中间代码生成 | bytecode | LIR 指令 | opcode → IRForm | 三地址码转换 |
+| 4. 基本块划分 + 栈分析 | LIR | MIR (BasicBlock[]) | 消除栈操作 | 栈模拟、leader 识别 |
+| 5. CFG + 控制流分析 | MIR | HIR (结构化 CFG) | 循环/条件识别 | 支配树、区间图、导出序列 |
+| 6. 数据流分析 | HIR | DU/UD 链 | 变量优化 (可选) | 到达定义、SSA、常量传播 |
+| 7. 代码生成 | HIR | JS 源码 | **⚠️ 最易出错** | 区域化生成 |
+
+### 阶段 5 关键算法 (CFG + 控制流分析)
+
+| 算法 | 用途 | 说明 |
+|------|------|------|
+| **Lengauer-Tarjan** | 支配树计算 | O(n·α(n)) 复杂度，计算 IDOM |
+| **Allen-Cocke** | 区间图构建 | 识别自然循环的 header 和 latch |
+| **Derived Sequence** | 导出序列 | 迭代构建区间图，判断 CFG 可规约性 |
+| **Loop Type** | 循环类型识别 | pre_test (while), post_test (do-while), end_less (for(;;)) |
+| **IPDOM** | 条件结构识别 | 找 if-else 的 follow 节点 (汇合点) |
+
+### 阶段 6 关键算法 (数据流分析 - 可选)
+
+| 算法 | 用途 | 数据流方程 |
+|------|------|-----------|
+| **Reaching Definition** | 到达定义分析 | R[n] = ∪A[pred], A[n] = (R[n]-kill) ∪ gen |
+| **DU/UD Chain** | 定义-使用链 | 追踪变量的定义点和使用点 |
+| **SSA Split** | 变量分割 | 基于 DU/UD 连通分量重命名 x → x_0, x_1 |
+| **Constant Propagation** | 常量传播 | 单定义点变量内联替换 |
+| **Dead Code Elimination** | 死代码消除 | 移除无使用点的定义 |
 
 ### ⚠️ 阶段 7 (代码生成) 常见问题
 

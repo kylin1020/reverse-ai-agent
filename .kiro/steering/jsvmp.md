@@ -361,16 +361,95 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 - [ ] 🤖 **分析**操作码语义：读取 switch/if-else 分支，记录每个 opcode 的实际处理逻辑 → NOTE.md  ⚡可并行
 - [ ] 🤖 **根据分析结果**提取/解码字节码和常量池 → raw/bytecode.json, raw/constants.json (⏳依赖上面的分析)
 
-## 阶段 3-6: 反编译流水线
-> **📚 参考**: `#[[file:skills/jsvmp-decompiler.md]]` + `#[[file:skills/jsvmp-ir-format.md]]` + `#[[file:skills/jsvmp-ir-sourcemap.md]]`
-- [ ] 🤖 编写反汇编器 (lib/decompiler.js)，生成 LIR + Source Map: output/*_disasm.asm + output/*_disasm.asm.map
-- [ ] 🤖 栈分析 → output/*_mir.txt
-- [ ] 🤖 CFG 分析 → output/*_hir.txt
-- [ ] 🤖 基于hir代码使用babel生成js代码 → output/*_decompiled.js
+## 阶段 3: 句法分析 + 中间代码生成 (LIR) - 反汇编器
+> **📚 参考**: `#[[file:skills/jsvmp-ir-format.md]]` + `#[[file:skills/jsvmp-ir-sourcemap.md]]`
+> **目标**: 将字节码转换为低级中间表示 (LIR)，保留显式栈操作
+> **理论基础**: 句法分析将字节码序列解析为指令流，中间代码生成将其转换为三地址码形式
+- [ ] 🤖 编写反汇编器 (lib/disassembler.js)
+  - 输入: raw/bytecode.json + raw/constants.json
+  - 输出: output/*_disasm.asm (LIR) + output/*_disasm.asm.map (Source Map)
+  - 格式: `{addr}: {OPCODE} {operands} // {semantic}`
+  - 关键: 保留栈操作语义 (PUSH/POP)，为后续栈分析做准备
 
-## 阶段 7-9: 实现与验证
-- [ ] 🤖 Python 骨架代码 (lib/*.py)
-- [ ] 🤖 核心算法实现
+## 阶段 4: 语义分析 + 基本块划分 (MIR) - 栈分析器
+> **📚 参考**: `#[[file:skills/jsvmp-decompiler.md]]` 第 5 节
+> **目标**: 消除栈操作，构建表达式树，划分基本块
+> **理论基础**: 
+>   - 语义分析: 栈模拟追踪每条指令的栈状态，将栈操作转换为显式变量赋值
+>   - 基本块划分: 识别 leader 指令 (跳转目标、跳转后指令、函数入口)
+> **关键算法**: 
+>   - 栈模拟: 维护符号栈，PUSH 压入表达式，POP 弹出并组合
+>   - 基本块边界: 跳转指令、跳转目标、函数入口
+- [ ] 🤖 栈分析 + 基本块划分 (lib/stack_analyzer.js)
+  - 输入: output/*_disasm.asm
+  - 输出: output/*_mir.txt
+  - 格式: 每个基本块包含表达式树形式的指令
+  - 关键: 消除栈操作，生成 `t0 = a + b` 形式的三地址码
+
+## 阶段 5: 控制流图生成 + 控制流分析 (HIR) - CFG 分析器
+> **📚 参考**: `#[[file:skills/jsvmp-decompiler.md]]` 第 6-7 节
+> **目标**: 构建 CFG，识别循环和条件结构，恢复高级控制流
+> **理论基础** (参考 androguard dad 反编译器):
+>   - **支配树 (Dominator Tree)**: Lengauer-Tarjan 算法，O(n·α(n)) 复杂度
+>   - **区间图 (Interval Graph)**: Allen-Cocke 算法，识别自然循环
+>   - **导出序列 (Derived Sequence)**: 迭代构建区间图直到单节点，判断 CFG 可规约性
+>   - **循环类型识别**: 
+>     - pre_test (while): header 是条件节点，条件在循环体前
+>     - post_test (do-while): latch 是条件节点，条件在循环体后
+>     - end_less (for(;;)): header 和 latch 都不是条件节点
+>   - **条件结构识别**: 找 follow 节点 (if-else 汇合点)，使用 IPDOM
+> **关键算法**:
+>   - 逆后序 (RPO): 支配树计算的基础
+>   - 回边检测: 识别循环的 latch → header 边
+>   - 循环节点收集: 从 latch 反向 BFS 到 header
+- [ ] 🤖 CFG 构建 + 结构识别 (lib/cfg_analyzer.js)
+  - 输入: output/*_mir.txt
+  - 输出: output/*_hir.txt
+  - 格式: 带循环/条件标注的结构化 CFG
+  - 关键: 正确识别循环类型和 follow 节点
+
+## 阶段 6: 数据流分析 (可选优化) - 变量优化器
+> **📚 参考**: `#[[file:skills/jsvmp-decompiler.md]]` 第 8 节
+> **目标**: 构建 DU/UD 链，进行变量优化，提高代码可读性
+> **理论基础** (参考 androguard dad 反编译器):
+>   - **到达定义分析 (Reaching Definition)**: 数据流方程迭代求解
+>     - R[n] = ∪ A[pred] (所有前驱的出口定义)
+>     - A[n] = (R[n] - kill[n]) ∪ gen[n]
+>   - **DU/UD 链构建**: 
+>     - UD 链: 每个使用点 → 可能的定义点集合
+>     - DU 链: 每个定义点 → 所有使用点集合
+>   - **SSA 变量分割 (split_variables)**: 
+>     - 基于 DU/UD 链的连通分量分析
+>     - 同一变量的不同"版本"重命名为 x_0, x_1, ...
+>   - **寄存器传播 (register_propagation)**: 
+>     - 单定义点的变量可以内联替换
+>     - 常量传播: 将常量值直接替换到使用点
+>   - **死代码消除 (dead_code_elimination)**: 
+>     - 移除无使用点的定义
+- [ ] 🤖 数据流分析 + 变量优化 (lib/dataflow.js) [可选]
+  - 输入: output/*_hir.txt
+  - 输出: output/*_hir_opt.txt (优化后的 HIR)
+  - 关键: 正确处理 φ 函数和循环中的变量
+
+## 阶段 7: 代码生成 (HIR → JS) - 代码生成器
+> **📚 参考**: `#[[file:skills/jsvmp-codegen.md]]` ⚠️ **必读**
+> **目标**: 将 HIR 转换为可读的 JavaScript 代码
+> **理论基础**:
+>   - **区域化生成**: 每个控制结构 (if-else, loop) 是独立区域
+>   - **结构化输出**: 使用 follow 节点确定控制结构边界
+>   - **代码排序**: 按基本块地址排序，保持原始代码顺序
+> **⚠️ 最易出错的阶段！常见问题**:
+>   - else 分支丢失 → 分离 then/else 的 visited 集合
+>   - 循环体不完整 → 遍历所有 loop nodes，不只是 header
+>   - 嵌套结构扁平化 → 计算正确的 merge point (IPDOM)
+>   - 代码顺序错乱 → 按 block.startAddr 排序
+- [ ] 🤖 代码生成 (lib/codegen.js)
+  - 输入: output/*_hir.txt (或 *_hir_opt.txt)
+  - 输出: output/*_decompiled.js
+  - **验证**: JS 行数应为 HIR 行数的 50%-150%，低于 50% 表示代码丢失
+  - 关键: 正确处理嵌套控制结构，避免代码丢失
+
+## 阶段 8-9: 实现与验证
 - [ ] 🤖 捕获真实请求 → raw/reference.txt
 - [ ] 🤖 单元测试: 对比生成结果与参考值
 - [ ] 🤖 集成测试: 发起真实 API 请求

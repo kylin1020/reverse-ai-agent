@@ -204,20 +204,43 @@ After analysis, document findings like this:
 
 ---
 
-## Phase 3-6: IR Pipeline
+## Phase 3-7: Decompilation Pipeline
 
-| Phase | Input | Output | Description |
-|-------|-------|--------|-------------|
-| 3 (LIR) | bytecode | `_disasm.asm` | Explicit stack ops |
-| 4 (MIR) | LIR | `_mir.txt` | Expression trees |
-| 5 (HIR) | MIR | `_hir.txt` | CFG + structure |
-| 6 (JS) | HIR | `_decompiled.js` | Readable code |
+> **理论基础**: 参考 androguard dad 反编译器的实现
+> - 句法分析 → 语义分析 → 中间代码生成 → 控制流图生成 → 数据流分析 → 控制流分析 → 代码生成
+
+| Phase | Input | Output | Description | Key Algorithm |
+|-------|-------|--------|-------------|---------------|
+| 3 (LIR) | bytecode | `_disasm.asm` | 句法分析 + 中间代码生成 | opcode → 三地址码 |
+| 4 (MIR) | LIR | `_mir.txt` | 语义分析 + 基本块划分 | 栈模拟、leader 识别 |
+| 5 (HIR) | MIR | `_hir.txt` | CFG 生成 + 控制流分析 | 支配树、区间图、导出序列 |
+| 6 (OPT) | HIR | `_hir_opt.txt` | 数据流分析 (可选) | DU/UD 链、SSA、常量传播 |
+| 7 (JS) | HIR/OPT | `_decompiled.js` | 代码生成 | 区域化生成、结构化输出 |
 
 > **📚 IR Format**: See `#[[file:skills/jsvmp-ir-format.md]]`
 > **📚 Decompiler Implementation**: See `#[[file:skills/jsvmp-decompiler.md]]`
 > **📚 Code Generation (HIR→JS)**: See `#[[file:skills/jsvmp-codegen.md]]` ⚠️ **CRITICAL**
 
-### ⚠️ Phase 6 (HIR → JS) Common Pitfalls
+### Phase 5 Key Algorithms (CFG + Control Flow Analysis)
+
+| Algorithm | Purpose | Reference |
+|-----------|---------|-----------|
+| **Lengauer-Tarjan** | 支配树计算 | O(n·α(n)) 复杂度 |
+| **Allen-Cocke** | 区间图构建 | 识别自然循环 |
+| **Derived Sequence** | 导出序列 | 判断 CFG 可规约性 |
+| **Loop Type Detection** | 循环类型识别 | pre_test/post_test/end_less |
+| **IPDOM** | 条件结构识别 | 找 if-else 汇合点 |
+
+### Phase 6 Key Algorithms (Data Flow Analysis - Optional)
+
+| Algorithm | Purpose | Data Flow Equation |
+|-----------|---------|-------------------|
+| **Reaching Definition** | 到达定义分析 | R[n] = ∪A[pred], A[n] = (R[n]-kill) ∪ gen |
+| **DU/UD Chain** | 定义-使用链 | 追踪变量的定义和使用点 |
+| **SSA Split** | 变量分割 | 基于连通分量重命名变量 |
+| **Constant Propagation** | 常量传播 | 单定义点变量内联替换 |
+
+### ⚠️ Phase 7 (HIR → JS) Common Pitfalls
 
 **This is the most error-prone phase! Code loss is common if not handled correctly.**
 
