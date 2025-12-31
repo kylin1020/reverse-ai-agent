@@ -23,7 +23,7 @@ inclusion: manual
 ```
 artifacts/jsvmp/{domain}/
 ├── source/         # Original JS (from browser download)
-├── output/         # ALL generated files (*_deob.js, *_disasm.asm, etc.)
+├── output/         # ALL generated files (*_deob.js, *.vmasm, *.vmir, *.vmhir, etc.)
 ├── transforms/     # Babel transform scripts
 ├── raw/            # Extracted data (bytecode.json, constants.json)
 ├── lib/            # Python implementation
@@ -362,14 +362,31 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 - [ ] 🤖 **根据分析结果**提取/解码字节码和常量池 → raw/bytecode.json, raw/constants.json (⏳依赖上面的分析)
 
 ## 阶段 3: 句法分析 + 中间代码生成 (LIR) - 反汇编器
-> **📚 参考**: `#[[file:skills/jsvmp-ir-format.md]]` + `#[[file:skills/jsvmp-ir-sourcemap.md]]`
+> **📚 参考**: `#[[file:skills/jsvmp-ir-format.md]]` + `#[[file:skills/jsvmp-ir-sourcemap.md]]` + `#[[file:skills/jsvmp-ir-parser.md]]`
 > **目标**: 将字节码转换为低级中间表示 (LIR)，保留显式栈操作
 > **理论基础**: 句法分析将字节码序列解析为指令流，中间代码生成将其转换为三地址码形式
+> **v1.1 格式**: 自包含 `.vmasm` 文件，内嵌常量池和寄存器映射
 - [ ] 🤖 编写反汇编器 (lib/disassembler.js)
   - 输入: raw/bytecode.json + raw/constants.json
-  - 输出: output/*_disasm.asm (LIR) + output/*_disasm.asm.map (Source Map)
-  - 格式: `{addr}: {OPCODE} {operands} // {semantic}`
-  - 关键: 保留栈操作语义 (PUSH/POP)，为后续栈分析做准备
+  - 输出: output/*_disasm.vmasm (LIR v1.1) + output/*_disasm.vmap (Source Map)
+  - **v1.1 格式要求**:
+    ```vmasm
+    @format v1.1
+    @domain {target-domain}
+    @reg ip={ip_var}, sp={sp_var}, stack={stack_var}, bc={bc_var}, storage={storage_var}, const={const_var}
+    
+    @section constants
+    @const K[0] = String("...")
+    @const K[1] = Number(...)
+    
+    @section code
+    @entry 0x{entry_addr}
+    
+    0x0000: PUSH_CONST K[0]    ; "value"    [sp:1 | K[0]]
+    ```
+  - 关键: 十六进制地址，类型化常量池，保留栈操作语义
+
+> **⚠️ IR Parsing**: Use Chevrotain for ALL IR parsing (LIR/MIR/HIR). See `#[[file:skills/jsvmp-ir-parser.md]]`
 
 ## 阶段 4: 语义分析 + 基本块划分 (MIR) - 栈分析器
 > **📚 参考**: `#[[file:skills/jsvmp-decompiler.md]]` 第 5 节
@@ -381,8 +398,8 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 >   - 栈模拟: 维护符号栈，PUSH 压入表达式，POP 弹出并组合
 >   - 基本块边界: 跳转指令、跳转目标、函数入口
 - [ ] 🤖 栈分析 + 基本块划分 (lib/stack_analyzer.js)
-  - 输入: output/*_disasm.asm
-  - 输出: output/*_mir.txt
+  - 输入: output/*_disasm.vmasm
+  - 输出: output/*.vmir
   - 格式: 每个基本块包含表达式树形式的指令
   - 关键: 消除栈操作，生成 `t0 = a + b` 形式的三地址码
 
@@ -403,8 +420,8 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 >   - 回边检测: 识别循环的 latch → header 边
 >   - 循环节点收集: 从 latch 反向 BFS 到 header
 - [ ] 🤖 CFG 构建 + 结构识别 (lib/cfg_analyzer.js)
-  - 输入: output/*_mir.txt
-  - 输出: output/*_hir.txt
+  - 输入: output/*.vmir
+  - 输出: output/*.vmhir
   - 格式: 带循环/条件标注的结构化 CFG
   - 关键: 正确识别循环类型和 follow 节点
 
@@ -427,8 +444,8 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 >   - **死代码消除 (dead_code_elimination)**: 
 >     - 移除无使用点的定义
 - [ ] 🤖 数据流分析 + 变量优化 (lib/dataflow.js) [可选]
-  - 输入: output/*_hir.txt
-  - 输出: output/*_hir_opt.txt (优化后的 HIR)
+  - 输入: output/*.vmhir
+  - 输出: output/*_opt.vmhir (优化后的 HIR)
   - 关键: 正确处理 φ 函数和循环中的变量
 
 ## 阶段 7: 代码生成 (HIR → JS) - 代码生成器
@@ -444,7 +461,7 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 >   - 嵌套结构扁平化 → 计算正确的 merge point (IPDOM)
 >   - 代码顺序错乱 → 按 block.startAddr 排序
 - [ ] 🤖 代码生成 (lib/codegen.js)
-  - 输入: output/*_hir.txt (或 *_hir_opt.txt)
+  - 输入: output/*.vmhir (或 *_opt.vmhir)
   - 输出: output/*_decompiled.js
   - **验证**: JS 行数应为 HIR 行数的 50%-150%，低于 50% 表示代码丢失
   - 关键: 正确处理嵌套控制结构，避免代码丢失
@@ -509,12 +526,12 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 
 ## 🔧 IR Debugging Tools
 
-Use IR debugger tools to debug JSVMP at IR level instead of raw JS. Requires Source Map (`.asm.map`).
+Use IR debugger tools to debug JSVMP at IR level instead of raw JS. Requires Source Map (`.vmap`).
 
 ### Workflow
 ```javascript
 // 1. Load IR source map (can be done before script loads)
-load_ir_source_map(sourceMapPath="output/main_disasm.asm.map")
+load_ir_source_map(sourceMapPath="output/main_disasm.vmap")
 // Returns: irId
 
 // 2. Set breakpoint at IR line (will resolve when script loads)

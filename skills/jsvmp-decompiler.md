@@ -1,6 +1,7 @@
 # JSVMP Decompiler Skill (Babel/Node.js)
 
 > **核心原则**: JSVMP 反编译必须使用 Babel AST 技术栈，**禁止使用 Python**。
+> **IR 格式**: v1.1 自包含格式，参见 `#[[file:skills/jsvmp-ir-format.md]]`
 
 > **🚨 代码生成警告 (Phase 7) - 最易出错的阶段！**
 > 
@@ -10,198 +11,208 @@
 > | 循环体不完整 | `while` 体为空 | 只处理 header 块 |
 > | 嵌套结构扁平化 | 嵌套 if 变顺序 if | merge point 错误 |
 > 
-> **真实案例**: func_150 HIR 1022 行 → 错误输出 274 行 (丢失 73%!)
-> 
 > **必读**: `#[[file:skills/jsvmp-codegen.md]]` - 完整的控制流恢复算法
 > 
 > **验证命令**:
 > ```bash
-> # JS 行数应该是 HIR 行数的 50%-150%，低于 50% 表示代码丢失
-> wc -l output/bdms_hir.txt output/bdms_decompiled.js
+> wc -l output/*.vmhir output/*_decompiled.js  # JS 行数应为 HIR 的 50%-150%
 > ```
 
 ---
 
 ## 1. 技术栈要求
 
-```javascript
-// 必需依赖
-const parser = require("@babel/parser");
-const generator = require("@babel/generator").default;
-const types = require("@babel/types");
-const traverse = require("@babel/traverse").default;
-const fs = require("fs");
-const graphviz = require("graphviz");  // CFG 可视化
-const lodash = require('lodash');       // 工具函数
+```bash
+npm install @babel/parser @babel/generator @babel/types @babel/traverse chevrotain graphviz lodash
 ```
-
-**安装**: `npm install @babel/parser @babel/generator @babel/types @babel/traverse graphviz lodash`
 
 ---
 
 ## 2. 反编译流程 (7 阶段)
 
-> **理论基础**: 参考 androguard dad 反编译器
-> - 句法分析 → 语义分析 → 中间代码生成 → 控制流图生成 → 数据流分析 → 控制流分析 → 代码生成
-
 | 阶段 | 输入 | 输出 | 描述 | 关键算法 |
 |------|------|------|------|----------|
 | 1. 句法分析 | JS 源码 | AST | `@babel/parser` | |
 | 2. 语义分析 | AST | 参数提取 | 提取 bytecode/constants | AST 遍历 |
-| 3. 中间代码生成 | bytecode | LIR 指令 | opcode → IRForm | 三地址码转换 |
-| 4. 基本块划分 + 栈分析 | LIR | MIR (BasicBlock[]) | 消除栈操作 | 栈模拟、leader 识别 |
-| 5. CFG + 控制流分析 | MIR | HIR (结构化 CFG) | 循环/条件识别 | 支配树、区间图、导出序列 |
-| 6. 数据流分析 | HIR | DU/UD 链 | 变量优化 (可选) | 到达定义、SSA、常量传播 |
-| 7. 代码生成 | HIR | JS 源码 | **⚠️ 最易出错** | 区域化生成 |
+| 3. LIR 生成 | bytecode | `.vmasm` + `.vmap` | opcode → 三地址码 | 反汇编 |
+| 4. MIR 生成 | `.vmasm` | `.vmir` | 消除栈操作 | 栈模拟、基本块划分 |
+| 5. HIR 生成 | `.vmir` | `.vmhir` | 循环/条件识别 | 支配树、区间图 |
+| 6. 数据流分析 | `.vmhir` | `*_opt.vmhir` | 变量优化 (可选) | DU/UD 链、SSA |
+| 7. 代码生成 | `.vmhir` | `*_decompiled.js` | **⚠️ 最易出错** | 区域化生成 |
 
-### 阶段 5 关键算法 (CFG + 控制流分析)
+### 关键算法速查
 
-| 算法 | 用途 | 说明 |
+| 算法 | 用途 | 阶段 |
 |------|------|------|
-| **Lengauer-Tarjan** | 支配树计算 | O(n·α(n)) 复杂度，计算 IDOM |
-| **Allen-Cocke** | 区间图构建 | 识别自然循环的 header 和 latch |
-| **Derived Sequence** | 导出序列 | 迭代构建区间图，判断 CFG 可规约性 |
-| **Loop Type** | 循环类型识别 | pre_test (while), post_test (do-while), end_less (for(;;)) |
-| **IPDOM** | 条件结构识别 | 找 if-else 的 follow 节点 (汇合点) |
-
-### 阶段 6 关键算法 (数据流分析 - 可选)
-
-| 算法 | 用途 | 数据流方程 |
-|------|------|-----------|
-| **Reaching Definition** | 到达定义分析 | R[n] = ∪A[pred], A[n] = (R[n]-kill) ∪ gen |
-| **DU/UD Chain** | 定义-使用链 | 追踪变量的定义点和使用点 |
-| **SSA Split** | 变量分割 | 基于 DU/UD 连通分量重命名 x → x_0, x_1 |
-| **Constant Propagation** | 常量传播 | 单定义点变量内联替换 |
-| **Dead Code Elimination** | 死代码消除 | 移除无使用点的定义 |
-
-### ⚠️ 阶段 7 (代码生成) 常见问题
-
-| 问题 | 症状 | 解决方案 |
-|------|------|----------|
-| else 分支丢失 | `if` 没有 `else` | 分离 then/else 的 visited 集合 |
-| 循环体不完整 | `while` 体为空或部分 | 遍历所有 loop nodes |
-| 嵌套结构扁平化 | 嵌套 if 变成顺序 if | 计算正确的 merge point (IPDOM) |
-| 代码顺序错乱 | 语句顺序不对 | 按 block.startAddr 排序 |
-
-> **📚 详细解决方案**: 见 `#[[file:skills/jsvmp-codegen.md]]`
+| **Lengauer-Tarjan** | 支配树计算 | 5 |
+| **Allen-Cocke** | 区间图构建，识别自然循环 | 5 |
+| **Derived Sequence** | 导出序列，判断 CFG 可规约性 | 5 |
+| **Reaching Definition** | 到达定义分析 | 6 |
+| **DU/UD Chain** | 定义-使用链 | 6 |
 
 ---
 
-## 3. 核心数据结构
+## 3. IR 输出格式 (v1.1)
 
-### 3.1 基本块 (BasicBlock)
+### 3.1 LIR 输出 (`.vmasm`)
+
+```vmasm
+;; JSVMP Disassembly - example.com main.js
+@format v1.1
+@domain example.com
+@reg ip=pc, sp=sp, stack=stk, bc=code, storage=mem, const=K
+
+@section constants
+@const K[0] = String("init")
+@const K[1] = String("window")
+@const K[2] = Number(0)
+@const K[3] = Boolean(true)
+@const K[4] = Null
+
+@section code
+@entry 0x00000000
+
+;; Function 0: Params=0, Strict=true, Bytecode=[0x0000, 0x0028]
+0x0000: LOAD_CLOSURE K[0]  ; Create closure      [sp:1 | <closure>]
+0x0003: SET_SCOPE 0 K[0]   ; scope[0]["init"]=   [sp:0 |]
+0x0008: GET_GLOBAL K[1]    ; window              [sp:1 | <Global>]
+0x000D: PUSH_CONST K[2]    ; 0                   [sp:2 | <Global>, 0]
+0x0012: JMPIFNOT 0x0020    ; if (!top) goto      [sp:1 | <Global>]
+0x0017: PUSH_CONST K[3]    ; true                [sp:2 | <Global>, true]
+0x001C: JMP 0x0025         ; goto                [sp:2 | <Global>, true]
+0x0020: PUSH_CONST K[4]    ; null                [sp:2 | <Global>, null]
+0x0025: RET                ; return              [sp:0 |]
+```
+
+### 3.2 MIR 输出 (`.vmir`)
+
+```
+;; Function 0
+0x0000: [sp:0→1] t0 = closure(K[0])
+0x0003: [sp:1→0] scope[0]["init"] = t0
+0x0008: [sp:0→1] t1 = global["window"]
+0x000D: [sp:1→2] t2 = 0
+0x0012: [sp:2→1] if (!t2) goto 0x0020
+0x0017: [sp:1→2] t3 = true
+0x001C: [sp:2→2] goto 0x0025
+0x0020: [sp:1→2] t3 = null
+0x0025: [sp:2→0] return t3
+```
+
+### 3.3 HIR 输出 (`.vmhir`)
+
+```
+;; Function 0: Params=0, Strict=true
+;; Entry: BB0, Blocks: 4
+;; Loops: 0, Conditionals: 1
+
+BB0: [0x0000-0x0012] (condition)
+  0x0000: t0 = closure(K[0])
+  0x0003: scope[0]["init"] = t0
+  0x0008: t1 = global["window"]
+  0x000D: t2 = 0
+  -> if (!t2) goto BB2 else goto BB1
+
+BB1: [0x0017-0x001C]
+  0x0017: t3 = true
+  -> goto BB3
+
+BB2: [0x0020-0x0020]
+  0x0020: t3 = null
+  -> BB3
+
+BB3: [0x0025-0x0025] (return)
+  0x0025: return t3
+```
+
+---
+
+## 4. 核心数据结构
+
+### 4.1 基本块 (BasicBlock)
 
 ```javascript
 class BasicBlock {
     constructor(instructions, start, type) {
         this.preds = [];           // 前驱块
         this.sucs = [];            // 后继块
-        this.instructions = [];    // 指令列表 [opcode, p0, p1, p2, p3, pos]
-        this.start = start;        // 起始位置
+        this.instructions = [];    // 指令列表
+        this.start = start;        // 起始地址
         this.type = type;          // "statement" | "condition" | "return" | "throw"
         this.true = undefined;     // 条件为真的跳转目标
         this.false = undefined;    // 条件为假的跳转目标
-        this.instruction_range = undefined;  // [start, end]
     }
 }
 ```
 
-### 3.2 节点类型 (Node)
+### 4.2 CFG 节点 (Node)
 
 ```javascript
-// 基类
 class Node {
-    constructor(lins, type, children, pos, instruction_range) {
-        this.lins = lins;                    // IR 指令列表
-        this.type = type;                    // 节点类型
-        this.children = children;            // 子节点
-        this.pos = pos;                      // 位置
-        this.instruction_range = instruction_range;
-        this.num = undefined;                // RPO 编号
-        this.ins_range = undefined;          // 指令范围
-        this.loc_ins = undefined;            // 位置→指令映射
-        this.var_to_declare = new Set();     // 待声明变量
-        this.startloop = false;              // 是否循环头
-        this.latch = undefined;              // 循环尾节点
-        this.loop_type = undefined;          // "pre_test" | "post_test" | "end_less"
-        this.loop_nodes = [];                // 循环内节点
-        this.follow = {};                    // 后继节点 {if: node, loop: node}
-        this.true = undefined;               // 条件真分支
-        this.false = undefined;              // 条件假分支
+    constructor(lins, type, children, pos) {
+        this.lins = lins;              // IR 指令列表
+        this.type = type;              // 节点类型
+        this.children = children;      // 子节点
+        this.num = undefined;          // RPO 编号
+        this.startloop = false;        // 是否循环头
+        this.latch = undefined;        // 循环尾节点
+        this.loop_type = undefined;    // "pre_test" | "post_test" | "end_less"
+        this.loop_nodes = [];          // 循环内节点
+        this.follow = {};              // 后继节点 {if: node, loop: node}
     }
 }
 
-// 派生类
-class StatementNode extends Node { }      // 语句块
-class ConditionNode extends Node { }      // 条件块
-class LoopNode extends Node { }           // 循环块
-class ReturnNode extends Node { }         // 返回块
-class ThrowNode extends Node { }          // 异常块
-class IntervalNode extends Node { }       // 区间图节点
+// 派生类: StatementNode, ConditionNode, LoopNode, ReturnNode, ThrowNode, IntervalNode
 ```
 
-### 3.3 控制流图 (Graph)
+### 4.3 控制流图 (Graph)
 
 ```javascript
 class Graph {
     constructor() {
-        this.entry = null;              // 入口节点
-        this.exit = null;               // 出口节点
-        this.nodes = [];                // 所有节点
-        this.edges = {};                // 普通边 {from: [to1, to2]}
-        this.catch_edges = {};          // 异常边
-        this.reverse_edges = {};        // 反向边
-        this.reverse_catch_edges = {};  // 反向异常边
-        this.rpo = [];                  // 逆后序
-        this.loc_to_node = {};          // 位置→节点映射
-        this.bytes_code = [];           // 字节码
+        this.entry = null;
+        this.exit = null;
+        this.nodes = [];
+        this.edges = {};           // {from: [to1, to2]}
+        this.reverse_edges = {};
+        this.rpo = [];             // 逆后序
     }
     
     // 核心方法
     add_node(node) { }
     add_edge(from, to) { }
-    add_catch_edge(from, to) { }
-    post_order() { }           // 后序遍历
-    compute_rpo() { }          // 计算逆后序
-    compute_idom() { }         // 计算直接支配点
-    number_ins() { }           // 指令编号
-    draw(output) { }           // 输出 CFG 图
+    post_order() { }       // 后序遍历
+    compute_rpo() { }      // 计算逆后序
+    compute_idom() { }     // 计算直接支配点
 }
 ```
 
 ---
 
-## 4. 阶段 1-2: AST 解析与参数提取
-
-### 4.1 解析 AST
+## 5. 阶段 1-2: AST 解析与参数提取
 
 ```javascript
+const parser = require("@babel/parser");
+const traverse = require("@babel/traverse").default;
+const types = require("@babel/types");
+const fs = require("fs");
+
 const code = fs.readFileSync("./target.js", "utf-8");
 const ast = parser.parse(code);
-```
 
-### 4.2 提取 VM 参数
+let paramB, paramD, paramDValues;
 
-```javascript
-let paramD = undefined;        // 常量数组
-let paramDValues = undefined;  // 解码后的常量值
-let paramB = undefined;        // 编码的字节码
-let fnList = undefined;        // handler 函数列表
-
-// 提取常量数组 (通常是 {b: "...", d: [...]} 结构)
+// 提取 VM 参数 (通常是 {b: "...", d: [...]} 结构)
 traverse(ast, {
     ObjectExpression: {
         enter(path) {
-            const node = path.node;
-            if (node.properties.length !== 2) return;
-            const properties = node.properties;
-            if (properties[0].key.value !== "b") return;
+            const props = path.node.properties;
+            if (props.length !== 2 || props[0].key.value !== "b") return;
             
-            paramB = properties[0].value.value;  // 编码字节码
-            paramD = properties[1].value.elements;  // 常量数组
+            paramB = props[0].value.value;      // 编码字节码
+            paramD = props[1].value.elements;   // 常量数组
             
-            // 解码常量值
-            paramDValues = paramD.map(function(e) {
+            paramDValues = paramD.map(e => {
                 if (types.isStringLiteral(e)) return e.value;
                 if (types.isNumericLiteral(e)) return e.value;
                 if (types.isNullLiteral(e)) return null;
@@ -212,72 +223,8 @@ traverse(ast, {
     }
 });
 
-// 提取 handler 函数列表
-traverse(ast, {
-    ArrayExpression: {
-        enter(path) {
-            const node = path.node;
-            if (node.elements.length !== 67) return;  // 根据实际 handler 数量调整
-            fnList = node.elements;
-            path.stop();
-        }
-    }
-});
-```
-
-### 4.3 字节码解码
-
-```javascript
-// Base64 + UTF-8 解码
-function decode(j) {
-    if (!j) return "";
-    
-    var n = function(e) {
-        var f = [], t = e.length;
-        for (var u = 0; u < t; u++) {
-            var w = e.charCodeAt(u);
-            if ((w >> 7 & 255) == 0) {
-                f.push(e.charAt(u));
-            } else if ((w >> 5 & 255) == 6) {
-                var b = e.charCodeAt(++u);
-                var v = (w & 31) << 6 | (b & 63);
-                f.push(String.fromCharCode(v));
-            } else if ((w >> 4 & 255) == 14) {
-                var b = e.charCodeAt(++u);
-                var d = e.charCodeAt(++u);
-                var v = ((w << 4 | b >> 2 & 15) & 255) << 8 | ((b & 3) << 6 | d & 63);
-                f.push(String.fromCharCode(v));
-            }
-        }
-        return f.join("");
-    };
-    
-    var k = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".split("");
-    var p = j.length, l = 0, m = [];
-    
-    while (l < p) {
-        var s = k.indexOf(j.charAt(l++));
-        var r = k.indexOf(j.charAt(l++));
-        var q = k.indexOf(j.charAt(l++));
-        var o = k.indexOf(j.charAt(l++));
-        var i = s << 2 | r >> 4;
-        var h = (r & 15) << 4 | q >> 2;
-        var g = (q & 3) << 6 | o;
-        m.push(String.fromCharCode(i));
-        if (q != 64) m.push(String.fromCharCode(h));
-        if (o != 64) m.push(String.fromCharCode(g));
-    }
-    return n(m.join(""));
-}
-
-// 解码并分组为指令 (每条指令 5 字节)
-const paramBDecodeData = decode(paramB).split('').reduce(function(acc, char) {
-    if (!acc.length || acc[acc.length - 1].length == 5) {
-        acc.push([]);
-    }
-    acc[acc.length - 1].push(char.charCodeAt() - 1);
-    return acc;
-}, []);
+// 字节码解码 (具体实现取决于目标 VM 的编码方式)
+// 常见: Base64 + UTF-8, 每条指令 N 字节
 ```
 
 ---
