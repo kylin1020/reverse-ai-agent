@@ -21,6 +21,45 @@ inclusion: manual
 3. **Pre-merge integrity check is MANDATORY** - Invoke sub-agent to verify completeness
 4. **Immediately analyze missing functions** - No function may be skipped, even empty or trivial ones
 
+---
+
+## ⚠️ ABSOLUTE RULE #2 - NO SIMPLIFIED FUNCTIONS
+
+> **NEVER output "简化版" placeholder functions. Every function MUST have complete logic.**
+
+### Prohibited Patterns
+
+```javascript
+// ❌ FORBIDDEN - These are INVALID outputs:
+function _getBehaviorSum() {
+  return 0; // 简化实现
+}
+
+function _collectData() {
+  return []; // 占位符
+}
+
+function _processInput(x) {
+  return x; // TODO: 实现完整逻辑
+}
+```
+
+### Detection Criteria
+
+A function is considered "simplified" if:
+- Function body has only 1-3 lines when ASM has 20+ instructions
+- Returns hardcoded values (0, null, [], {}, "") without logic
+- Contains comments with: "简化", "占位", "TODO", "stub", "placeholder"
+- Complexity mismatch: ASM complexity >> JS complexity
+
+### Mandatory Response
+
+When tempted to write a simplified function:
+1. **STOP** - Do not write placeholder code
+2. **RE-READ** - Go back to ASM, read every instruction
+3. **TRACE** - Follow stack operations step by step
+4. **IMPLEMENT** - Write the actual logic, no matter how complex
+
 ### Pre-Merge Verification Protocol
 
 ```
@@ -488,24 +527,74 @@ Example:
 
 ---
 
-## PHASE 7: FINAL VERIFICATION
+## PHASE 7: CODE QUALITY VERIFICATION (PARALLEL SUB-AGENTS)
 
-After synthesis, perform final checks:
+> After synthesis, dispatch multiple sub-agents concurrently to check different function groups.
+> Main agent is responsible for fixing any issues found.
+
+### 7.1 Issue Types
+
+| Type | Symptom | Root Cause |
+|------|---------|------------|
+| `simplified` | Body is just `return 0/null/[]` | ASM logic skipped |
+| `missing_constant` | Expected strings missing | Constants not loaded |
+| `undefined_ref` | Calls undefined function/var | ASM analysis incomplete |
+| `incomplete_logic` | Empty branches/loops | Control flow missed |
+
+### 7.2 Checker Sub-Agent Dispatch
+
+Split functions into groups (~15 per group), dispatch checkers concurrently:
 
 ```
-1. Count functions in output/decompiled.js
-   - MUST equal ASM declared count
-   
-2. Verify no unresolved placeholders
-   - Search for "TODO:" or "fn{" patterns
-   - All must be resolved to actual names
-   
-3. Syntax validation
-   - Output should be valid JavaScript
-   
-4. Update analysis/_index.md
-   - Mark all functions as [x] completed
-   - Record final function names
+Checker Sub-Agent Task:
+
+Check functions fn{start}-fn{end} in output/decompiled.js.
+Compare against ASM lines and batch analysis files.
+
+For each function, check:
+1. Is body suspiciously simple? (1-3 lines when ASM has 20+ instructions)
+2. Returns hardcoded 0/null/[]/{}/"" without logic?
+3. Comments contain "简化", "占位", "TODO", "stub"?
+4. All called functions defined?
+5. All string constants from ASM present?
+
+Output: List of problematic functions with:
+- function name
+- issue type
+- ASM line range for re-analysis
+```
+
+### 7.3 Main Agent Fix Loop
+
+When sub-agents report issues:
+
+```
+FOR each reported issue:
+  1. Read the function's ASM lines (from _index.md)
+  2. Re-analyze ASM instructions completely
+  3. Generate correct JS implementation
+  4. Replace the problematic function in decompiled.js
+
+REPEAT quality check until all sub-agents report no issues.
+```
+
+### 7.4 Pass Criteria
+
+- All checker sub-agents report zero issues
+- No function marked as simplified/placeholder
+- No unresolved `fn{id}` references
+- All constants properly resolved
+
+---
+
+## PHASE 8: FINAL VERIFICATION
+
+```
+1. Function count in decompiled.js = ASM declared count
+2. No unresolved "TODO:" or "fn{" placeholders
+3. Valid JavaScript syntax
+4. All quality checks passed
+5. Update _index.md with final status
 ```
 
 ---
@@ -533,32 +622,19 @@ After synthesis, perform final checks:
 ## COORDINATOR WORKFLOW SUMMARY
 
 ```
-1. INIT
-   └─> Load constants, scan functions, create _index.md
-   └─> Record EXACT function count N
+1. INIT: Load constants, scan functions, create _index.md
 
-2. DISPATCH (loop until all done)
-   ├─> Select next uncompleted batch from _index.md
-   ├─> Invoke sub-agent with batch context
-   ├─> Sub-agent writes to analysis/batch_*.md
-   └─> Update _index.md status
+2. DISPATCH: Invoke sub-agents for batch analysis → batch_*.md
 
-3. ⚠️ INTEGRITY CHECK (MANDATORY)
-   ├─> Invoke sub-agent to verify function completeness
-   ├─> If any missing, immediately analyze them
-   └─> Repeat check until PASS
+3. INTEGRITY CHECK: Verify all functions analyzed, fix missing
 
-4. 🧠 INTELLIGENT SYNTHESIS (COORDINATOR DOES THIS)
-   ├─> Read ALL batch files deeply (not just extract code)
-   ├─> Build global understanding of call graph & scope chains
-   ├─> Resolve naming inconsistencies across batches
-   ├─> Fix any errors found through cross-reference
-   ├─> Re-analyze ASM sections when contradictions found
-   └─> Generate coherent, correctly-ordered output
+4. SYNTHESIS: Build call graph, resolve inconsistencies, generate decompiled.js
 
-5. FINAL VERIFY
-   └─> Confirm output/decompiled.js contains all N functions
-   └─> Verify no unresolved placeholders remain
+5. QUALITY CHECK: Dispatch parallel checker sub-agents
+   → If issues found: main agent re-analyzes ASM and fixes
+   → Repeat until all checkers pass
+
+6. FINAL VERIFY: Confirm counts, no placeholders, valid JS
 ```
 
 ---
@@ -571,6 +647,8 @@ After synthesis, perform final checks:
 - **Large function (>500 lines)**: Split into logical blocks, analyze sequentially
 - **Missing function detected**: HALT immediately, analyze missing function, do NOT skip
 - **Cross-batch inconsistency**: Re-read ASM, determine correct interpretation, document decision
+- **Simplified function detected**: Re-analyze ASM, generate complete implementation, replace placeholder
+- **Quality check failure**: Fix all critical issues before proceeding, re-run checkers until PASS
 
 ---
 
