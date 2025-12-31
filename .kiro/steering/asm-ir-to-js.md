@@ -365,48 +365,57 @@ Synthesis is ONLY permitted when ALL conditions are met:
 
 ## PHASE 5.5: PARALLEL JS EXTRACTION (SUB-AGENTS)
 
-> Batch files are long. Dispatch multiple sub-agents concurrently to extract JS code from each batch.
+> Dispatch multiple sub-agents concurrently, each reading ONLY its assigned batch files.
 
-### Dispatch Strategy
+### Dispatch Rules
 
-Split batch files into groups (5-8 batches per sub-agent), dispatch concurrently:
+1. Calculate batch groups: e.g., 40 batches → 8 sub-agents, 5 batches each
+2. **MUST specify exact file list** in each sub-agent prompt
+3. Dispatch ALL sub-agents concurrently (not sequentially)
+
+### Sub-Agent Prompt Template
 
 ```
-Sub-Agent Task: Extract JS from batch files
+Extract JS code from batch files. You may ONLY read these files:
+- analysis/batch_001_fn0-fn19.md
+- analysis/batch_002_fn20-fn39.md
+- analysis/batch_003_fn40-fn59.md
+- analysis/batch_004_fn60-fn79.md
+- analysis/batch_005_fn80-fn99.md
 
-INPUT: batch_{NNN}_fn{start}-fn{end}.md (assigned group)
+DO NOT read any other batch files.
 
 TASK:
-1. Read assigned batch files
-2. Extract all ```javascript code blocks
-3. For each function, output:
-   - Function code (preserve comments)
-   - Unresolved references: list fn{id} placeholders, scope[x][y] needing resolution
-   - Uncertain variables: params/vars that may need renaming for consistency
+1. Read ONLY the files listed above
+2. Extract ```javascript code blocks from each function
+3. Note unresolved: fn{id} placeholders, scope[x][y] refs
+4. Note uncertain: variables that may need renaming
 
-OUTPUT FORMAT:
----
-## Extracted from batch_{NNN}
-
-### fn{id}: {name}
-```javascript
-// extracted code here
+OUTPUT: Write to analysis/extracted_group_001.md
 ```
 
-**Unresolved**: fn23, fn45, scope[1][5]
-**Uncertain**: param `arr` may be `input` based on usage
+### Concurrent Dispatch Example (40 batches, 8 sub-agents)
 
----
+```
+Sub-Agent 1: batch_001 - batch_005 → extracted_group_001.md
+Sub-Agent 2: batch_006 - batch_010 → extracted_group_002.md
+Sub-Agent 3: batch_011 - batch_015 → extracted_group_003.md
+Sub-Agent 4: batch_016 - batch_020 → extracted_group_004.md
+Sub-Agent 5: batch_021 - batch_025 → extracted_group_005.md
+Sub-Agent 6: batch_026 - batch_030 → extracted_group_006.md
+Sub-Agent 7: batch_031 - batch_035 → extracted_group_007.md
+Sub-Agent 8: batch_036 - batch_040 → extracted_group_008.md
+
+↑ Invoke ALL 8 sub-agents in ONE turn (parallel execution)
 ```
 
-### Main Agent Responsibility
+### Main Agent: Merge Extracted Results
 
-After sub-agents complete:
-1. Collect all extracted JS from sub-agents
-2. Resolve cross-batch naming inconsistencies
-3. Replace fn{id} placeholders with actual function names
-4. Unify uncertain variables based on scope analysis
-5. Proceed to PHASE 6 for final synthesis
+After all sub-agents complete:
+1. Read all extracted_group_*.md files
+2. Resolve cross-group naming inconsistencies
+3. Replace fn{id} with actual function names
+4. Proceed to PHASE 6
 
 ---
 
