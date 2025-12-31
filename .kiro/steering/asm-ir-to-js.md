@@ -363,6 +363,53 @@ Synthesis is ONLY permitted when ALL conditions are met:
 
 ---
 
+## PHASE 5.5: PARALLEL JS EXTRACTION (SUB-AGENTS)
+
+> Batch files are long. Dispatch multiple sub-agents concurrently to extract JS code from each batch.
+
+### Dispatch Strategy
+
+Split batch files into groups (5-8 batches per sub-agent), dispatch concurrently:
+
+```
+Sub-Agent Task: Extract JS from batch files
+
+INPUT: batch_{NNN}_fn{start}-fn{end}.md (assigned group)
+
+TASK:
+1. Read assigned batch files
+2. Extract all ```javascript code blocks
+3. For each function, output:
+   - Function code (preserve comments)
+   - Unresolved references: list fn{id} placeholders, scope[x][y] needing resolution
+   - Uncertain variables: params/vars that may need renaming for consistency
+
+OUTPUT FORMAT:
+---
+## Extracted from batch_{NNN}
+
+### fn{id}: {name}
+```javascript
+// extracted code here
+```
+
+**Unresolved**: fn23, fn45, scope[1][5]
+**Uncertain**: param `arr` may be `input` based on usage
+
+---
+```
+
+### Main Agent Responsibility
+
+After sub-agents complete:
+1. Collect all extracted JS from sub-agents
+2. Resolve cross-batch naming inconsistencies
+3. Replace fn{id} placeholders with actual function names
+4. Unify uncertain variables based on scope analysis
+5. Proceed to PHASE 6 for final synthesis
+
+---
+
 ## PHASE 6: INTELLIGENT SYNTHESIS (COORDINATOR RESPONSIBILITY)
 
 > ⚠️ **CRITICAL**: This phase is NOT simple file concatenation!
