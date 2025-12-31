@@ -23,42 +23,46 @@ inclusion: manual
 
 ---
 
-## ⚠️ ABSOLUTE RULE #2 - NO SIMPLIFIED FUNCTIONS
+## ⚠️ ABSOLUTE RULE #2 - NO INVALID FUNCTIONS
 
-> **NEVER output "简化版" placeholder functions. Every function MUST have complete logic.**
+> **Every function MUST have complete logic, use all declared params, and identify algorithms.**
 
 ### Prohibited Patterns
 
 ```javascript
-// ❌ FORBIDDEN - These are INVALID outputs:
+// ❌ FORBIDDEN - simplified placeholder
 function _getBehaviorSum() {
   return 0; // 简化实现
 }
 
-function _collectData() {
-  return []; // 占位符
+// ❌ FORBIDDEN - unused parameters
+function processData(input, key, iv) {
+  let x = globalVar;  // input, key, iv never used!
+  return x;
 }
 
-function _processInput(x) {
-  return x; // TODO: 实现完整逻辑
+// ❌ FORBIDDEN - unlabeled algorithm
+function hash(data) {
+  // Complex bit operations without identifying what algorithm this is
+  let h = 0x67452301;  // This is MD5! Must be labeled
+  ...
 }
 ```
 
 ### Detection Criteria
 
-A function is considered "simplified" if:
-- Function body has only 1-3 lines when ASM has 20+ instructions
-- Returns hardcoded values (0, null, [], {}, "") without logic
-- Contains comments with: "简化", "占位", "TODO", "stub", "placeholder"
-- Complexity mismatch: ASM complexity >> JS complexity
+A function is INVALID if:
+- Body has 1-3 lines when ASM has 20+ instructions (simplified)
+- Returns hardcoded 0/null/[]/{}/"" without logic
+- **Declared parameters are never referenced in function body**
+- Complex bit/math operations without algorithm identification
+- Comments contain "简化", "占位", "TODO", "stub"
 
 ### Mandatory Response
 
-When tempted to write a simplified function:
-1. **STOP** - Do not write placeholder code
-2. **RE-READ** - Go back to ASM, read every instruction
-3. **TRACE** - Follow stack operations step by step
-4. **IMPLEMENT** - Write the actual logic, no matter how complex
+1. **Unused params** → Re-trace ASM LOAD_SCOPE instructions for param access
+2. **Simplified body** → Re-read all ASM instructions, implement full logic
+3. **Unknown algorithm** → Identify by magic constants/structure, or flag for review
 
 ### Pre-Merge Verification Protocol
 
@@ -537,11 +541,59 @@ Example:
 | Type | Symptom | Root Cause |
 |------|---------|------------|
 | `simplified` | Body is just `return 0/null/[]` | ASM logic skipped |
+| `unused_params` | Declared params never referenced in body | Scope analysis wrong |
 | `missing_constant` | Expected strings missing | Constants not loaded |
 | `undefined_ref` | Calls undefined function/var | ASM analysis incomplete |
 | `incomplete_logic` | Empty branches/loops | Control flow missed |
+| `unidentified_algo` | Complex bit ops without algorithm label | Algorithm not recognized |
 
-### 7.2 Checker Sub-Agent Dispatch
+### 7.2 Algorithm Recognition
+
+Sub-agents MUST identify known algorithms and their variants:
+
+**Common algorithms to detect:**
+- Hash: MD5, SHA1, SHA256, CRC32
+- Cipher: AES, DES, RC4, TEA/XTEA
+- Encoding: Base64, Base32, Hex
+- Custom: XOR chains, bit rotation, lookup tables
+
+**Detection signals:**
+- Magic constants (e.g., MD5: 0x67452301, SHA1: 0x5A827999)
+- Characteristic operations (rotate, S-box lookup, Feistel structure)
+- Round-based loops with specific iteration counts
+- Large constant arrays (S-boxes, permutation tables)
+
+**Required action:**
+- Label function with algorithm name: `// Algorithm: MD5 (standard)` or `// Algorithm: MD5 (modified - custom constants)`
+- If modified, note differences from standard implementation
+- If unrecognizable complex bit operations, flag for manual review
+
+### 7.3 Parameter Usage Check (CRITICAL)
+
+**Every declared parameter MUST be used in function body.**
+
+```javascript
+// ❌ WRONG - param1, param2 declared but never used
+function processData(param1, param2) {
+  let x = someGlobal;  // Where did param1, param2 go?
+  return x + 1;
+}
+
+// ✅ CORRECT - all params referenced
+function processData(param1, param2) {
+  let x = param1 + param2;
+  return x + 1;
+}
+```
+
+**If params unused, the cause is usually:**
+1. Scope analysis error - params mapped to wrong variables
+2. ASM LOAD_SCOPE instructions missed
+3. Closure capture confused with parameter
+
+**Fix:** Re-read ASM, trace every LOAD_SCOPE d=0 (current scope) to find param usage.
+
+### 7.4 Checker Sub-Agent Dispatch
 
 Split functions into groups (~15 per group), dispatch checkers concurrently:
 
@@ -552,19 +604,21 @@ Check functions fn{start}-fn{end} in output/decompiled.js.
 Compare against ASM lines and batch analysis files.
 
 For each function, check:
-1. Is body suspiciously simple? (1-3 lines when ASM has 20+ instructions)
-2. Returns hardcoded 0/null/[]/{}/"" without logic?
-3. Comments contain "简化", "占位", "TODO", "stub"?
-4. All called functions defined?
-5. All string constants from ASM present?
+1. Simplified: Body 1-3 lines when ASM has 20+ instructions?
+2. Unused params: Any declared parameter never referenced in body?
+3. Algorithm: Complex bit/math ops? Identify algorithm or flag unknown.
+4. Constants: All K[x] from ASM present as strings?
+5. References: All called functions defined?
 
 Output: List of problematic functions with:
 - function name
-- issue type
+- issue type (simplified/unused_params/unidentified_algo/missing_constant/undefined_ref)
 - ASM line range for re-analysis
+- For unused_params: which params are unused
+- For algorithms: suspected algorithm name or "unknown complex ops"
 ```
 
-### 7.3 Main Agent Fix Loop
+### 7.5 Main Agent Fix Loop
 
 When sub-agents report issues:
 
@@ -572,18 +626,21 @@ When sub-agents report issues:
 FOR each reported issue:
   1. Read the function's ASM lines (from _index.md)
   2. Re-analyze ASM instructions completely
-  3. Generate correct JS implementation
-  4. Replace the problematic function in decompiled.js
+  3. For unused_params: trace LOAD_SCOPE d=0 to find actual param usage
+  4. For algorithms: identify magic constants, label appropriately
+  5. Generate correct JS implementation
+  6. Replace the problematic function in decompiled.js
 
 REPEAT quality check until all sub-agents report no issues.
 ```
 
-### 7.4 Pass Criteria
+### 7.6 Pass Criteria
 
 - All checker sub-agents report zero issues
-- No function marked as simplified/placeholder
-- No unresolved `fn{id}` references
-- All constants properly resolved
+- No function has unused declared parameters
+- All complex algorithms identified and labeled
+- No simplified/placeholder functions
+- No unresolved references
 
 ---
 
