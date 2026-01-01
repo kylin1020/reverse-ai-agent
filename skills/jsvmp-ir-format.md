@@ -16,8 +16,7 @@
 ## Output Files
 ```
 output/
-├── {name}_disasm.vmasm      # IR assembly (v1.1 自包含)
-└── {name}_disasm.vmasm.map  # Source Map (JSON)
+└── {name}_disasm.vmasm      # IR assembly (v1.1 自包含)
 ```
 
 ---
@@ -320,7 +319,7 @@ v1.1 格式为 IDE 插件提供以下能力：
 | **Hover Preview** | 悬停 `K[0]` → 显示 `Type: String, Value: "init"` |
 | **Rename Symbol** | 重命名常量 → 同步更新所有引用 |
 | **In-place Editing** | 直接修改 `@const K[0]` 的值，下游自动更新 |
-| **Breakpoint Mapping** | 通过 `.vmasm.map` 映射到原始 JS 位置 |
+| **Breakpoint Mapping** | 通过 `@reg` 头部信息在调试器中动态生成断点条件 |
 
 ---
 
@@ -330,8 +329,7 @@ v1.1 格式为 IDE 插件提供以下能力：
 2. **操作数**: 根据 opcode 的操作数类型/数量解析
 3. **常量**: 内嵌在文件头部，不再依赖外部 JSON
 4. **跳转**: 目标地址 = 当前地址 + 偏移 + 指令长度
-5. **Source Map**: 生成 `.vmap` 用于断点映射
-6. **解析器**: 使用 Chevrotain，参见 `skills/jsvmp-ir-parser.md`
+5. **解析器**: 使用 Chevrotain，参见 `skills/jsvmp-ir-parser.md`
 
 ---
 
@@ -342,6 +340,6 @@ v1.1 格式为 IDE 插件提供以下能力：
 | LIR | `.vmasm` | VM Assembly | 低级表示：1:1 还原字节码，保留显式栈操作与物理地址 |
 | MIR | `.vmir` | VM Mid-level IR | 中级表示：栈消除（转化为临时变量），划分基本块 (Basic Blocks) |
 | HIR | `.vmhir` | VM High-level IR | 高级表示：控制流恢复 (If/While)，接近伪代码 |
-| MAP | `.vmap` | VM Source Map | 映射文件：关联 IR 地址与原始 JS 混淆文件的 `[行:列]` |
+| MAP | `.vmap` | VM Source Map | 映射文件：关联 IR 地址与原始 JS 混淆文件的 `[行:列]` (可选) |
 
 通过这种结构，`.vmasm` 文件成为一个**独立、可审计、可手动微调**的逆向工程中间产物，不再依赖碎片化的外部 JSON 文件。

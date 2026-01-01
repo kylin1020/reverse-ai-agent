@@ -16,6 +16,14 @@
 @reg ip=a, sp=p, stack=v, bc=o, storage=l, const=k
 
 ;; ==========================================
+;; INJECTION POINTS (用于 VSCode Extension 自动设置断点)
+;; ==========================================
+@dispatcher line=2, column=131618
+@global_bytecode var=Z, line=2, column=91578
+@function_entry name=X, line=2, column=131029
+@breakpoint line=2, column=131639
+
+;; ==========================================
 ;; CONSTANTS SECTION
 ;; ==========================================
 @section constants
@@ -46,6 +54,22 @@
 | `@url` | 否 | 浏览器拦截匹配的 URL 模式 |
 | `@reg` | 是 | VM 寄存器映射 |
 
+### 注入点指令 (Injection Points)
+
+| 指令 | 必需 | 说明 |
+|------|------|------|
+| `@dispatcher` | 否 | VM 调度器循环位置，格式: `line=N, column=N` |
+| `@global_bytecode` | 否 | 全局字节码数组定义，格式: `var=NAME, line=N, column=N` |
+| `@function_entry` | 否 | 包含 bytecode 参数的函数入口，格式: `name=NAME, line=N, column=N` |
+| `@breakpoint` | 否 | 推荐的断点位置 (opcode 读取后)，格式: `line=N, column=N` |
+
+**注入点用途**:
+- `@dispatcher`: 设置条件断点的位置
+- `@global_bytecode`: 用于计算 bytecode offset
+- `@function_entry`: 注入 offset 计算代码的位置
+- `@breakpoint`: 附加到 `@dispatcher`，表示循环内的最佳断点位置
+- `line`/`column`: 原始压缩 JS 的源码位置 (用于 CDP 断点)
+
 ### 地址映射
 
 **不需要外部 `.vmap` 文件**。地址直接内嵌在每行开头 `0xHHHH:`，解析时构建双向映射：
@@ -73,6 +97,12 @@ const RegDirective = createToken({ name: "RegDirective", pattern: /@reg/ });
 const SectionDirective = createToken({ name: "SectionDirective", pattern: /@section/ });
 const ConstDirective = createToken({ name: "ConstDirective", pattern: /@const/ });
 const EntryDirective = createToken({ name: "EntryDirective", pattern: /@entry/ });
+
+// 注入点指令
+const DispatcherDirective = createToken({ name: "DispatcherDirective", pattern: /@dispatcher/ });
+const GlobalBytecodeDirective = createToken({ name: "GlobalBytecodeDirective", pattern: /@global_bytecode/ });
+const FunctionEntryDirective = createToken({ name: "FunctionEntryDirective", pattern: /@function_entry/ });
+const BreakpointDirective = createToken({ name: "BreakpointDirective", pattern: /@breakpoint/ });
 
 // 类型
 const TypeString = createToken({ name: "TypeString", pattern: /String/ });
@@ -104,12 +134,20 @@ const Identifier = createToken({ name: "Identifier", pattern: /[a-zA-Z_$][a-zA-Z
 
 const lirTokens = [
     WhiteSpace, NewLine, LineComment,
+    // 注入点指令（长的优先）
+    GlobalBytecodeDirective, FunctionEntryDirective, BreakpointDirective, DispatcherDirective,
+    // Header 指令
     FormatDirective, DomainDirective, SourceDirective, UrlDirective,
     RegDirective, SectionDirective, ConstDirective, EntryDirective,
+    // 类型
     TypeString, TypeNumber, TypeBoolean, TypeNull, TypeObject,
+    // 地址与引用
     HexAddress, KRef, VRef,
+    // 字面量
     QuotedString, BooleanLiteral, NumericLiteral,
+    // 操作符
     Equals, Comma, LParen, RParen, LBracket, RBracket,
+    // 标识符（最后）
     Identifier
 ];
 
@@ -297,6 +335,12 @@ class LirVisitor extends LirParser.getBaseCstVisitorConstructor() {
         url: "https://*.douyin.com/*/bdms.js",
         registers: { ip: "a", sp: "p", stack: "v", bc: "o", storage: "l", const: "Z" }
     },
+    // 注入点元数据
+    injectionPoints: {
+        dispatcher: { location: { line: 2, column: 131618 }, breakpoint: { line: 2, column: 131639 } },
+        globalBytecode: { variable: "Z", location: { line: 2, column: 91578 } },
+        functionEntry: { name: "X", location: { line: 2, column: 131029 } }
+    },
     constants: [
         { index: 0, type: "String", value: "signature" },
         { index: 1, type: "Number", value: 1024 }
@@ -315,33 +359,36 @@ class LirVisitor extends LirParser.getBaseCstVisitorConstructor() {
 
 ## VSCode Extension 集成
 
-Extension 使用简化的行解析（不需要完整 Chevrotain）：
+Extension 使用完整的 Chevrotain 解析器（参考 `jsvmp-ir-extension/src/utils/`）：
 
 ```typescript
-// 地址正则：匹配行首 0xHHHH:
-const ADDRESS_REGEX = /^(0x[0-9A-Fa-f]+):/;
+// 文件结构:
+// - vmasm-lexer.ts   - Token 定义
+// - vmasm-parser.ts  - CST Parser
+// - vmasm-visitor.ts - AST Visitor
+// - map-manager.ts   - 高层 API
 
-// 指令正则
-const DIRECTIVE_REGEX = /^@(\w+)\s+(.+)/;
+import { mapManager } from './utils/map-manager';
 
-function parseVmasmLine(line: string, lineNum: number) {
-    const trimmed = line.trim();
-    
-    // 跳过注释和空行
-    if (!trimmed || trimmed.startsWith(';;')) return null;
-    
-    // 解析指令
-    const dirMatch = trimmed.match(DIRECTIVE_REGEX);
-    if (dirMatch) {
-        return { type: 'directive', name: dirMatch[1], value: dirMatch[2] };
-    }
-    
-    // 解析代码行
-    const addrMatch = trimmed.match(ADDRESS_REGEX);
-    if (addrMatch) {
-        return { type: 'instruction', addr: parseInt(addrMatch[1], 16), line: lineNum };
-    }
-    
-    return null;
-}
+// 解析 vmasm 文件
+const cache = mapManager.parseVmasm('/path/to/file.vmasm');
+
+// 获取元数据
+const metadata = mapManager.getMetadata('/path/to/file.vmasm');
+// metadata.format, metadata.domain, metadata.url, metadata.registers
+
+// 获取注入点信息
+const injectionPoints = mapManager.getInjectionPoints('/path/to/file.vmasm');
+// injectionPoints.dispatcher?.location.line/column
+// injectionPoints.dispatcher?.breakpoint?.line/column
+// injectionPoints.globalBytecode?.variable, location
+// injectionPoints.functionEntry?.name, location
+
+// 行号 <-> 地址映射
+const addr = mapManager.getAddressFromLine('/path/to/file.vmasm', lineNumber);
+const line = mapManager.getLineFromAddress('/path/to/file.vmasm', address);
+
+// 获取寄存器映射
+const regs = mapManager.getRegisterMapping('/path/to/file.vmasm');
+// regs.ip, regs.sp, regs.stack, regs.bc, regs.storage, regs.const
 ```

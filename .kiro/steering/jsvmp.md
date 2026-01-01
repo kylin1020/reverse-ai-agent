@@ -365,15 +365,23 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 > **📚 参考**: `skills/jsvmp-ir-format.md` + `skills/jsvmp-ir-sourcemap.md` + `skills/jsvmp-ir-parser.md`
 > **目标**: 将字节码转换为低级中间表示 (LIR)，保留显式栈操作
 > **理论基础**: 句法分析将字节码序列解析为指令流，中间代码生成将其转换为三地址码形式
-> **v1.1 格式**: 自包含 `.vmasm` 文件，内嵌常量池和寄存器映射
+> **v1.1 格式**: 自包含 `.vmasm` 文件，内嵌常量池、寄存器映射和注入点元数据
 - [ ] 🤖 编写反汇编器 (lib/disassembler.js)
-  - 输入: raw/bytecode.json + raw/constants.json
-  - 输出: output/*_disasm.vmasm (LIR v1.1) + output/*_disasm.vmap (Source Map)
+  - 输入: raw/bytecode.json + raw/constants.json + NOTE.md (VM 结构信息)
+  - 输出: output/*_disasm.vmasm (LIR v1.1)
   - **v1.1 格式要求**:
     ```vmasm
     @format v1.1
     @domain {target-domain}
+    @source source/{filename}.js
+    @url https://*.{domain}/*/{filename}.js
     @reg ip={ip_var}, sp={sp_var}, stack={stack_var}, bc={bc_var}, storage={storage_var}, const={const_var}
+    
+    ;; 注入点元数据 (用于 VSCode Extension 自动设置断点)
+    @dispatcher line={src_line}, column={src_column}
+    @global_bytecode var={bytecode_var}, line={src_line}, column={src_column}
+    @function_entry name={func_name}, line={src_line}, column={src_column}
+    @breakpoint line={src_line}, column={src_column}
     
     @section constants
     @const K[0] = String("...")
@@ -384,7 +392,13 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
     
     0x0000: PUSH_CONST K[0]    ; "value"    [sp:1 | K[0]]
     ```
-  - 关键: 十六进制地址，类型化常量池，保留栈操作语义
+  - **注入点元数据说明**:
+    - `@dispatcher`: VM 调度器循环位置 (用于设置条件断点)
+    - `@global_bytecode`: 全局字节码数组定义位置 (用于计算 offset)
+    - `@function_entry`: 包含 bytecode 参数的函数入口 (用于注入 offset 计算代码)
+    - `@breakpoint`: 推荐的断点位置 (opcode 读取后)
+    - `line`/`column`: 原始压缩 JS 的源码位置 (用于 CDP 断点)
+  - 关键: 十六进制地址，类型化常量池，保留栈操作语义，包含注入点元数据
 
 > **⚠️ IR Parsing**: Use Chevrotain for ALL IR parsing (LIR/MIR/HIR). See `skills/jsvmp-ir-parser.md`
 
