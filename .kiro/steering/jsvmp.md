@@ -380,7 +380,7 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
     ;; 注入点元数据 (用于 VSCode Extension 自动设置断点)
     @dispatcher line={src_line}, column={src_column}
     @global_bytecode var={bytecode_var}, line={src_line}, column={src_column}
-    @function_entry name={func_name}, line={src_line}, column={src_column}
+    @loop_entry line={src_line}, column={src_column}
     @breakpoint line={src_line}, column={src_column}
     
     @section constants
@@ -395,7 +395,7 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
   - **注入点元数据说明**:
     - `@dispatcher`: VM 调度器循环位置 (用于设置条件断点)
     - `@global_bytecode`: 全局字节码数组定义位置 (用于计算 offset)
-    - `@function_entry`: 包含 bytecode 参数的函数入口 (用于注入 offset 计算代码)
+    - `@loop_entry`: dispatcher 循环体的第一行 (用于注入 offset 计算代码，确保 bytecode 已赋值)
     - `@breakpoint`: 推荐的断点位置 (opcode 读取后)
     - `line`/`column`: 原始压缩 JS 的源码位置 (用于 CDP 断点)
   - 关键: 十六进制地址，类型化常量池，保留栈操作语义，包含注入点元数据

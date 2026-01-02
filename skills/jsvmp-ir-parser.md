@@ -20,7 +20,7 @@
 ;; ==========================================
 @dispatcher line=2, column=131618
 @global_bytecode var=Z, line=2, column=91578
-@function_entry name=X, line=2, column=131029
+@loop_entry line=2, column=131029
 @breakpoint line=2, column=131639
 
 ;; ==========================================
@@ -60,13 +60,13 @@
 |------|------|------|
 | `@dispatcher` | 否 | VM 调度器循环位置，格式: `line=N, column=N` |
 | `@global_bytecode` | 否 | 全局字节码数组定义，格式: `var=NAME, line=N, column=N` |
-| `@function_entry` | 否 | 包含 bytecode 参数的函数入口，格式: `name=NAME, line=N, column=N` |
+| `@loop_entry` | 否 | dispatcher 循环体的第一行，格式: `line=N, column=N` |
 | `@breakpoint` | 否 | 推荐的断点位置 (opcode 读取后)，格式: `line=N, column=N` |
 
 **注入点用途**:
 - `@dispatcher`: 设置条件断点的位置
 - `@global_bytecode`: 用于计算 bytecode offset
-- `@function_entry`: 注入 offset 计算代码的位置
+- `@loop_entry`: 注入 offset 计算代码的位置（在循环体内，确保 bytecode 已赋值）
 - `@breakpoint`: 附加到 `@dispatcher`，表示循环内的最佳断点位置
 - `line`/`column`: 原始压缩 JS 的源码位置 (用于 CDP 断点)
 
@@ -101,7 +101,7 @@ const EntryDirective = createToken({ name: "EntryDirective", pattern: /@entry/ }
 // 注入点指令
 const DispatcherDirective = createToken({ name: "DispatcherDirective", pattern: /@dispatcher/ });
 const GlobalBytecodeDirective = createToken({ name: "GlobalBytecodeDirective", pattern: /@global_bytecode/ });
-const FunctionEntryDirective = createToken({ name: "FunctionEntryDirective", pattern: /@function_entry/ });
+const LoopEntryDirective = createToken({ name: "LoopEntryDirective", pattern: /@loop_entry/ });
 const BreakpointDirective = createToken({ name: "BreakpointDirective", pattern: /@breakpoint/ });
 
 // 类型
@@ -135,7 +135,7 @@ const Identifier = createToken({ name: "Identifier", pattern: /[a-zA-Z_$][a-zA-Z
 const lirTokens = [
     WhiteSpace, NewLine, LineComment,
     // 注入点指令（长的优先）
-    GlobalBytecodeDirective, FunctionEntryDirective, BreakpointDirective, DispatcherDirective,
+    GlobalBytecodeDirective, LoopEntryDirective, BreakpointDirective, DispatcherDirective,
     // Header 指令
     FormatDirective, DomainDirective, SourceDirective, UrlDirective,
     RegDirective, SectionDirective, ConstDirective, EntryDirective,
@@ -339,7 +339,7 @@ class LirVisitor extends LirParser.getBaseCstVisitorConstructor() {
     injectionPoints: {
         dispatcher: { location: { line: 2, column: 131618 }, breakpoint: { line: 2, column: 131639 } },
         globalBytecode: { variable: "Z", location: { line: 2, column: 91578 } },
-        functionEntry: { name: "X", location: { line: 2, column: 131029 } }
+        loopEntry: { location: { line: 2, column: 131029 } }
     },
     constants: [
         { index: 0, type: "String", value: "signature" },
@@ -382,7 +382,7 @@ const injectionPoints = mapManager.getInjectionPoints('/path/to/file.vmasm');
 // injectionPoints.dispatcher?.location.line/column
 // injectionPoints.dispatcher?.breakpoint?.line/column
 // injectionPoints.globalBytecode?.variable, location
-// injectionPoints.functionEntry?.name, location
+// injectionPoints.loopEntry?.location
 
 // 行号 <-> 地址映射
 const addr = mapManager.getAddressFromLine('/path/to/file.vmasm', lineNumber);
