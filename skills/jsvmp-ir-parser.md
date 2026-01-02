@@ -359,36 +359,46 @@ class LirVisitor extends LirParser.getBaseCstVisitorConstructor() {
 
 ## VSCode Extension 集成
 
-Extension 使用完整的 Chevrotain 解析器（参考 `jsvmp-ir-extension/src/utils/`）：
-
 ```typescript
-// 文件结构:
-// - vmasm-lexer.ts   - Token 定义
-// - vmasm-parser.ts  - CST Parser
-// - vmasm-visitor.ts - AST Visitor
-// - map-manager.ts   - 高层 API
-
 import { mapManager } from './utils/map-manager';
 
-// 解析 vmasm 文件
 const cache = mapManager.parseVmasm('/path/to/file.vmasm');
-
-// 获取元数据
 const metadata = mapManager.getMetadata('/path/to/file.vmasm');
-// metadata.format, metadata.domain, metadata.url, metadata.registers
-
-// 获取注入点信息
-const injectionPoints = mapManager.getInjectionPoints('/path/to/file.vmasm');
-// injectionPoints.dispatcher?.location.line/column
-// injectionPoints.dispatcher?.breakpoint?.line/column
-// injectionPoints.globalBytecode?.variable, location
-// injectionPoints.loopEntry?.location
-
-// 行号 <-> 地址映射
 const addr = mapManager.getAddressFromLine('/path/to/file.vmasm', lineNumber);
-const line = mapManager.getLineFromAddress('/path/to/file.vmasm', address);
-
-// 获取寄存器映射
 const regs = mapManager.getRegisterMapping('/path/to/file.vmasm');
-// regs.ip, regs.sp, regs.stack, regs.bc, regs.storage, regs.const
 ```
+
+---
+
+## 在 lib/*.js 中使用
+
+```javascript
+// 需要先编译: cd jsvmp-ir-extension && npm run compile
+const { VmasmLexer } = require('../../jsvmp-ir-extension/out/utils/vmasm-lexer');
+const { vmasmParser } = require('../../jsvmp-ir-extension/out/utils/vmasm-parser');
+const { vmasmVisitor } = require('../../jsvmp-ir-extension/out/utils/vmasm-visitor');
+
+function parseVmasmFile(filePath) {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const lexResult = VmasmLexer.tokenize(content);
+    vmasmParser.input = lexResult.tokens;
+    return vmasmVisitor.visit(vmasmParser.program());
+}
+
+// 返回 VmasmAST:
+// { format, domain, registers, dispatcher?, constants[], instructions[], lineToAddr, addrToLine }
+```
+
+### AST 关键字段
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `instructions[].addr` | number | 字节码地址 (十六进制) |
+| `instructions[].opcode` | string | 操作码 |
+| `instructions[].operands` | string[] | 操作数列表 |
+| `instructions[].lineNumber` | number | IR 文件行号 |
+| `constants[].index` | number | K[index] |
+| `constants[].type` | string | String/Number/Boolean/Null |
+| `constants[].value` | any | 常量值 |
+| `lineToAddr` | Map | IR 行号 → 字节码地址 |
+| `addrToLine` | Map | 字节码地址 → IR 行号 |

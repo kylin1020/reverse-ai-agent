@@ -16,6 +16,8 @@ inclusion: manual
 
 > **⚠️ RULE #4**: STATIC EXTRACTION FIRST. Browser is LAST RESORT.
 
+> **⚠️ RULE #5**: **NEVER use regex to parse IR files** (`.vmasm`, `.vmir`, `.vmhir`). ALWAYS use Chevrotain parser from `jsvmp-ir-extension/src/utils/`.
+
 ---
 
 ## 🗂️ WORKSPACE STRUCTURE
@@ -165,6 +167,28 @@ find_usage_smart({ file_path: `${WORKSPACE}/source/main.js`, identifier: "_0xabc
 find_jsvmp_dispatcher({ filePath: `${WORKSPACE}/source/main.js` })
 apply_custom_transform({ target_file: `${WORKSPACE}/source/main.js`, script_path: `${WORKSPACE}/transforms/fix.js` })
 ```
+
+---
+
+## 🧩 IR PARSER (Chevrotain)
+
+> **⛔ NEVER regex parse `.vmasm`/`.vmir`/`.vmhir`. Use `jsvmp-ir-extension/src/utils/vmasm-*.ts`**
+
+```javascript
+// 编译后路径: jsvmp-ir-extension/out/utils/
+const { VmasmLexer } = require('../../jsvmp-ir-extension/out/utils/vmasm-lexer');
+const { vmasmParser } = require('../../jsvmp-ir-extension/out/utils/vmasm-parser');
+const { vmasmVisitor } = require('../../jsvmp-ir-extension/out/utils/vmasm-visitor');
+
+function parseVmasm(content) {
+    const lexResult = VmasmLexer.tokenize(content);
+    vmasmParser.input = lexResult.tokens;
+    return vmasmVisitor.visit(vmasmParser.program());
+}
+// → { format, domain, registers, constants[], instructions[], lineToAddr, addrToLine }
+```
+
+> **📚 详细 AST 结构**: See `skills/jsvmp-ir-parser.md`
 
 ---
 
@@ -401,20 +425,15 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
   - 关键: 十六进制地址，类型化常量池，保留栈操作语义，包含注入点元数据
 
 > **⚠️ IR Parsing**: Use Chevrotain for ALL IR parsing (LIR/MIR/HIR). See `skills/jsvmp-ir-parser.md`
+> **📦 Parser Location**: `jsvmp-ir-extension/src/utils/vmasm-*.ts` (Lexer, Parser, Visitor)
 
 ## 阶段 4: 语义分析 + 基本块划分 (MIR) - 栈分析器
 > **📚 参考**: `skills/jsvmp-decompiler.md` 第 5 节
 > **目标**: 消除栈操作，构建表达式树，划分基本块
-> **理论基础**: 
->   - 语义分析: 栈模拟追踪每条指令的栈状态，将栈操作转换为显式变量赋值
->   - 基本块划分: 识别 leader 指令 (跳转目标、跳转后指令、函数入口)
-> **关键算法**: 
->   - 栈模拟: 维护符号栈，PUSH 压入表达式，POP 弹出并组合
->   - 基本块边界: 跳转指令、跳转目标、函数入口
+> **⚠️ 输入解析**: 使用 Chevrotain 解析 `.vmasm`，禁止 regex
 - [ ] 🤖 栈分析 + 基本块划分 (lib/stack_analyzer.js)
-  - 输入: output/*_disasm.vmasm
+  - 输入: output/*_disasm.vmasm (用 Chevrotain 解析)
   - 输出: output/*.vmir
-  - 格式: 每个基本块包含表达式树形式的指令
   - 关键: 消除栈操作，生成 `t0 = a + b` 形式的三地址码
 
 ## 阶段 5: 控制流图生成 + 控制流分析 (HIR) - CFG 分析器
@@ -439,7 +458,7 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
   - 格式: 带循环/条件标注的结构化 CFG
   - 关键: 正确识别循环类型和 follow 节点
 
-## 阶段 6: 数据流分析 (可选优化) - 变量优化器
+## 阶段 6: 数据流分析 - 变量优化器
 > **📚 参考**: `skills/jsvmp-decompiler.md` 第 8 节
 > **目标**: 构建 DU/UD 链，进行变量优化，提高代码可读性
 > **理论基础** (参考 androguard dad 反编译器):
@@ -599,6 +618,8 @@ ir_clear_breakpoints(irId="...") // or unload_ir_source_map(irId="...")
 | Line mismatch | Trust the `[L:line] [Src L:col]` in Smart Tool output. |
 | Unknown opcode | Trace handler using `set_breakpoint` at `[Src]` location. |
 | Can't find dispatcher | Use `find_jsvmp_dispatcher` instead of regex. |
+| IR parse error | Use Chevrotain parser from `jsvmp-ir-extension/src/utils/`. NEVER use regex. |
+| Regex breaks on edge case | Migrate to Chevrotain. See `skills/jsvmp-ir-parser.md`. |
 
 ---
 
@@ -619,6 +640,7 @@ ir_clear_breakpoints(irId="...") // or unload_ir_source_map(irId="...")
 - **🤖 = DELEGATE**: See `🤖`? Call `invokeSubAgent()`. Period.
 - **DYNAMIC PLANNING**: After each task, check for new discoveries and update TODO.md
 - **SMART-FS DEFAULT**: Use `read_code_smart`/`search_code_smart` for ALL file reading
+- **CHEVROTAIN FOR IR**: Use `jsvmp-ir-extension/src/utils/vmasm-*.ts` for ALL IR parsing. NEVER regex.
 - **STATIC EXTRACTION FIRST**: For bytecode/constants, use AST transform before browser
 - **NEVER EMBED LARGE DATA**: Save arrays/strings to `raw/*.json`, never write directly
 - **PHASE 1 GATE**: MUST complete deobfuscation before ANY VM analysis
