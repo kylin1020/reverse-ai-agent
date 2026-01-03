@@ -160,52 +160,60 @@ fsWrite("raw/data.json", JSON.stringify(hugeArray)); // ❌ Don't embed in code
 
 **`find_jsvmp_dispatcher` is AI-powered and CAN make mistakes. ALWAYS verify its output:**
 
-```javascript
-// 1. Call find_jsvmp_dispatcher
-find_jsvmp_dispatcher({ filePath: "/abs/path/source/main.js" })
+**⚠️ COORDINATE FORMAT:**
+- `find_jsvmp_dispatcher` returns **ORIGINAL (minified) file coordinates** (line:column)
+- `read_code_smart` shows **BEAUTIFIED view** with `[L:beautified_line]` and `[Src L:original_line:column]`
+- **YOU MUST USE `[Src L:col]` coordinates from `read_code_smart` output, NOT the beautified `[L:]` numbers!**
 
-// 2. MANDATORY: Verify EVERY reported location using read_code_smart
-// Check @loop_entry (most critical - where offset injection happens)
+```javascript
+// 1. Call find_jsvmp_dispatcher (returns ORIGINAL coordinates)
+const result = find_jsvmp_dispatcher({ filePath: "/abs/path/source/main.js" })
+// Example output: loop_entry line=5866, column=0
+
+// 2. MANDATORY: Verify using read_code_smart
+// ⚠️ For minified files, use line=1 and scan for [Src L:5866:0] in output
 read_code_smart({ 
   file_path: "/abs/path/source/main.js", 
-  start_line: reported_loop_entry_line - 5,  // Context before
-  end_line: reported_loop_entry_line + 10    // Context after
+  start_line: 1,
+  end_line: 100  // Minified files are usually 1-10 lines, scan enough context
 })
 
-// 3. Verify it's actually the dispatcher loop start:
+// 3. In the output, find the line with [Src L:5866:0] marker
+// Example output:
+//   [L:1234] var t = o[a++];  [Src L:5866:0]
+//          ^^^^^^^^^^^^^^^^
+//          This is what you're looking for!
+
+// 4. Verify it's actually the dispatcher loop start:
 //    ✅ Should see: opcode read (e.g., "var t = o[a++]" or "switch(o[a++])")
 //    ✅ Should be INSIDE the loop, not before it
+//    ✅ The [Src L:col] should match find_jsvmp_dispatcher output
 //    ❌ If it's a function definition or variable declaration → WRONG
+//    ❌ If [Src L:col] doesn't match → find_jsvmp_dispatcher gave wrong coordinates
 
-// 4. Check @breakpoint (should be right after opcode read)
-read_code_smart({ 
-  file_path: "/abs/path/source/main.js", 
-  start_line: reported_breakpoint_line - 2,
-  end_line: reported_breakpoint_line + 5
-})
+// 5. Repeat for @breakpoint and @global_bytecode
+// Search for their [Src L:col] markers in read_code_smart output
 
-// 5. Check @global_bytecode (where bytecode array is defined)
-read_code_smart({ 
-  file_path: "/abs/path/source/main.js", 
-  start_line: reported_global_bytecode_line - 2,
-  end_line: reported_global_bytecode_line + 2
-})
-
-// 6. If ANY location looks wrong → Use search_code_smart to find correct position
+// 6. If coordinates don't match or look wrong:
+//    a. Use search_code_smart to find the actual pattern
 search_code_smart({ file_path: "/abs/path/source/main.js", query: "o\\[a\\+\\+\\]" })
+//    b. Look at [Src L:col] in search results
+//    c. Use those coordinates instead of find_jsvmp_dispatcher output
 ```
 
 **Common Mistakes by `find_jsvmp_dispatcher`:**
+- Returns beautified line numbers instead of original (minified) coordinates
 - `@loop_entry` points to loop condition instead of loop body first line
 - `@loop_entry` points to function declaration instead of opcode read
 - `@breakpoint` is too far from opcode read
 - `@global_bytecode` points to wrong variable
 
 **Verification Checklist:**
-- [ ] `@loop_entry`: Is this the FIRST line inside dispatcher loop? (should see opcode read nearby)
+- [ ] **COORDINATES**: Do reported line:column match `[Src L:col]` in `read_code_smart` output? (NOT `[L:]`)
+- [ ] `@loop_entry`: Is this the FIRST line inside dispatcher loop? (should see opcode read)
 - [ ] `@breakpoint`: Is this RIGHT AFTER opcode is read into a variable?
 - [ ] `@global_bytecode`: Is this where the main bytecode array is assigned?
-- [ ] All coordinates: Do [Src L:col] match what I see in `read_code_smart` output?
+- [ ] If ANY mismatch → Use `search_code_smart` to find correct `[Src L:col]` coordinates
 
 **Example with real workspace:**
 ```javascript
