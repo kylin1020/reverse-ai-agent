@@ -154,7 +154,58 @@ fsWrite("raw/data.json", JSON.stringify(hugeArray)); // ❌ Don't embed in code
 | Search Text | `search_code_smart` | `file_path="/abs/path/source/main.js", query="debugger"` |
 | Trace Var | `find_usage_smart` | `file_path="/abs/path/source/main.js", identifier="_0xabc", line=105` |
 | Deobfuscate | `apply_custom_transform` | `target_file="/abs/path/source/main.js", script_path="/abs/path/transforms/fix.js"` |
-| Find JSVMP | `find_jsvmp_dispatcher` | `filePath="/abs/path/source/main.js"` |
+| Find JSVMP | `find_jsvmp_dispatcher` | `filePath="/abs/path/source/main.js"` ⚠️ **MUST VERIFY** |
+
+### ⚠️ CRITICAL: Verify `find_jsvmp_dispatcher` Results
+
+**`find_jsvmp_dispatcher` is AI-powered and CAN make mistakes. ALWAYS verify its output:**
+
+```javascript
+// 1. Call find_jsvmp_dispatcher
+find_jsvmp_dispatcher({ filePath: "/abs/path/source/main.js" })
+
+// 2. MANDATORY: Verify EVERY reported location using read_code_smart
+// Check @loop_entry (most critical - where offset injection happens)
+read_code_smart({ 
+  file_path: "/abs/path/source/main.js", 
+  start_line: reported_loop_entry_line - 5,  // Context before
+  end_line: reported_loop_entry_line + 10    // Context after
+})
+
+// 3. Verify it's actually the dispatcher loop start:
+//    ✅ Should see: opcode read (e.g., "var t = o[a++]" or "switch(o[a++])")
+//    ✅ Should be INSIDE the loop, not before it
+//    ❌ If it's a function definition or variable declaration → WRONG
+
+// 4. Check @breakpoint (should be right after opcode read)
+read_code_smart({ 
+  file_path: "/abs/path/source/main.js", 
+  start_line: reported_breakpoint_line - 2,
+  end_line: reported_breakpoint_line + 5
+})
+
+// 5. Check @global_bytecode (where bytecode array is defined)
+read_code_smart({ 
+  file_path: "/abs/path/source/main.js", 
+  start_line: reported_global_bytecode_line - 2,
+  end_line: reported_global_bytecode_line + 2
+})
+
+// 6. If ANY location looks wrong → Use search_code_smart to find correct position
+search_code_smart({ file_path: "/abs/path/source/main.js", query: "o\\[a\\+\\+\\]" })
+```
+
+**Common Mistakes by `find_jsvmp_dispatcher`:**
+- `@loop_entry` points to loop condition instead of loop body first line
+- `@loop_entry` points to function declaration instead of opcode read
+- `@breakpoint` is too far from opcode read
+- `@global_bytecode` points to wrong variable
+
+**Verification Checklist:**
+- [ ] `@loop_entry`: Is this the FIRST line inside dispatcher loop? (should see opcode read nearby)
+- [ ] `@breakpoint`: Is this RIGHT AFTER opcode is read into a variable?
+- [ ] `@global_bytecode`: Is this where the main bytecode array is assigned?
+- [ ] All coordinates: Do [Src L:col] match what I see in `read_code_smart` output?
 
 **Example with real workspace:**
 ```javascript
