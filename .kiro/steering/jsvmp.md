@@ -158,62 +158,116 @@ fsWrite("raw/data.json", JSON.stringify(hugeArray)); // ❌ Don't embed in code
 
 ### ⚠️ CRITICAL: Verify `find_jsvmp_dispatcher` Results
 
-**`find_jsvmp_dispatcher` is AI-powered and CAN make mistakes. ALWAYS verify its output:**
+**`find_jsvmp_dispatcher` is AI-powered and OFTEN returns WRONG coordinates. ALWAYS verify!**
 
-**⚠️ COORDINATE FORMAT:**
-- `find_jsvmp_dispatcher` returns **ORIGINAL (minified) file coordinates** (line:column)
-- `read_code_smart` shows **BEAUTIFIED view** with `[L:beautified_line]` and `[Src L:original_line:column]`
-- **YOU MUST USE `[Src L:col]` coordinates from `read_code_smart` output, NOT the beautified `[L:]` numbers!**
+#### 🚨 THE MOST COMMON BUG: Beautified vs Original Coordinates
 
-```javascript
-// 1. Call find_jsvmp_dispatcher (returns ORIGINAL coordinates)
-const result = find_jsvmp_dispatcher({ filePath: "/abs/path/source/main.js" })
-// Example output: loop_entry line=5866, column=0
+**`find_jsvmp_dispatcher` often returns BEAUTIFIED line numbers (e.g., `line=5866`) instead of ORIGINAL coordinates!**
 
-// 2. MANDATORY: Verify using read_code_smart
-// ⚠️ For minified files, use line=1 and scan for [Src L:5866:0] in output
-read_code_smart({ 
-  file_path: "/abs/path/source/main.js", 
-  start_line: 1,
-  end_line: 100  // Minified files are usually 1-10 lines, scan enough context
-})
-
-// 3. In the output, find the line with [Src L:5866:0] marker
-// Example output:
-//   [L:1234] var t = o[a++];  [Src L:5866:0]
-//          ^^^^^^^^^^^^^^^^
-//          This is what you're looking for!
-
-// 4. Verify it's actually the dispatcher loop start:
-//    ✅ Should see: opcode read (e.g., "var t = o[a++]" or "switch(o[a++])")
-//    ✅ Should be INSIDE the loop, not before it
-//    ✅ The [Src L:col] should match find_jsvmp_dispatcher output
-//    ❌ If it's a function definition or variable declaration → WRONG
-//    ❌ If [Src L:col] doesn't match → find_jsvmp_dispatcher gave wrong coordinates
-
-// 5. Repeat for @breakpoint and @global_bytecode
-// Search for their [Src L:col] markers in read_code_smart output
-
-// 6. If coordinates don't match or look wrong:
-//    a. Use search_code_smart to find the actual pattern
-search_code_smart({ file_path: "/abs/path/source/main.js", query: "o\\[a\\+\\+\\]" })
-//    b. Look at [Src L:col] in search results
-//    c. Use those coordinates instead of find_jsvmp_dispatcher output
+**How to detect this bug:**
+```
+find_jsvmp_dispatcher output: loop_entry line=5866, column=0
+                                         ^^^^
+                                         This looks like a beautified line number!
+                                         
+Minified files are typically 1-10 lines. If line > 10, it's probably WRONG.
 ```
 
-**Common Mistakes by `find_jsvmp_dispatcher`:**
-- Returns beautified line numbers instead of original (minified) coordinates
-- `@loop_entry` points to loop condition instead of loop body first line
-- `@loop_entry` points to function declaration instead of opcode read
-- `@breakpoint` is too far from opcode read
-- `@global_bytecode` points to wrong variable
+**The CORRECT format for minified files:**
+```
+@loop_entry line=2, column=131626    ← Original: line 2, column 131626
+                                       (minified JS is usually on line 1 or 2)
+```
 
-**Verification Checklist:**
-- [ ] **COORDINATES**: Do reported line:column match `[Src L:col]` in `read_code_smart` output? (NOT `[L:]`)
-- [ ] `@loop_entry`: Is this the FIRST line inside dispatcher loop? (should see opcode read)
-- [ ] `@breakpoint`: Is this RIGHT AFTER opcode is read into a variable?
-- [ ] `@global_bytecode`: Is this where the main bytecode array is assigned?
-- [ ] If ANY mismatch → Use `search_code_smart` to find correct `[Src L:col]` coordinates
+#### 📋 MANDATORY Verification Workflow
+
+```javascript
+// STEP 1: Call find_jsvmp_dispatcher
+find_jsvmp_dispatcher({ filePath: "/abs/path/source/main.js" })
+// Output example: loop_entry line=5866, column=0
+
+// STEP 2: IMMEDIATELY check if coordinates look suspicious
+// ⚠️ If line > 10 for a minified file → LIKELY WRONG (beautified line number)
+
+// STEP 3: Use search_code_smart to find the ACTUAL code pattern
+search_code_smart({ 
+  file_path: "/abs/path/source/main.js", 
+  query: "var t = o\\[a\\+\\+\\]"  // Search for opcode read pattern
+})
+
+// STEP 4: Read the [Src L:col] from search results
+// Example output:
+//   5866 L2:131626   var t = o[a++];
+//        ^^^^^^^^^^
+//        [Src L2:131626] = ORIGINAL coordinates: line=2, column=131626
+//   5866
+//   ^^^^
+//   This is the BEAUTIFIED line number (WRONG for @loop_entry)
+
+// STEP 5: Extract CORRECT coordinates from [Src L:col]
+// Format: L{line}:{column}
+// L2:131626 → line=2, column=131626
+
+// STEP 6: Write to vmasm with CORRECT coordinates
+@loop_entry line=2, column=131626    ← CORRECT (from [Src L:col])
+// NOT: @loop_entry line=5866, column=0  ← WRONG (beautified line)
+```
+
+#### 🔍 How to Read Smart-FS Output
+
+```
+Output format:
+  {beautified_line} L{original_line}:{original_column}   {code}
+
+Example:
+  5866 L2:131626              var t = o[a++];
+  ^^^^                        ^^^^^^^^^^^^^^
+  |                           Code content
+  |
+  +-- Beautified line number (for reading, NOT for breakpoints)
+  
+       L2:131626
+       ^^  ^^^^^^
+       |   |
+       |   +-- Original column (USE THIS for @loop_entry column=)
+       |
+       +-- Original line (USE THIS for @loop_entry line=)
+```
+
+#### ✅ Verification Checklist (MANDATORY)
+
+Before writing ANY coordinates to `.vmasm`:
+
+- [ ] **LINE NUMBER CHECK**: Is `line` ≤ 10 for minified files? (If > 10, probably wrong)
+- [ ] **COLUMN CHECK**: Does `column` look reasonable? (Should be > 0 for minified files)
+- [ ] **SEARCH VERIFY**: Did you use `search_code_smart` to find the actual `[Src L:col]`?
+- [ ] **PATTERN CHECK**: Does the code at that location match expected pattern?
+  - `@loop_entry`: Should be opcode read (e.g., `var t = o[a++]`)
+  - `@breakpoint`: Should be right after opcode read
+  - `@global_bytecode`: Should be bytecode array assignment
+
+#### 🛠️ Quick Fix Template
+
+If `find_jsvmp_dispatcher` returns wrong coordinates:
+
+```javascript
+// 1. Search for the actual pattern
+search_code_smart({ file_path: "...", query: "var t = o\\[a\\+\\+\\]" })
+
+// 2. From output like "5866 L2:131626 var t = o[a++];"
+//    Extract: line=2, column=131626
+
+// 3. Update vmasm with CORRECT coordinates:
+@loop_entry line=2, column=131626
+```
+
+#### ❌ Common Mistakes
+
+| Wrong | Correct | Why |
+|-------|---------|-----|
+| `line=5866, column=0` | `line=2, column=131626` | 5866 is beautified line, not original |
+| `line=1, column=0` | `line=2, column=131626` | column=0 is suspicious for minified code |
+| Using `[L:5866]` | Using `[Src L2:131626]` | `[L:]` is beautified, `[Src L:col]` is original |
 
 **Example with real workspace:**
 ```javascript
@@ -477,8 +531,11 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
     ```
   - **注入点元数据说明**:
     - `@dispatcher`: VM 调度器循环位置 (用于设置条件断点)
-    - `@global_bytecode`: 全局字节码数组定义位置 (用于计算 offset)
-    - `@loop_entry`: dispatcher 循环体的第一行 (用于注入 offset 计算代码，确保 bytecode 已赋值)
+    - `@global_bytecode`: 全局字节码数组**赋值后**的位置 (用于注入 `window.__global_bytecode = {var}`)
+      - **⚠️ 重要**: 位置必须在字节码变量被赋值**之后**，这样注入的代码才能访问到它
+      - **⚠️ 重要**: 如果字节码在闭包内定义（如 `r.d`），需要在闭包内部、赋值后立即注入
+      - 示例: 如果 `var r = {...}(t);` 在 `L2:91804`，则 `@global_bytecode` 应指向下一条语句的位置
+    - `@loop_entry`: dispatcher 循环体的第一行 (用于注入 offset 计算代码，使用 `window.__global_bytecode`)
     - `@breakpoint`: 推荐的断点位置 (opcode 读取后)
     - `line`/`column`: 原始压缩 JS 的源码位置 (用于 CDP 断点)
   - 关键: 十六进制地址，类型化常量池，保留栈操作语义，包含注入点元数据

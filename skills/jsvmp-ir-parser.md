@@ -59,14 +59,17 @@
 | 指令 | 必需 | 说明 |
 |------|------|------|
 | `@dispatcher` | 否 | VM 调度器循环位置，格式: `line=N, column=N` |
-| `@global_bytecode` | 否 | 全局字节码数组定义，格式: `var=NAME, line=N, column=N` |
+| `@global_bytecode` | 否 | 全局字节码数组**赋值后**的位置，格式: `var=NAME, line=N, column=N` |
 | `@loop_entry` | 否 | dispatcher 循环体的第一行，格式: `line=N, column=N` |
 | `@breakpoint` | 否 | 推荐的断点位置 (opcode 读取后)，格式: `line=N, column=N` |
 
 **注入点用途**:
 - `@dispatcher`: 设置条件断点的位置
-- `@global_bytecode`: 用于计算 bytecode offset
-- `@loop_entry`: 注入 offset 计算代码的位置（在循环体内，确保 bytecode 已赋值）
+- `@global_bytecode`: 注入 `window.__global_bytecode = {var}` 的位置
+  - **⚠️ 位置必须在字节码变量被赋值之后**
+  - 如果字节码在闭包内定义（如 `r.d`），需要在闭包内部、赋值后立即注入
+  - 这样 dispatcher 函数才能通过 `window.__global_bytecode` 访问全局字节码
+- `@loop_entry`: 注入 offset 计算代码的位置（使用 `window.__global_bytecode` 计算偏移）
 - `@breakpoint`: 附加到 `@dispatcher`，表示循环内的最佳断点位置
 - `line`/`column`: 原始压缩 JS 的源码位置 (用于 CDP 断点)
 
