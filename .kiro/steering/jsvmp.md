@@ -238,14 +238,16 @@ Example:
 
 Before writing ANY coordinates to `.vmasm`:
 
-- [ ] **LINE NUMBER CHECK**: Is `line` ≤ 10 for minified files? (If > 10, probably wrong)
-- [ ] **COLUMN CHECK**: Does `column` look reasonable? (Should be > 0 for minified files)
-- [ ] **SEARCH VERIFY**: Did you use `search_code_smart` to find the actual `[Src L:col]`?
-- [ ] **PATTERN CHECK**: Does the code at that location match expected pattern?
-  - `@loop_entry`: Should be opcode read (e.g., `var t = o[a++]`)
-  - `@breakpoint`: Should be right after opcode read
-  - `@global_bytecode`: Should be bytecode variable assignment
-  - `@bytecode_transform`: Expression to extract pure bytecode from mixed variable
+- [ ] **LINE CHECK**: Is `line` ≤ 10 for minified files? (If > 10, probably beautified line)
+- [ ] **COLUMN CHECK**: Is `column` > 0 for minified files? (column=0 is suspicious)
+- [ ] **SEARCH VERIFY**: Used `search_code_smart` to find actual `[Src L:col]`?
+- [ ] **PATTERN CHECK**: Code at location matches expected pattern?
+  - `@dispatcher`: `for(;;)` loop
+  - `@loop_entry`: opcode read (e.g., `var t = o[a++]`)
+  - `@breakpoint`: right after opcode read
+  - `@global_bytecode var=X`: X is actual bytecode variable
+  - `@bytecode_transform expr=...`: extracts pure bytecode from mixed variable
+  - `@reg ip=X, bc=Y, ...`: X, Y match actual VM register names
 
 #### 🛠️ Quick Fix Template
 
@@ -587,6 +589,26 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
     0x0003: GET_GLOBAL         K[132]          ; window
     0x0006: GET_PROP_CONST     K[277]          ; .onwheelx
     0x0009: CALL               2               ; fn(2 args)
+    ```
+  - **⚠️ INJECTION POINT VALIDATION (MANDATORY)**:
+    After generating vmasm, MUST verify all injection point coordinates:
+    1. Use `search_code_smart` to find actual code at each location
+    2. Verify `@dispatcher` points to `for(;;)` loop
+    3. Verify `@global_bytecode var=X` - X must be the actual bytecode variable name
+    4. Verify `@bytecode_transform expr=...` - expression must extract pure bytecode from mixed variable
+    5. Verify `@loop_entry` points to opcode read (e.g., `var t = o[a++]`)
+    6. Verify `@breakpoint` is right after opcode read
+    7. Verify `@reg` mappings match actual VM register variables
+    
+    **Validation commands:**
+    ```javascript
+    // Verify loop_entry points to opcode read
+    search_code_smart({ file_path: "source/main.js", query: "var t = o\\[a\\+\\+\\]" })
+    // Check [Src L:col] matches @loop_entry coordinates
+    
+    // Verify global_bytecode variable
+    search_code_smart({ file_path: "source/main.js", query: "z\\s*=" })
+    // Check variable name and [Src L:col] match @global_bytecode
     ```
   - **v1.2 注释格式变更**:
     - 作用域指令: `; scope[0][12] = val` (具体值，非占位符)

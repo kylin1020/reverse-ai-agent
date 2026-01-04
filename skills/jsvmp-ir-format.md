@@ -27,7 +27,7 @@ output/
 ;; ==========================================
 @format v1.2
 @domain target-website.com
-@source source/main.js
+@source main.js
 @url https://*.target-website.com/*/main.js
 @reg ip=a, sp=p, stack=v, bc=o, storage=l, const=Z, scope=s
 
@@ -35,7 +35,7 @@ output/
 ;; 2. INJECTION POINTS (断点注入元数据)
 ;; ==========================================
 @dispatcher line=2, column=131618
-@global_bytecode var=z, line=2, column=91578
+@global_bytecode var=z, line=2, column=91578, pattern="2d_array", transform="z.map(x=>x[0])"
 @loop_entry line=2, column=131639
 @breakpoint line=2, column=131639
 
@@ -116,38 +116,60 @@ output/
 注入点元数据用于 VSCode Extension 自动设置断点：
 
 ```vmasm
-@dispatcher line=2, column=131618      ; VM 调度器循环位置
-@global_bytecode var=z, line=2, column=91578  ; 字节码变量定义位置
-@bytecode_transform expr="z.map(x=>x[0])"     ; 从混合变量提取纯字节码的表达式
-@loop_entry line=2, column=131639      ; 循环体第一行
-@breakpoint line=2, column=131639      ; 推荐断点位置
+@dispatcher line=2, column=131618
+@global_bytecode var=z, line=2, column=91578, pattern="2d_array", transform="z.map(x=>x[0])"
+@loop_entry line=2, column=131639
+@breakpoint line=2, column=131639
 ```
 
 | 指令 | 用途 |
 |------|------|
 | `@dispatcher` | VM 调度器循环位置，用于设置条件断点 |
-| `@global_bytecode` | 字节码变量定义位置，用于注入全局引用 |
-| `@bytecode_transform` | **从混合变量提取纯字节码的表达式**。`global_bytecode` 变量可能不是专门的字节码数组，而是包含其他数据的混合变量，需要转换才能用于静态分析 |
+| `@global_bytecode` | 字节码变量定义位置，包含 pattern 和 transform 信息 |
 | `@loop_entry` | 循环体第一行，用于注入 offset 计算代码 |
 | `@breakpoint` | 推荐的断点位置 (opcode 读取后) |
 
-### @bytecode_transform 详解
+### @global_bytecode 详解
 
-`global_bytecode` 变量（如 `z`）可能是混合变量，包含字节码以外的其他信息，不能直接用于静态分析。此字段指定如何从混合变量中提取纯字节码数组：
+`@global_bytecode` 指令声明字节码变量的位置和结构信息，用于调试时正确计算 offset：
+
+| 字段 | 必需 | 说明 |
+|------|------|------|
+| `var` | ✓ | 字节码变量名 |
+| `line` | ✓ | 源码行号 |
+| `column` | ✓ | 源码列号 |
+| `pattern` | ✓ | 字节码数组结构：`2d_array` 或 `1d_slice` |
+| `transform` | | 从混合变量提取纯字节码的表达式 |
+
+#### pattern 参数 (CRITICAL)
+
+`pattern` 参数指定字节码数组的结构，**必须正确设置**，否则调试时 offset 计算会出错：
+
+| 值 | 结构 | 示例 | offset 计算 |
+|-----|------|------|-------------|
+| `2d_array` | 二维数组，每个元素是 `[opcode, ...]` | `[[1,2,3], [4,5], [6]]` | `bytecode[ip][0]` |
+| `1d_slice` | 一维数组，直接存储 opcode | `[1, 2, 3, 4, 5, 6]` | `bytecode[ip]` |
 
 ```vmasm
-;; 示例 1: 混合变量需要转换
-@global_bytecode var=z, line=2, column=149864
-@bytecode_transform expr="z.map(x=>x[0])"
+;; 示例 1: 二维数组 (常见于抖音等)
+;; 原始结构: z = [[opcode, arg1, arg2], [opcode, arg1], ...]
+@global_bytecode var=z, line=2, column=91578, pattern="2d_array", transform="z.map(x=>x[0])"
 
-;; 示例 2: 对象属性
-@global_bytecode var=r, line=2, column=12345
-@bytecode_transform expr="r.b"
+;; 示例 2: 一维数组
+;; 原始结构: bytecode = [op1, op2, op3, ...]
+@global_bytecode var=bytecode, line=2, column=12345, pattern="1d_slice"
 
-;; 示例 3: 变量本身就是纯字节码 (无需转换)
-@global_bytecode var=bytecode, line=2, column=12345
-@bytecode_transform expr="bytecode"
+;; 示例 3: 对象属性中的字节码
+@global_bytecode var=r, line=2, column=12345, pattern="1d_slice", transform="r.b"
 ```
+
+#### transform 参数
+
+`transform` 指定如何从原始变量提取纯字节码数组（仅 opcode）：
+
+- 如果变量本身就是纯字节码数组，可省略或设为变量名本身
+- 如果是二维数组需要提取第一列：`z.map(x=>x[0])`
+- 如果是对象属性：`r.b`
 
 **用途**:
 - 静态分析时使用转换后的纯字节码数组进行反汇编
@@ -314,8 +336,7 @@ CALL 指令使用简化格式，只显示参数数量，不猜测函数名：
 ;; INJECTION POINTS
 ;; ==========================================
 @dispatcher line=2, column=131618
-@global_bytecode var=z, line=2, column=91578
-@bytecode_transform expr="z.map(x=>x[0])"
+@global_bytecode var=z, line=2, column=91578, pattern="2d_array", transform="z.map(x=>x[0])"
 @loop_entry line=2, column=131639
 @breakpoint line=2, column=131639
 
