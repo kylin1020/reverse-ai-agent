@@ -215,6 +215,124 @@ Generate for each instruction:
 - [ ] 🆕 {description} @ [L:line] [Src L:col] (from: {task})
 ```
 
+## 🎯 Call Target Inference Guidelines
+
+When generating LIR from bytecode, track the symbolic stack to infer call targets. This produces more readable and informative disassembly output.
+
+### Symbolic Stack Tracking
+
+Maintain a symbolic stack during disassembly to track semantic types:
+
+```javascript
+class SymbolicValue {
+  type: 'global' | 'property' | 'constant' | 'variable' | 'unknown'
+  name: string | null          // e.g., "window", "userAgent"
+  chain: string[]              // e.g., ["window", "navigator", "userAgent"]
+}
+```
+
+**Stack Operations:**
+| Instruction | Stack Effect |
+|-------------|--------------|
+| `GET_GLOBAL K[n]` | Push global with name from constants |
+| `GET_PROP_CONST K[n]` | Pop object, push property (extend chain) |
+| `PUSH_CONST K[n]` | Push constant value |
+| `LOAD_SCOPE d i` | Push variable from scope |
+| `CALL n` | Pop n args + function, push result |
+| `NEW` | Mark top of stack as constructor |
+
+### Call Pattern Examples
+
+**Pattern 1: Global Function Call**
+```vmasm
+0x0000: GET_GLOBAL K[10]     ; "fetch" [global]
+0x0002: PUSH_CONST K[20]     ; "https://api.example.com"
+0x0004: CALL 1                ; call: fetch(1 args) [Network API]
+```
+
+**Pattern 2: Method Call**
+```vmasm
+0x0000: GET_GLOBAL K[132]    ; "window" [global]
+0x0002: GET_PROP_CONST K[207]; .navigator [property: window.navigator]
+0x0004: GET_PROP_CONST K[208]; .userAgent [property: window.navigator.userAgent]
+0x0006: CALL 0                ; call: window.navigator.userAgent() [Browser API]
+```
+
+**Pattern 3: Constructor Call**
+```vmasm
+0x0000: GET_GLOBAL K[50]     ; "Date" [global]
+0x0002: NEW                   ; mark as constructor
+0x0003: CALL 0                ; call: new Date() [Built-in]
+```
+
+**Pattern 4: Computed Property Call**
+```vmasm
+0x0000: GET_GLOBAL K[100]    ; "obj" [global]
+0x0002: LOAD_SCOPE 0 5       ; key from scope
+0x0005: GET_PROP             ; computed access
+0x0006: CALL 2                ; call: obj[key](2 args)
+```
+
+### Annotation Format
+
+| Call Type | Format | Example |
+|-----------|--------|---------|
+| Global function | `; call: {name}({N} args)` | `; call: fetch(1 args)` |
+| Method | `; call: {chain}({N} args)` | `; call: window.navigator.userAgent()` |
+| Constructor | `; call: new {name}({N} args)` | `; call: new Date(0 args)` |
+| Computed | `; call: {obj}[{key}]({N} args)` | `; call: obj[key](2 args)` |
+| Unknown | `; call: <unknown>({N} args)` | `; call: <unknown>(3 args)` |
+
+### Common API Patterns to Recognize
+
+**Browser APIs:**
+- `window.*`, `document.*`, `navigator.*`, `location.*`
+- Annotation: `[Browser: {purpose}]`
+
+**Crypto APIs:**
+- `crypto.*`, `CryptoJS.*`, `btoa`, `atob`
+- Annotation: `[Crypto: {operation}]`
+
+**Encoding APIs:**
+- `encodeURI*`, `decodeURI*`, `escape`, `unescape`
+- Annotation: `[Encoding: {type}]`
+
+**Network APIs:**
+- `fetch`, `XMLHttpRequest`, `WebSocket`
+- Annotation: `[Network: {type}]`
+
+### Implementation Strategy
+
+1. **Initialize** symbolic stack at function entry
+2. **Update** stack for each instruction based on opcode
+3. **Query** stack when encountering CALL instruction
+4. **Generate** annotation based on inferred call type
+5. **Add** API category if pattern matches knowledge base
+
+```javascript
+// Pseudocode for call inference
+function inferCallTarget(stack, argCount) {
+  const target = stack.peek(argCount);  // Function is below arguments
+  
+  if (!target || target.type === 'unknown') {
+    return `; call: <unknown>(${argCount} args)`;
+  }
+  
+  if (target.type === 'global') {
+    return `; call: ${target.name}(${argCount} args)`;
+  }
+  
+  if (target.type === 'property') {
+    const chain = target.chain.join('.');
+    return `; call: ${chain}(${argCount} args)`;
+  }
+  
+  return `; call: <unknown>(${argCount} args)`;
+}
+```
+
+---
+
 ## ✅ Completion Checklist
 
 - [ ] Read NOTE.md first (with `readFile`)?

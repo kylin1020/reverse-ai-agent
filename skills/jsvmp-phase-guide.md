@@ -322,6 +322,275 @@ get_scope_variables()
 
 ---
 
+## 📝 Variable Naming Strategy
+
+When converting LIR to MIR, use semantic annotations to generate meaningful variable names instead of generic `tmp_N` names.
+
+### Naming Rules (Priority Order)
+
+| Priority | Condition | Name Format | Example |
+|----------|-----------|-------------|---------|
+| 100 | Global object | `{global}_obj` | `window_obj`, `document_obj` |
+| 90 | Property value | `{property}_val` | `userAgent_val`, `href_val` |
+| 80 | Loop iterator | `i`, `j`, `k` | Based on loop depth |
+| 70 | Array element | `item`, `elem` | For forEach/map callbacks |
+| 60 | Function result | `{func}_result` | `fetch_result`, `parse_result` |
+| 50 | API-specific | Based on API | `hash_val`, `encoded_str` |
+| 0 | Fallback | `tmp_{index}` | `tmp_0`, `tmp_1` |
+
+### Naming Examples
+
+**Rule 1: Global Objects**
+```vmir
+; LIR: GET_GLOBAL K[132]  ; "window" [global]
+; MIR: window_obj = global["window"]
+
+; LIR: GET_GLOBAL K[50]   ; "document" [global]
+; MIR: document_obj = global["document"]
+```
+
+**Rule 2: Property Values**
+```vmir
+; LIR: GET_PROP_CONST K[207]  ; .userAgent [property: window.userAgent]
+; MIR: userAgent_val = window_obj["userAgent"]
+
+; LIR: GET_PROP_CONST K[100]  ; .href [property: location.href]
+; MIR: href_val = location_obj["href"]
+```
+
+**Rule 3: Loop Variables**
+```vmir
+; LIR: LOAD_SCOPE 0 5  ; loop iterator (depth 0)
+; MIR: i = scope[0][5]
+
+; LIR: LOAD_SCOPE 1 3  ; nested loop iterator (depth 1)
+; MIR: j = scope[1][3]
+```
+
+**Rule 4: API Results**
+```vmir
+; LIR: CALL 1  ; call: fetch(1 args) [Network API]
+; MIR: fetch_result = fetch(url)
+
+; LIR: CALL 1  ; call: JSON.parse(1 args)
+; MIR: parse_result = JSON.parse(str)
+```
+
+### Collision Resolution
+
+When a name is already used in the same scope, append numeric suffix:
+
+```vmir
+window_obj = global["window"]
+window_obj_1 = global["window"]  ; second occurrence
+window_obj_2 = global["window"]  ; third occurrence
+```
+
+### Pattern Propagation
+
+Preserve API category annotations from LIR to MIR:
+
+```vmir
+; From LIR: [Browser API]
+; To MIR: userAgent_val = window.navigator.userAgent()  // Browser API
+
+; From LIR: [Crypto: SHA256]
+; To MIR: hash_val = crypto.subtle.digest("SHA-256", data)  // Crypto: SHA256
+```
+
+---
+
+## 🔄 Control Flow Pattern Recognition
+
+When building HIR from MIR, recognize high-level control flow patterns to generate idiomatic JavaScript.
+
+### Pattern Types
+
+| Pattern | CFG Signature | JavaScript Output |
+|---------|---------------|-------------------|
+| Pre-test loop | Condition before body | `for` or `while` |
+| Post-test loop | Condition after body | `do-while` |
+| Array iteration | Pre-test + length check + increment | `for (let i = 0; i < arr.length; i++)` |
+| Guard clause | Early return at function start | `if (!valid) return;` |
+| Early exit | Return/break in loop | `if (cond) break;` |
+| Error handling | Exception handler edge | `try-catch` |
+
+### Pattern 1: Array Iteration (for loop)
+
+**Detection Conditions:**
+- Pre-test loop (condition before body)
+- Loop variable increments by 1
+- Condition compares variable to array length
+
+**CFG Pattern:**
+```
+[init: i = 0] → [cond: i < arr.length] → [body] → [incr: i++] → [cond]
+                        ↓ false
+                    [follow]
+```
+
+**HIR Output:**
+```vmhir
+for (i = 0; i < arr.length; i++) {
+  // loop body
+}
+```
+
+### Pattern 2: Do-While Loop
+
+**Detection Conditions:**
+- Post-test loop (condition after body)
+- Latch node is condition node
+
+**CFG Pattern:**
+```
+[body] → [cond] → [body] (if true)
+            ↓ false
+        [follow]
+```
+
+**HIR Output:**
+```vmhir
+do {
+  // loop body
+} while (condition);
+```
+
+### Pattern 3: Guard Clause
+
+**Detection Conditions:**
+- First statement in function is conditional
+- True branch returns immediately
+- False branch contains main logic
+
+**CFG Pattern:**
+```
+[entry] → [if !valid] → [return error]
+               ↓ false
+          [main logic]
+```
+
+**HIR Output:**
+```vmhir
+if (!valid) {
+  return error;
+}
+// main logic continues
+```
+
+### Pattern 4: Early Exit
+
+**Detection Conditions:**
+- Conditional node inside loop
+- One branch leads to loop exit (break/return)
+- Other branch continues loop
+
+**CFG Pattern:**
+```
+[loop body] → [if found] → [break/return]
+                  ↓ false
+              [continue loop]
+```
+
+**HIR Output:**
+```vmhir
+while (condition) {
+  if (found) {
+    break;  // or return result;
+  }
+  // continue processing
+}
+```
+
+### Pattern 5: Try-Catch (Error Handling)
+
+**Detection Conditions:**
+- CFG has exception handler edge
+- Handler block catches thrown values
+
+**CFG Pattern:**
+```
+[try block] --exception--> [catch block]
+     ↓ normal
+[follow]
+```
+
+**HIR Output:**
+```vmhir
+try {
+  // protected code
+} catch (e) {
+  // handler
+}
+```
+
+### Recognition Algorithm
+
+```javascript
+function recognizePatterns(cfg) {
+  // 1. Identify all loops using dominator tree
+  const loops = findNaturalLoops(cfg);
+  
+  for (const loop of loops) {
+    // 2. Classify loop type
+    if (isPreTestLoop(loop)) {
+      if (hasArrayIterationPattern(loop)) {
+        loop.pattern = 'for_array';
+      } else {
+        loop.pattern = 'while';
+      }
+    } else if (isPostTestLoop(loop)) {
+      loop.pattern = 'do_while';
+    }
+  }
+  
+  // 3. Find guard clauses at function entry
+  const entry = cfg.entryNode;
+  if (isGuardClause(entry)) {
+    entry.pattern = 'guard_clause';
+  }
+  
+  // 4. Find early exits in loops
+  for (const loop of loops) {
+    for (const node of loop.body) {
+      if (isEarlyExit(node, loop)) {
+        node.pattern = 'early_exit';
+      }
+    }
+  }
+  
+  // 5. Find try-catch blocks
+  for (const node of cfg.nodes) {
+    if (hasExceptionEdge(node)) {
+      node.pattern = 'try_catch';
+    }
+  }
+}
+```
+
+### Code Generation Based on Patterns
+
+```javascript
+function generateCode(node) {
+  switch (node.pattern) {
+    case 'for_array':
+      return generateForLoop(node);
+    case 'do_while':
+      return generateDoWhileLoop(node);
+    case 'guard_clause':
+      return generateGuardClause(node);
+    case 'early_exit':
+      return generateEarlyExit(node);
+    case 'try_catch':
+      return generateTryCatch(node);
+    default:
+      return generateGenericCode(node);
+  }
+}
+```
+
+---
+
 ## Troubleshooting
 
 | Issue | Solution |
