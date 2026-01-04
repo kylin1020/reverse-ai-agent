@@ -63,6 +63,7 @@ read_code_smart({ file_path: "source/main.js" })  // ❌ WILL FAIL
 
 ### ⚠️ MANDATORY FIRST ACTION ON EVERY TURN
 ```
+0. IF this is a new session → readFile("skills/sub_agent.md") + readFile("skills/sub-agent-jsvmp.md")
 1. Read TODO.md → Find FIRST unchecked [ ] task
 2. Check: Does it have 🤖 prefix?
    - YES → STOP. Call invokeSubAgent(). Do NOT proceed manually.
@@ -471,13 +472,18 @@ invokeSubAgent(
 ## 🎯 TASK
 {exact task text from TODO.md}
 
-## 📚 REQUIRED READING (use readFile)
-1. `skills/sub_agent.md` - Common rules (MANDATORY)
-2. `skills/sub-agent-jsvmp.md` - JSVMP-specific rules (MANDATORY)
-3. Task-specific skills (if needed):
-   - IR generation: `skills/jsvmp-ir-format.md`, `skills/jsvmp-ir-sourcemap.md`
-   - Decompiler: `skills/jsvmp-decompiler.md`
-   - Phase workflow: `skills/jsvmp-phase-guide.md`
+## 📚 MANDATORY FIRST STEP (BEFORE ANY OTHER ACTION!)
+**You MUST execute these readFile calls FIRST, before doing anything else:**
+```
+readFile({ path: "skills/sub_agent.md" })
+readFile({ path: "skills/sub-agent-jsvmp.md" })
+```
+**If task involves IR/decompiler, ALSO read:**
+```
+readFile({ path: "skills/jsvmp-ir-format.md" })
+readFile({ path: "skills/jsvmp-decompiler.md" })
+```
+**⛔ DO NOT PROCEED until you have read these files!**
 
 ## 📍 Context
 - Domain: {domain}
@@ -551,6 +557,7 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 
 ## 阶段 3: 句法分析 + 中间代码生成 (LIR) - 反汇编器
 > **📚 参考**: `skills/jsvmp-ir-format.md` (v1.2) + `skills/jsvmp-ir-sourcemap.md` + `skills/jsvmp-ir-parser.md`
+> **⚠️ 开始此阶段前必须执行**: `readFile("skills/jsvmp-ir-format.md")` + `readFile("skills/jsvmp-decompiler.md")`
 > **目标**: 将字节码转换为低级中间表示 (LIR)，保留显式栈操作
 > **理论基础**: 句法分析将字节码序列解析为指令流，中间代码生成将其转换为三地址码形式
 > **v1.2 格式**: 自包含 `.vmasm` 文件，内嵌常量池、寄存器映射、注入点元数据和作用域槽位映射
@@ -623,6 +630,7 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 
 ## 阶段 4: 语义分析 + 基本块划分 (MIR) - 栈分析器
 > **📚 参考**: `skills/jsvmp-decompiler.md` 第 5 节
+> **⚠️ 开始此阶段前必须执行**: `readFile("skills/jsvmp-decompiler.md")` + `readFile("skills/jsvmp-ir-parser.md")`
 > **目标**: 消除栈操作，构建表达式树，划分基本块
 > **⚠️ 输入解析**: 使用 Chevrotain 解析 `.vmasm`，禁止 regex
 - [ ] 🤖 栈分析 + 基本块划分 (lib/stack_analyzer.js)
@@ -632,6 +640,7 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 
 ## 阶段 5: 控制流图生成 + 控制流分析 (HIR) - CFG 分析器
 > **📚 参考**: `skills/jsvmp-decompiler.md` 第 6-7 节
+> **⚠️ 开始此阶段前必须执行**: `readFile("skills/jsvmp-decompiler.md")`
 > **目标**: 构建 CFG，识别循环和条件结构，恢复高级控制流
 > **理论基础** (参考 androguard dad 反编译器):
 >   - **支配树 (Dominator Tree)**: Lengauer-Tarjan 算法，O(n·α(n)) 复杂度
@@ -677,6 +686,7 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 
 ## 阶段 7: 代码生成 (HIR → JS) - 代码生成器
 > **📚 参考**: `skills/jsvmp-codegen.md` ⚠️ **必读**
+> **⚠️ 开始此阶段前必须执行**: `readFile("skills/jsvmp-codegen.md")` + `readFile("skills/jsvmp-decompiler.md")`
 > **目标**: 将 HIR 转换为可读的 JavaScript 代码
 > **理论基础**:
 >   - **区域化生成**: 每个控制结构 (if-else, loop) 是独立区域
