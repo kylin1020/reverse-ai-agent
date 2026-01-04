@@ -556,17 +556,17 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 - [ ] 🤖 **根据分析结果**提取/解码字节码和常量池 → raw/bytecode.json, raw/constants.json (⏳依赖上面的分析)
 
 ## 阶段 3: 句法分析 + 中间代码生成 (LIR) - 反汇编器
-> **📚 参考**: `skills/jsvmp-ir-format.md` (v1.2) + `skills/jsvmp-ir-sourcemap.md` + `skills/jsvmp-ir-parser.md`
+> **📚 参考**: `skills/jsvmp-ir-format.md` (v1.3) + `skills/jsvmp-ir-sourcemap.md` + `skills/jsvmp-ir-parser.md`
 > **⚠️ 开始此阶段前必须执行**: `readFile("skills/jsvmp-ir-format.md")` + `readFile("skills/jsvmp-decompiler.md")`
 > **目标**: 将字节码转换为低级中间表示 (LIR)，保留显式栈操作
 > **理论基础**: 句法分析将字节码序列解析为指令流，中间代码生成将其转换为三地址码形式
-> **v1.2 格式**: 自包含 `.vmasm` 文件，内嵌常量池、寄存器映射、注入点元数据和作用域槽位映射
+> **v1.3 格式**: 自包含 `.vmasm` 文件，内嵌常量池、寄存器映射、注入点元数据，增强注释格式
 - [ ] 🤖 编写反汇编器 (lib/disassembler.js)
   - 输入: raw/bytecode.json + raw/constants.json + NOTE.md (VM 结构信息)
-  - 输出: output/*_disasm.vmasm (LIR v1.2)
-  - **v1.2 格式要求**:
+  - 输出: output/*_disasm.vmasm (LIR v1.3)
+  - **v1.3 格式要求**:
     ```vmasm
-    @format v1.2
+    @format v1.3
     @domain {target-domain}
     @source source/{filename}.js
     @url https://*.{domain}/*/{filename}.js
@@ -574,15 +574,9 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
     
     ;; 注入点元数据 (用于 VSCode Extension 自动设置断点)
     @dispatcher line={src_line}, column={src_column}
-    @global_bytecode var={bytecode_var}, line={src_line}, column={src_column}
-    @bytecode_transform expr="{transform_expr}"
+    @global_bytecode var={bytecode_var}, line={src_line}, column={src_column}, pattern="2d_array", transform="z.map(x=>x[0])"
     @loop_entry line={src_line}, column={src_column}
     @breakpoint line={src_line}, column={src_column}
-    
-    ;; 作用域槽位映射 (可选，用于变量名推断)
-    @section scope_slots
-    @scope_slot depth=0, index=0, name="arguments"
-    @scope_slot depth=0, index=8, name="?", first_use="STORE_SCOPE at 0x0010"
     
     @section constants
     @const K[0] = String("...")
@@ -591,12 +585,23 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
     @section code
     @entry 0x{entry_addr}
     
-    ;; v1.2 简化注释格式:
-    0x0000: STORE_SCOPE        0 12            ; scope[0][12] = val
-    0x0003: GET_GLOBAL         K[132]          ; window
-    0x0006: GET_PROP_CONST     K[277]          ; .onwheelx
-    0x0009: CALL               2               ; fn(2 args)
+    ;; v1.3 增强注释格式 (保守推断原则):
+    0x0000: CREATE_FUNC        1               ; func_1
+    0x0002: STORE_SCOPE        0 8             ; scope[0][8] = func_1
+    0x0005: LOAD_SCOPE         0 8             ; scope[0][8] → func_1
+    0x0008: CALL               0               ; call: func_1(0 args)
+    0x000A: GET_GLOBAL         K[132]          ; "window"
+    0x000C: GET_PROP_CONST     K[133]          ; ._sdkGlueVersionMap
+    0x000E: CALL               2               ; call: window._sdkGlueVersionMap(2 args)
+    0x0010: LOAD_SCOPE         1 5             ; scope[1][5]
+    0x0013: CALL               0               ; call: fn(0 args)
     ```
+  - **v1.3 增强注释原则 (CONSERVATIVE)**:
+    - **Scope 槽位追踪**: 只在 CREATE_FUNC 紧跟 STORE_SCOPE 时推断 `; scope[0][8] = func_1`
+    - **LOAD_SCOPE 显示**: 只在已知槽位内容时显示 `; scope[0][8] → func_1`，否则 `; scope[0][8]`
+    - **CALL 目标推测**: 只在确定时推测（func_N, 已知 scope 槽位, 简单属性链），否则 `; call: <unknown>(N args)`
+    - **属性链**: GET_GLOBAL + GET_PROP_CONST 构建链，但遇到不确定值时标记 `?`
+    - **禁止复杂推断**: 不跨多条指令追踪，不猜测未知槽位内容
   - **⚠️ INJECTION POINT VALIDATION (MANDATORY)**:
     After generating vmasm, MUST verify all injection point coordinates:
     1. Use `search_code_smart` to find actual code at each location
@@ -606,24 +611,7 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
     5. Verify `@loop_entry` points to opcode read (e.g., `var t = o[a++]`)
     6. Verify `@breakpoint` is right after opcode read
     7. Verify `@reg` mappings match actual VM register variables
-    
-    **Validation commands:**
-    ```javascript
-    // Verify loop_entry points to opcode read
-    search_code_smart({ file_path: "source/main.js", query: "var t = o\\[a\\+\\+\\]" })
-    // Check [Src L:col] matches @loop_entry coordinates
-    
-    // Verify global_bytecode variable
-    search_code_smart({ file_path: "source/main.js", query: "z\\s*=" })
-    // Check variable name and [Src L:col] match @global_bytecode
-    ```
-  - **v1.2 注释格式变更**:
-    - 作用域指令: `; scope[0][12] = val` (具体值，非占位符)
-    - GET_GLOBAL: `; window` (直接显示值)
-    - GET_PROP_CONST: `; .propertyName` (带点前缀)
-    - PUSH_STR: `; "stringValue"` (带引号)
-    - CALL: `; fn(N args)` (简化格式，不猜测函数名)
-  - 关键: 十六进制地址，类型化常量池，保留栈操作语义，包含注入点元数据
+  - 关键: 十六进制地址，类型化常量池，保留栈操作语义，包含注入点元数据，保守推断注释
 
 > **⚠️ IR Parsing**: Use Chevrotain for ALL IR parsing (LIR/MIR/HIR). See `skills/jsvmp-ir-parser.md`
 > **📦 Parser Location**: `jsvmp-ir-extension/src/utils/vmasm-*.ts` (Lexer, Parser, Visitor)

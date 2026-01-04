@@ -6,38 +6,61 @@
 
 ### 核心原则
 
-**注释必须提供语义信息，而不仅仅是指令描述！**
+**注释必须提供语义信息，但遵循保守推断原则！**
 
-| 指令类型 | 注释格式 |
-|----------|----------|
-| STORE_SCOPE | `scope[d][i] = func_N` (追踪存储内容) |
-| LOAD_SCOPE | `scope[d][i] → func_N` (显示加载内容) |
-| CALL | `call: {target}(N args)` (推测调用目标) |
-| GET_PROP_CONST | `.{propName}` (点号前缀) |
+**⚠️ CONSERVATIVE INFERENCE (保守推断)**:
+- **只在确定时推断**: 不跨多条指令追踪，不猜测未知内容
+- **明确标记不确定**: 使用 `<unknown>`, `?`, `val` 等标记
+- **简单追踪**: 只追踪 CREATE_FUNC → STORE_SCOPE 的直接映射
+- **属性链**: 只在基础确定时构建，遇到不确定值立即标记 `?`
 
-### Scope 槽位注释
+| 指令类型 | 注释格式 | 推断条件 |
+|----------|----------|----------|
+| CREATE_FUNC | `; func_N` | 总是显示 |
+| STORE_SCOPE (after CREATE_FUNC) | `; scope[d][i] = func_N` | 仅当紧跟 CREATE_FUNC |
+| STORE_SCOPE (other) | `; scope[d][i] = val` | 不推断内容 |
+| LOAD_SCOPE (known) | `; scope[d][i] → func_N` | 仅当已追踪到内容 |
+| LOAD_SCOPE (unknown) | `; scope[d][i]` | 不猜测内容 |
+| CALL (certain target) | `; call: func_N(args)` | 仅当目标确定 |
+| CALL (uncertain) | `; call: <unknown>(args)` | 无法确定时 |
+| GET_PROP_CONST (certain base) | `; .propName` | 基础值确定 |
+| GET_PROP_CONST (uncertain base) | `; .propName` | 基础值不确定也显示属性 |
 
-**必须追踪 scope 槽位存储的内容：**
+### Scope 槽位注释 (保守推断)
 
-| 模式 | 注释格式 |
-|------|----------|
-| `CREATE_FUNC N` → `STORE_SCOPE d i` | `; scope[d][i] = func_N` |
-| `LOAD_SCOPE d i` (已知内容) | `; scope[d][i] → func_N` |
-| `LOAD_SCOPE d i` (未知内容) | `; scope[d][i]` |
-| `LOAD_SCOPE 0 0` | `; scope[0][0] → arguments` |
-| `LOAD_SCOPE 0 1` | `; scope[0][1] → this` |
+**必须追踪 scope 槽位存储的内容，但只在确定时推断：**
 
-### CALL 指令注释
+| 模式 | 注释格式 | 推断条件 |
+|------|----------|----------|
+| `CREATE_FUNC N` → `STORE_SCOPE d i` | `; scope[d][i] = func_N` | ✅ 确定：紧跟关系 |
+| `LOAD_SCOPE d i` (已知内容) | `; scope[d][i] → func_N` | ✅ 确定：已追踪映射 |
+| `LOAD_SCOPE d i` (未知内容) | `; scope[d][i]` | ❌ 不推断 |
+| `LOAD_SCOPE 0 0` | `; scope[0][0] → arguments` | ✅ 确定：约定槽位 |
+| `LOAD_SCOPE 0 1` | `; scope[0][1] → this` | ✅ 确定：约定槽位 |
+| `STORE_SCOPE d i` (非 CREATE_FUNC 后) | `; scope[d][i] = val` | ❌ 不推断 |
 
-**必须推测调用目标：**
+**追踪规则**:
+- 只追踪 CREATE_FUNC 紧跟 STORE_SCOPE 的直接映射
+- 不跨多条指令追踪符号栈
+- 不从符号栈推断 STORE_SCOPE 的内容
 
-| 前置模式 | 注释格式 |
-|----------|----------|
-| `LOAD_SCOPE d i` → `CALL` | `; call: func_N(args)` 或 `; call: scope[d][i](args)` |
-| `GET_GLOBAL` → `CALL` | `; call: {globalName}(args)` |
-| `GET_PROP_CONST` → `CALL` | `; call: {obj}.{method}(args)` |
-| `CREATE_FUNC` → `CALL` | `; call: func_N(args) [IIFE]` |
-| 无法推测 | `; call: <unknown>(args)` |
+### CALL 指令注释 (保守推断)
+
+**必须推测调用目标，但只在确定时：**
+
+| 前置模式 | 注释格式 | 推断条件 |
+|----------|----------|----------|
+| `CREATE_FUNC N` → `CALL` | `; call: func_N(args)` | ✅ 确定：func 类型 |
+| `LOAD_SCOPE d i` (已知) → `CALL` | `; call: func_N(args)` | ✅ 确定：已知槽位 |
+| `GET_GLOBAL` → `CALL` | `; call: {globalName}(args)` | ✅ 确定：全局变量 |
+| `GET_GLOBAL` → `GET_PROP_CONST` → `CALL` | `; call: {obj}.{method}(args)` | ✅ 确定：简单属性链 |
+| `LOAD_SCOPE d i` (未知) → `CALL` | `; call: fn(args)` | ❌ 不确定 |
+| 复杂符号栈 → `CALL` | `; call: fn(args)` | ❌ 不确定 |
+
+**推断规则**:
+- 只从符号栈顶部推断（fn 位置 = stack.length - argCount - 1）
+- 只接受确定类型：`func`, `scope` (已知内容), `global`, `prop` (无 `?`)
+- 遇到 `<expr>`, `?`, 未知槽位时使用通用 `fn`
 
 ### K_Reference 指令注释 (简化)
 
@@ -51,23 +74,29 @@
 | `PUSH_STR` | `; "{value}"` | `; "xmst"` |
 | `DEFINE_PROP` | `; .{value}:` | `; .bdmsVersion:` |
 
-### 完整示例
+### 完整示例 (v1.3 保守推断)
 
 ```vmasm
-;; 闭包创建与存储
-0x0000: CREATE_FUNC        N               ; func_N
-0x0002: STORE_SCOPE        d i             ; scope[d][i] = func_N
+;; 确定的闭包创建与存储
+0x0000: CREATE_FUNC        1               ; func_1
+0x0002: STORE_SCOPE        0 8             ; scope[0][8] = func_1
 
-;; 属性链调用: obj.prop1.prop2(arg)
-0x00B3: GET_GLOBAL         K[x]            ; "{globalName}"
-0x00B5: GET_PROP_CONST     K[y]            ; .{prop1}
-0x00B7: GET_PROP_CONST     K[z]            ; .{prop2}
-0x00B9: PUSH_STR           K[w]            ; "{argValue}"
-0x00BB: CALL               1               ; call: {globalName}.{prop1}.{prop2}(1 args)
+;; 确定的属性链调用
+0x00B3: GET_GLOBAL         K[132]          ; "window"
+0x00B5: GET_PROP_CONST     K[133]          ; ._sdkGlueVersionMap
+0x00B7: CALL               0               ; call: window._sdkGlueVersionMap(0 args)
 
-;; 闭包调用
-0x0122: LOAD_SCOPE         d i             ; scope[d][i] → func_N
-0x0125: CALL               0               ; call: func_N(0 args)
+;; 确定的闭包调用
+0x0122: LOAD_SCOPE         0 8             ; scope[0][8] → func_1
+0x0125: CALL               0               ; call: func_1(0 args)
+
+;; 不确定的调用
+0x0165: LOAD_SCOPE         1 8             ; scope[1][8]
+0x0168: LOAD_SCOPE         0 2             ; scope[0][2]
+0x016B: CALL               1               ; call: fn(1 args)
+
+;; 不确定的存储
+0x00B0: STORE_SCOPE        0 2             ; scope[0][2] = val
 ```
 
 ## Output Files
