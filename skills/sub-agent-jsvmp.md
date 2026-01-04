@@ -215,121 +215,232 @@ Generate for each instruction:
 - [ ] 🆕 {description} @ [L:line] [Src L:col] (from: {task})
 ```
 
-## 🎯 Call Target Inference Guidelines
+## 🎯 Scope Slot Tracking (CRITICAL for Readability)
 
-When generating LIR from bytecode, track the symbolic stack to infer call targets. This produces more readable and informative disassembly output.
+**在反汇编时必须追踪 scope 槽位的含义，这是提高可读性的关键！**
 
-### Symbolic Stack Tracking
+### Scope 槽位映射表
 
-Maintain a symbolic stack during disassembly to track semantic types:
+在函数开头，`CREATE_FUNC` + `STORE_SCOPE` 模式会将闭包存储到 scope 槽位。**必须记录这个映射关系**：
+
+```vmasm
+;; 原始输出 (难以阅读):
+0x0000: CREATE_FUNC        1               ; create closure; func_1
+0x0002: STORE_SCOPE        0 8             ; scope[0][8] = val
+0x0122: LOAD_SCOPE         0 8             ; scope[0][8]
+0x0125: CALL               0               ; fn(0 args)
+
+;; ✅ 增强输出 (清晰可读):
+0x0000: CREATE_FUNC        1               ; create closure; func_1
+0x0002: STORE_SCOPE        0 8             ; scope[0][8] = func_1
+0x0122: LOAD_SCOPE         0 8             ; scope[0][8] → func_1
+0x0125: CALL               0               ; call: func_1(0 args)
+```
+
+### 实现策略
+
+**第一遍扫描**: 收集所有 `CREATE_FUNC` + `STORE_SCOPE` 模式，建立映射表：
 
 ```javascript
-class SymbolicValue {
-  type: 'global' | 'property' | 'constant' | 'variable' | 'unknown'
-  name: string | null          // e.g., "window", "userAgent"
-  chain: string[]              // e.g., ["window", "navigator", "userAgent"]
+const scopeMap = new Map();  // key: "depth:index", value: "func_N" or value info
+
+// 扫描函数开头的初始化模式
+for (let i = 0; i < instructions.length - 1; i++) {
+  const curr = instructions[i];
+  const next = instructions[i + 1];
+  
+  if (curr.opcode === 'CREATE_FUNC' && next.opcode === 'STORE_SCOPE') {
+    const funcId = curr.operands[0];
+    const depth = next.operands[0];
+    const index = next.operands[1];
+    scopeMap.set(`${depth}:${index}`, `func_${funcId}`);
+  }
 }
 ```
 
-**Stack Operations:**
-| Instruction | Stack Effect |
-|-------------|--------------|
-| `GET_GLOBAL K[n]` | Push global with name from constants |
-| `GET_PROP_CONST K[n]` | Pop object, push property (extend chain) |
-| `PUSH_CONST K[n]` | Push constant value |
-| `LOAD_SCOPE d i` | Push variable from scope |
-| `CALL n` | Pop n args + function, push result |
-| `NEW` | Mark top of stack as constructor |
-
-### Call Pattern Examples
-
-**Pattern 1: Global Function Call**
-```vmasm
-0x0000: GET_GLOBAL K[10]     ; "fetch" [global]
-0x0002: PUSH_CONST K[20]     ; "https://api.example.com"
-0x0004: CALL 1                ; call: fetch(1 args) [Network API]
-```
-
-**Pattern 2: Method Call**
-```vmasm
-0x0000: GET_GLOBAL K[132]    ; "window" [global]
-0x0002: GET_PROP_CONST K[207]; .navigator [property: window.navigator]
-0x0004: GET_PROP_CONST K[208]; .userAgent [property: window.navigator.userAgent]
-0x0006: CALL 0                ; call: window.navigator.userAgent() [Browser API]
-```
-
-**Pattern 3: Constructor Call**
-```vmasm
-0x0000: GET_GLOBAL K[50]     ; "Date" [global]
-0x0002: NEW                   ; mark as constructor
-0x0003: CALL 0                ; call: new Date() [Built-in]
-```
-
-**Pattern 4: Computed Property Call**
-```vmasm
-0x0000: GET_GLOBAL K[100]    ; "obj" [global]
-0x0002: LOAD_SCOPE 0 5       ; key from scope
-0x0005: GET_PROP             ; computed access
-0x0006: CALL 2                ; call: obj[key](2 args)
-```
-
-### Annotation Format
-
-| Call Type | Format | Example |
-|-----------|--------|---------|
-| Global function | `; call: {name}({N} args)` | `; call: fetch(1 args)` |
-| Method | `; call: {chain}({N} args)` | `; call: window.navigator.userAgent()` |
-| Constructor | `; call: new {name}({N} args)` | `; call: new Date(0 args)` |
-| Computed | `; call: {obj}[{key}]({N} args)` | `; call: obj[key](2 args)` |
-| Unknown | `; call: <unknown>({N} args)` | `; call: <unknown>(3 args)` |
-
-### Common API Patterns to Recognize
-
-**Browser APIs:**
-- `window.*`, `document.*`, `navigator.*`, `location.*`
-- Annotation: `[Browser: {purpose}]`
-
-**Crypto APIs:**
-- `crypto.*`, `CryptoJS.*`, `btoa`, `atob`
-- Annotation: `[Crypto: {operation}]`
-
-**Encoding APIs:**
-- `encodeURI*`, `decodeURI*`, `escape`, `unescape`
-- Annotation: `[Encoding: {type}]`
-
-**Network APIs:**
-- `fetch`, `XMLHttpRequest`, `WebSocket`
-- Annotation: `[Network: {type}]`
-
-### Implementation Strategy
-
-1. **Initialize** symbolic stack at function entry
-2. **Update** stack for each instruction based on opcode
-3. **Query** stack when encountering CALL instruction
-4. **Generate** annotation based on inferred call type
-5. **Add** API category if pattern matches knowledge base
+**第二遍生成**: 使用映射表增强注释：
 
 ```javascript
-// Pseudocode for call inference
-function inferCallTarget(stack, argCount) {
-  const target = stack.peek(argCount);  // Function is below arguments
-  
-  if (!target || target.type === 'unknown') {
-    return `; call: <unknown>(${argCount} args)`;
+function generateComment(instr, scopeMap) {
+  if (instr.opcode === 'STORE_SCOPE') {
+    const key = `${instr.operands[0]}:${instr.operands[1]}`;
+    const value = scopeMap.get(key);
+    if (value) {
+      return `; scope[${instr.operands[0]}][${instr.operands[1]}] = ${value}`;
+    }
   }
   
-  if (target.type === 'global') {
-    return `; call: ${target.name}(${argCount} args)`;
+  if (instr.opcode === 'LOAD_SCOPE') {
+    const key = `${instr.operands[0]}:${instr.operands[1]}`;
+    const value = scopeMap.get(key);
+    if (value) {
+      return `; scope[${instr.operands[0]}][${instr.operands[1]}] → ${value}`;
+    }
   }
   
-  if (target.type === 'property') {
-    const chain = target.chain.join('.');
-    return `; call: ${chain}(${argCount} args)`;
-  }
-  
-  return `; call: <unknown>(${argCount} args)`;
+  // ... 其他指令
 }
 ```
+
+### Scope 槽位常见用途
+
+| 槽位模式 | 含义 | 注释格式 |
+|----------|------|----------|
+| `CREATE_FUNC N` → `STORE_SCOPE d i` | 存储闭包 | `scope[d][i] = func_N` |
+| `PUSH_*` → `STORE_SCOPE d i` | 存储值 | `scope[d][i] = val` |
+| `LOAD_SCOPE d i` → `CALL` | 调用闭包 | `scope[d][i] → func_N` |
+| `LOAD_SCOPE 0 0` | 通常是 `arguments` | `scope[0][0] → arguments` |
+| `LOAD_SCOPE 0 1` | 通常是 `this` | `scope[0][1] → this` |
+
+---
+
+## 🎯 Call Target Inference (CRITICAL for Readability)
+
+**CALL 指令必须推测调用目标，不能只写 `fn(N args)`！**
+
+### 调用目标推测规则
+
+| 前置指令模式 | 推测结果 | 注释格式 |
+|--------------|----------|----------|
+| `LOAD_SCOPE d i` → `CALL` | 调用 scope 中的闭包 | `call: func_N(args)` 或 `call: scope[d][i](args)` |
+| `GET_GLOBAL K[n]` → `CALL` | 调用全局函数 | `call: {globalName}(args)` |
+| `GET_PROP_CONST K[n]` → `CALL` | 调用方法 | `call: {obj}.{method}(args)` |
+| `CREATE_FUNC N` → `CALL` | 立即调用闭包 (IIFE) | `call: func_N(args) [IIFE]` |
+
+### 完整示例
+
+```vmasm
+;; ❌ 原始输出 (难以理解):
+0x0122: LOAD_SCOPE         0 38            ; scope[0][38]
+0x0125: CALL               0               ; fn(0 args)
+
+;; ✅ 增强输出 (清晰可读):
+0x0122: LOAD_SCOPE         0 38            ; scope[0][38] → func_104
+0x0125: CALL               0               ; call: func_104(0 args)
+```
+
+```vmasm
+;; ❌ 原始输出:
+0x00B3: GET_GLOBAL         K[132]          ; global[K[x]]; "window"
+0x00B5: GET_PROP_CONST     K[151]          ; obj[K[x]]; "localStorage"
+0x00B7: GET_PROP_CONST     K[152]          ; obj[K[x]]; "getItem"
+0x00B9: PUSH_STR           K[153]          ; push K[x]; "xmst"
+0x00BB: CALL               1               ; fn(1 args)
+
+;; ✅ 增强输出:
+0x00B3: GET_GLOBAL         K[132]          ; "window"
+0x00B5: GET_PROP_CONST     K[151]          ; .localStorage
+0x00B7: GET_PROP_CONST     K[152]          ; .getItem
+0x00B9: PUSH_STR           K[153]          ; "xmst"
+0x00BB: CALL               1               ; call: window.localStorage.getItem(1 args)
+```
+
+### 符号栈追踪实现
+
+```javascript
+class SymbolicStack {
+  constructor() {
+    this.stack = [];
+    this.scopeMap = new Map();  // 从第一遍扫描获得
+  }
+  
+  // 处理指令，更新栈状态
+  process(instr) {
+    switch (instr.opcode) {
+      case 'GET_GLOBAL':
+        const globalName = constants[instr.operands[0]];
+        this.stack.push({ type: 'global', name: globalName, chain: [globalName] });
+        break;
+        
+      case 'GET_PROP_CONST':
+        const propName = constants[instr.operands[0]];
+        const obj = this.stack.pop() || { type: 'unknown', chain: [] };
+        this.stack.push({ 
+          type: 'property', 
+          name: propName, 
+          chain: [...obj.chain, propName] 
+        });
+        break;
+        
+      case 'LOAD_SCOPE':
+        const key = `${instr.operands[0]}:${instr.operands[1]}`;
+        const scopeValue = this.scopeMap.get(key);
+        this.stack.push({ 
+          type: 'scope', 
+          name: scopeValue || `scope[${instr.operands[0]}][${instr.operands[1]}]`,
+          depth: instr.operands[0],
+          index: instr.operands[1]
+        });
+        break;
+        
+      case 'CREATE_FUNC':
+        this.stack.push({ type: 'func', name: `func_${instr.operands[0]}` });
+        break;
+        
+      case 'CALL':
+        const argCount = instr.operands[0];
+        // 弹出参数
+        for (let i = 0; i < argCount; i++) this.stack.pop();
+        // 获取函数
+        const fn = this.stack.pop();
+        // 推入结果
+        this.stack.push({ type: 'unknown', name: 'result' });
+        return this.formatCallTarget(fn, argCount);
+        
+      // ... 其他指令
+    }
+  }
+  
+  formatCallTarget(fn, argCount) {
+    if (!fn) return `call: <unknown>(${argCount} args)`;
+    
+    switch (fn.type) {
+      case 'global':
+        return `call: ${fn.name}(${argCount} args)`;
+      case 'property':
+        return `call: ${fn.chain.join('.')}(${argCount} args)`;
+      case 'scope':
+        return `call: ${fn.name}(${argCount} args)`;
+      case 'func':
+        return `call: ${fn.name}(${argCount} args) [IIFE]`;
+      default:
+        return `call: <unknown>(${argCount} args)`;
+    }
+  }
+}
+```
+
+---
+
+## 🏷️ Function Header Enhancement
+
+**函数头部应包含更多语义信息：**
+
+```vmasm
+;; ❌ 原始格式:
+;; ==========================================
+;; Function 104
+;; Params: 0, Strict: true
+;; Bytecode: [0x5A00, 0x5B20]
+;; ==========================================
+
+;; ✅ 增强格式:
+;; ==========================================
+;; Function 104: initConfig
+;; Params: 0, Strict: true
+;; Bytecode: [0x5A00, 0x5B20]
+;; Stored at: scope[0][38] (in Function 0)
+;; Called from: 0x0125 (Function 0)
+;; ==========================================
+```
+
+### 函数名推测规则
+
+| 模式 | 推测名称 |
+|------|----------|
+| `CREATE_FUNC N` → `STORE_SCOPE` → 后续 `DEFINE_PROP K[x]` | 使用 K[x] 的值作为函数名 |
+| 函数体内首次 `GET_GLOBAL` 的值 | 可能暗示函数用途 |
+| 函数被存储到的属性名 | 使用属性名作为函数名 |
 
 ---
 

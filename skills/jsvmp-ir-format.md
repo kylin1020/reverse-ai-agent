@@ -2,14 +2,73 @@
 
 > Sub-Agent MUST read this file before generating disassembly output.
 
-## 注释格式规范
+## 注释格式规范 (Enhanced v1.3)
 
-| 指令类型 | 注释格式 | 示例 |
-|----------|----------|------|
-| 作用域指令 | `; scope[depth][index] = val` | `; scope[0][12] = val` |
-| K_Reference | `; 语义; "值"` | `; global[K[x]]; "window"` |
-| CALL | `; fn(N args)` | `; fn(2 args)` |
-| 作用域映射 | `@scope_slot` 指令 | 可选，用于变量名推断 |
+### 核心原则
+
+**注释必须提供语义信息，而不仅仅是指令描述！**
+
+| 指令类型 | 注释格式 |
+|----------|----------|
+| STORE_SCOPE | `scope[d][i] = func_N` (追踪存储内容) |
+| LOAD_SCOPE | `scope[d][i] → func_N` (显示加载内容) |
+| CALL | `call: {target}(N args)` (推测调用目标) |
+| GET_PROP_CONST | `.{propName}` (点号前缀) |
+
+### Scope 槽位注释
+
+**必须追踪 scope 槽位存储的内容：**
+
+| 模式 | 注释格式 |
+|------|----------|
+| `CREATE_FUNC N` → `STORE_SCOPE d i` | `; scope[d][i] = func_N` |
+| `LOAD_SCOPE d i` (已知内容) | `; scope[d][i] → func_N` |
+| `LOAD_SCOPE d i` (未知内容) | `; scope[d][i]` |
+| `LOAD_SCOPE 0 0` | `; scope[0][0] → arguments` |
+| `LOAD_SCOPE 0 1` | `; scope[0][1] → this` |
+
+### CALL 指令注释
+
+**必须推测调用目标：**
+
+| 前置模式 | 注释格式 |
+|----------|----------|
+| `LOAD_SCOPE d i` → `CALL` | `; call: func_N(args)` 或 `; call: scope[d][i](args)` |
+| `GET_GLOBAL` → `CALL` | `; call: {globalName}(args)` |
+| `GET_PROP_CONST` → `CALL` | `; call: {obj}.{method}(args)` |
+| `CREATE_FUNC` → `CALL` | `; call: func_N(args) [IIFE]` |
+| 无法推测 | `; call: <unknown>(args)` |
+
+### K_Reference 指令注释 (简化)
+
+**属性链使用点号前缀，更易阅读：**
+
+| 指令 | 注释格式 | 示例 |
+|------|----------|------|
+| `GET_GLOBAL` | `; "{value}"` | `; "window"` |
+| `GET_PROP_CONST` | `; .{value}` | `; .localStorage` |
+| `SET_PROP_CONST` | `; .{value} =` | `; .prototype =` |
+| `PUSH_STR` | `; "{value}"` | `; "xmst"` |
+| `DEFINE_PROP` | `; .{value}:` | `; .bdmsVersion:` |
+
+### 完整示例
+
+```vmasm
+;; 闭包创建与存储
+0x0000: CREATE_FUNC        N               ; func_N
+0x0002: STORE_SCOPE        d i             ; scope[d][i] = func_N
+
+;; 属性链调用: obj.prop1.prop2(arg)
+0x00B3: GET_GLOBAL         K[x]            ; "{globalName}"
+0x00B5: GET_PROP_CONST     K[y]            ; .{prop1}
+0x00B7: GET_PROP_CONST     K[z]            ; .{prop2}
+0x00B9: PUSH_STR           K[w]            ; "{argValue}"
+0x00BB: CALL               1               ; call: {globalName}.{prop1}.{prop2}(1 args)
+
+;; 闭包调用
+0x0122: LOAD_SCOPE         d i             ; scope[d][i] → func_N
+0x0125: CALL               0               ; call: func_N(0 args)
+```
 
 ## Output Files
 ```
@@ -131,7 +190,7 @@ output/
 
 ### @global_bytecode 详解
 
-`@global_bytecode` 指令声明字节码变量的位置和结构信息，用于调试时正确计算 offset：
+`@global_bytecode` 指令声明字节码变量的位置和结构信息：
 
 | 字段 | 必需 | 说明 |
 |------|------|------|
@@ -143,37 +202,18 @@ output/
 
 #### pattern 参数 (CRITICAL)
 
-`pattern` 参数指定字节码数组的结构，**必须正确设置**，否则调试时 offset 计算会出错：
-
-| 值 | 结构 | 示例 | offset 计算 |
-|-----|------|------|-------------|
-| `2d_array` | 二维数组，每个元素是 `[opcode, ...]` | `[[1,2,3], [4,5], [6]]` | `bytecode[ip][0]` |
-| `1d_slice` | 一维数组，直接存储 opcode | `[1, 2, 3, 4, 5, 6]` | `bytecode[ip]` |
+| 值 | 结构 | offset 计算 |
+|-----|------|-------------|
+| `2d_array` | 二维数组 `[[opcode, ...], ...]` | `bytecode[ip][0]` |
+| `1d_slice` | 一维数组 `[opcode, ...]` | `bytecode[ip]` |
 
 ```vmasm
-;; 示例 1: 二维数组 (常见于抖音等)
-;; 原始结构: z = [[opcode, arg1, arg2], [opcode, arg1], ...]
+;; 二维数组
 @global_bytecode var=z, line=2, column=91578, pattern="2d_array", transform="z.map(x=>x[0])"
 
-;; 示例 2: 一维数组
-;; 原始结构: bytecode = [op1, op2, op3, ...]
+;; 一维数组
 @global_bytecode var=bytecode, line=2, column=12345, pattern="1d_slice"
-
-;; 示例 3: 对象属性中的字节码
-@global_bytecode var=r, line=2, column=12345, pattern="1d_slice", transform="r.b"
 ```
-
-#### transform 参数
-
-`transform` 指定如何从原始变量提取纯字节码数组（仅 opcode）：
-
-- 如果变量本身就是纯字节码数组，可省略或设为变量名本身
-- 如果是二维数组需要提取第一列：`z.map(x=>x[0])`
-- 如果是对象属性：`r.b`
-
-**用途**:
-- 静态分析时使用转换后的纯字节码数组进行反汇编
-- 动态调试时计算全局 offset
 
 ---
 
@@ -256,45 +296,42 @@ function getConstantType(value) {
 
 ### 指令注释格式
 
-#### 作用域指令
-
-作用域指令必须使用具体的 depth 和 index 值：
+#### Scope 指令
 
 ```vmasm
-0x2D31: STORE_SCOPE        0 12            ; scope[0][12] = val
-0x2D57: LOAD_SCOPE         0 13            ; scope[0][13]
-0x2D4F: LOAD_SCOPE_REF     0 13            ; &scope[0][13]
+0x0000: CREATE_FUNC        N               ; func_N
+0x0002: STORE_SCOPE        d i             ; scope[d][i] = func_N
+0x0010: LOAD_SCOPE         d i             ; scope[d][i] → func_N
+0x0020: LOAD_SCOPE         0 0             ; scope[0][0] → arguments
+0x0023: LOAD_SCOPE         0 1             ; scope[0][1] → this
+```
+
+#### CALL 指令
+
+```vmasm
+0x0100: CALL               N               ; call: func_X(N args)
+0x0200: CALL               N               ; call: {globalName}(N args)
+0x0300: CALL               N               ; call: {obj}.{method}(N args)
+0x0400: CALL               0               ; call: func_X(0 args) [IIFE]
+0x0500: CALL               N               ; call: <unknown>(N args)
 ```
 
 #### K_Reference 指令
 
-K_Reference 指令必须同时显示语义描述和实际值，格式：`; 语义; "值"`
-
 ```vmasm
-0x00B3: GET_GLOBAL         K[132]          ; global[K[x]]; "window"
-0x00B5: GET_PROP_CONST     K[133]          ; obj[K[x]]; "_sdkGlueVersionMap"
-0x00BD: PUSH_STR           K[134]          ; push K[x]; "1.0.1.19-fix.01"
-0x00BF: DEFINE_PROP        K[135]          ; define prop; "bdmsVersion"
+0x00B3: GET_GLOBAL         K[x]            ; "{globalName}"
+0x00B5: GET_PROP_CONST     K[y]            ; .{propName}
+0x00B7: SET_PROP_CONST     K[z]            ; .{propName} =
+0x00B9: PUSH_STR           K[w]            ; "{stringValue}"
+0x00BF: DEFINE_PROP        K[v]            ; .{propName}:
 ```
 
-| 指令 | 注释格式 | 示例 |
-|------|----------|------|
-| `GET_GLOBAL` | `; global[K[x]]; "{value}"` | `; global[K[x]]; "window"` |
-| `GET_PROP_CONST` | `; obj[K[x]]; "{value}"` | `; obj[K[x]]; "now"` |
-| `SET_PROP_CONST` | `; obj[K[x]]; "{value}"` | `; obj[K[x]]; "prototype"` |
-| `PUSH_STR` | `; push K[x]; "{value}"` | `; push K[x]; "hello"` |
-| `DEFINE_PROP` | `; define prop; "{value}"` | `; define prop; "name"` |
-| 其他 K_Reference | `; {semantic}; "{value}"` | `; load func; "config"` |
-
-#### CALL 指令
-
-CALL 指令使用简化格式，只显示参数数量，不猜测函数名：
+#### 跳转指令
 
 ```vmasm
-0x2D4D: CALL               2               ; fn(2 args)
+0x00B8: JF                 0x{TARGET}      ; if false → 0x{TARGET}
+0x00C3: JMP                0x{TARGET}      ; → 0x{TARGET}
 ```
-
-**原因**: 静态推断函数名容易出错，函数名可在动态调试时通过 hover/watch 获取。
 
 ---
 
@@ -317,63 +354,37 @@ CALL 指令使用简化格式，只显示参数数量，不猜测函数名：
 
 ---
 
-## 完整示例
+## 完整文件示例
 
 ```vmasm
-;; ==========================================
-;; JSVMP Disassembly - example.com main.js
-;; Generated: 2024-01-15T10:30:00Z
-;; Format: LIR
-;; ==========================================
-
-@format v1.1
-@domain example.com
-@source source/main.js
-@url https://*.example.com/*/main.js
+@format v1.3
+@domain {domain}
+@source {source_path}
 @reg ip=a, sp=p, stack=v, bc=o, storage=l, const=Z, scope=s
 
-;; ==========================================
-;; INJECTION POINTS
-;; ==========================================
-@dispatcher line=2, column=131618
-@global_bytecode var=z, line=2, column=91578, pattern="2d_array", transform="z.map(x=>x[0])"
-@loop_entry line=2, column=131639
-@breakpoint line=2, column=131639
+@dispatcher line=N, column=M
+@global_bytecode var=z, line=N, column=M, pattern="2d_array", transform="z.map(x=>x[0])"
+@loop_entry line=N, column=M
 
-;; ==========================================
-;; SCOPE SLOTS (可选)
-;; ==========================================
 @section scope_slots
 @scope_slot depth=0, index=0, name="arguments"
 @scope_slot depth=0, index=1, name="this"
-@scope_slot depth=0, index=8, name="result", first_use="STORE_SCOPE at 0x0010"
+@scope_slot depth=0, index=8, name="func_1"
 
-;; ==========================================
-;; CONSTANTS (Total: 6)
-;; ==========================================
 @section constants
-@const K[0] = String("init")
-@const K[1] = String("window")
-@const K[2] = String("document")
-@const K[3] = Number(0)
-@const K[4] = Boolean(true)
-@const K[5] = Null
+@const K[0] = String("{value}")
+@const K[1] = Number({value})
 
-;; ==========================================
-;; CODE
-;; Function 0: Params=0, Strict=true
-;; Bytecode: [0x0000, 0x0028]
-;; ==========================================
 @section code
 @entry 0x00000000
 
-0x0000: CREATE_FUNC        1               ; create closure; func_1
-0x0002: STORE_SCOPE        0 8             ; scope[0][8] = val
-0x0005: GET_GLOBAL         K[1]            ; global[K[x]]; "window"
-0x0008: GET_PROP_CONST     K[2]            ; obj[K[x]]; "document"
-0x000B: LOAD_SCOPE         0 8             ; scope[0][8]
-0x000E: CALL               2               ; fn(2 args)
-0x0010: RETURN                             ; return val
+;; Function 0: Entry Point
+0x0000: CREATE_FUNC        1               ; func_1
+0x0002: STORE_SCOPE        0 8             ; scope[0][8] = func_1
+0x0005: GET_GLOBAL         K[0]            ; "{globalName}"
+0x0007: GET_PROP_CONST     K[1]            ; .{propName}
+0x0009: CALL               0               ; call: {globalName}.{propName}(0 args)
+0x000B: RETURN                             ; return
 ```
 
 ---
@@ -382,43 +393,22 @@ CALL 指令使用简化格式，只显示参数数量，不猜测函数名：
 
 | 功能 | 实现方式 |
 |------|----------|
-| **Jump to Definition** | 点击 `K[0]` → 跳转到 `@const K[0]` 声明行 |
-| **Hover Preview** | 悬停 `K[0]` → 显示 `Type: String, Value: "init"`, 调试表达式: `Z[0]` |
-| **Scope Hover** | 悬停 `LOAD_SCOPE 0 8` → 显示变量名 (如有), 调试表达式: `s[0][8]` |
-| **Watch Expression** | 使用 `@reg` 中的变量名生成正确的调试表达式 |
-| **Breakpoint Mapping** | 通过 `@reg` 和注入点元数据自动设置断点 |
-
-### Hover Provider 详情
-
-**作用域引用悬停** (LOAD_SCOPE, STORE_SCOPE, LOAD_SCOPE_REF):
-```
-Scope Reference: s[0][8]
-  (where s is the scope variable from @reg)
-  
-Variable Name: result (if @scope_slot mapping exists)
-First Use: STORE_SCOPE at 0x0010
-
-Debug Expression: s[0][8]
-```
-
-**K_Reference 悬停** (K[n]):
-```
-Constant K[132]
-Type: String
-Value: "window"
-
-Debug Expression: Z[132]
-  (where Z is the const variable from @reg)
-```
+| Jump to Definition | 点击 `K[x]` → 跳转到 `@const K[x]` 声明行 |
+| Hover Preview | 悬停 `K[x]` → 显示类型、值、调试表达式 |
+| Scope Hover | 悬停 `LOAD_SCOPE d i` → 显示变量名和调试表达式 |
+| Watch Expression | 使用 `@reg` 中的变量名生成调试表达式 |
 
 ---
 
 ## 向后兼容性
 
-v1.2 格式完全向后兼容 v1.1:
-- 没有 `@scope_slot` 指令的文件正常解析
-- 旧格式注释仍可解析 (但新生成的文件使用简化格式)
-- `@reg` 中的 `scope` 字段可选
+v1.3 向后兼容 v1.1/v1.2，新增特性：
+
+| 特性 | 描述 |
+|------|------|
+| Scope 槽位追踪 | 自动记录 `CREATE_FUNC` → `STORE_SCOPE` 映射 |
+| CALL 目标推测 | 基于符号栈推测调用目标 |
+| 简化属性注释 | 使用 `.propName` 代替冗长格式 |
 
 ---
 
