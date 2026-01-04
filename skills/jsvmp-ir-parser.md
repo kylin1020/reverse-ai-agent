@@ -19,7 +19,8 @@
 ;; INJECTION POINTS (用于 VSCode Extension 自动设置断点)
 ;; ==========================================
 @dispatcher line=2, column=131618
-@global_bytecode var=Z, line=2, column=91578
+@global_bytecode var=z, line=2, column=91578
+@bytecode_transform expr="z.map(x=>x[0])"
 @loop_entry line=2, column=131029
 @breakpoint line=2, column=131639
 
@@ -59,7 +60,8 @@
 | 指令 | 必需 | 说明 |
 |------|------|------|
 | `@dispatcher` | 否 | VM 调度器循环位置，格式: `line=N, column=N` |
-| `@global_bytecode` | 否 | 全局字节码数组**赋值后**的位置，格式: `var=NAME, line=N, column=N` |
+| `@global_bytecode` | 否 | 全局字节码变量**赋值后**的位置，格式: `var=NAME, line=N, column=N` |
+| `@bytecode_transform` | 否 | 从混合变量提取纯字节码的表达式，格式: `expr="..."` |
 | `@loop_entry` | 否 | dispatcher 循环体的第一行，格式: `line=N, column=N` |
 | `@breakpoint` | 否 | 推荐的断点位置 (opcode 读取后)，格式: `line=N, column=N` |
 
@@ -69,6 +71,10 @@
   - **⚠️ 位置必须在字节码变量被赋值之后**
   - 如果字节码在闭包内定义（如 `r.d`），需要在闭包内部、赋值后立即注入
   - 这样 dispatcher 函数才能通过 `window.__global_bytecode` 访问全局字节码
+- `@bytecode_transform`: 从混合变量提取纯字节码的表达式
+  - **⚠️ global_bytecode 变量可能是混合变量，包含字节码以外的其他数据**
+  - 需要转换才能用于静态分析
+  - 表达式示例: `"z.map(x=>x[0])"`, `"r.b"`, `"bytecode"`
 - `@loop_entry`: 注入 offset 计算代码的位置（使用 `window.__global_bytecode` 计算偏移）
 - `@breakpoint`: 附加到 `@dispatcher`，表示循环内的最佳断点位置
 - `line`/`column`: 原始压缩 JS 的源码位置 (用于 CDP 断点)
@@ -104,6 +110,7 @@ const EntryDirective = createToken({ name: "EntryDirective", pattern: /@entry/ }
 // 注入点指令
 const DispatcherDirective = createToken({ name: "DispatcherDirective", pattern: /@dispatcher/ });
 const GlobalBytecodeDirective = createToken({ name: "GlobalBytecodeDirective", pattern: /@global_bytecode/ });
+const BytecodeTransformDirective = createToken({ name: "BytecodeTransformDirective", pattern: /@bytecode_transform/ });
 const LoopEntryDirective = createToken({ name: "LoopEntryDirective", pattern: /@loop_entry/ });
 const BreakpointDirective = createToken({ name: "BreakpointDirective", pattern: /@breakpoint/ });
 
@@ -138,7 +145,7 @@ const Identifier = createToken({ name: "Identifier", pattern: /[a-zA-Z_$][a-zA-Z
 const lirTokens = [
     WhiteSpace, NewLine, LineComment,
     // 注入点指令（长的优先）
-    GlobalBytecodeDirective, LoopEntryDirective, BreakpointDirective, DispatcherDirective,
+    GlobalBytecodeDirective, BytecodeTransformDirective, LoopEntryDirective, BreakpointDirective, DispatcherDirective,
     // Header 指令
     FormatDirective, DomainDirective, SourceDirective, UrlDirective,
     RegDirective, SectionDirective, ConstDirective, EntryDirective,
@@ -341,7 +348,8 @@ class LirVisitor extends LirParser.getBaseCstVisitorConstructor() {
     // 注入点元数据
     injectionPoints: {
         dispatcher: { location: { line: 2, column: 131618 }, breakpoint: { line: 2, column: 131639 } },
-        globalBytecode: { variable: "Z", location: { line: 2, column: 91578 } },
+        globalBytecode: { variable: "z", location: { line: 2, column: 91578 } },
+        bytecodeTransform: { expr: "z.map(x=>x[0])" },  // 从混合变量提取纯字节码的表达式
         loopEntry: { location: { line: 2, column: 131029 } }
     },
     constants: [

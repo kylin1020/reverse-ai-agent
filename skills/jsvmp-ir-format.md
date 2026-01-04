@@ -35,7 +35,7 @@ output/
 ;; 2. INJECTION POINTS (断点注入元数据)
 ;; ==========================================
 @dispatcher line=2, column=131618
-@global_bytecode var=Z, line=2, column=91578
+@global_bytecode var=z, line=2, column=91578
 @loop_entry line=2, column=131639
 @breakpoint line=2, column=131639
 
@@ -117,7 +117,8 @@ output/
 
 ```vmasm
 @dispatcher line=2, column=131618      ; VM 调度器循环位置
-@global_bytecode var=Z, line=2, column=91578  ; 常量池定义位置
+@global_bytecode var=z, line=2, column=91578  ; 字节码变量定义位置
+@bytecode_transform expr="z.map(x=>x[0])"     ; 从混合变量提取纯字节码的表达式
 @loop_entry line=2, column=131639      ; 循环体第一行
 @breakpoint line=2, column=131639      ; 推荐断点位置
 ```
@@ -125,9 +126,32 @@ output/
 | 指令 | 用途 |
 |------|------|
 | `@dispatcher` | VM 调度器循环位置，用于设置条件断点 |
-| `@global_bytecode` | 常量池数组定义位置，用于注入全局引用 |
+| `@global_bytecode` | 字节码变量定义位置，用于注入全局引用 |
+| `@bytecode_transform` | **从混合变量提取纯字节码的表达式**。`global_bytecode` 变量可能不是专门的字节码数组，而是包含其他数据的混合变量，需要转换才能用于静态分析 |
 | `@loop_entry` | 循环体第一行，用于注入 offset 计算代码 |
 | `@breakpoint` | 推荐的断点位置 (opcode 读取后) |
+
+### @bytecode_transform 详解
+
+`global_bytecode` 变量（如 `z`）可能是混合变量，包含字节码以外的其他信息，不能直接用于静态分析。此字段指定如何从混合变量中提取纯字节码数组：
+
+```vmasm
+;; 示例 1: 混合变量需要转换
+@global_bytecode var=z, line=2, column=149864
+@bytecode_transform expr="z.map(x=>x[0])"
+
+;; 示例 2: 对象属性
+@global_bytecode var=r, line=2, column=12345
+@bytecode_transform expr="r.b"
+
+;; 示例 3: 变量本身就是纯字节码 (无需转换)
+@global_bytecode var=bytecode, line=2, column=12345
+@bytecode_transform expr="bytecode"
+```
+
+**用途**:
+- 静态分析时使用转换后的纯字节码数组进行反汇编
+- 动态调试时计算全局 offset
 
 ---
 
@@ -290,7 +314,8 @@ CALL 指令使用简化格式，只显示参数数量，不猜测函数名：
 ;; INJECTION POINTS
 ;; ==========================================
 @dispatcher line=2, column=131618
-@global_bytecode var=Z, line=2, column=91578
+@global_bytecode var=z, line=2, column=91578
+@bytecode_transform expr="z.map(x=>x[0])"
 @loop_entry line=2, column=131639
 @breakpoint line=2, column=131639
 

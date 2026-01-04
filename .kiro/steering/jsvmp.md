@@ -244,7 +244,8 @@ Before writing ANY coordinates to `.vmasm`:
 - [ ] **PATTERN CHECK**: Does the code at that location match expected pattern?
   - `@loop_entry`: Should be opcode read (e.g., `var t = o[a++]`)
   - `@breakpoint`: Should be right after opcode read
-  - `@global_bytecode`: Should be bytecode array assignment
+  - `@global_bytecode`: Should be bytecode variable assignment
+  - `@bytecode_transform`: Expression to extract pure bytecode from mixed variable
 
 #### 🛠️ Quick Fix Template
 
@@ -564,7 +565,8 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
     
     ;; 注入点元数据 (用于 VSCode Extension 自动设置断点)
     @dispatcher line={src_line}, column={src_column}
-    @global_bytecode var={const_var}, line={src_line}, column={src_column}
+    @global_bytecode var={bytecode_var}, line={src_line}, column={src_column}
+    @bytecode_transform expr="{transform_expr}"
     @loop_entry line={src_line}, column={src_column}
     @breakpoint line={src_line}, column={src_column}
     
