@@ -298,10 +298,58 @@ function parseVmasm(content) {
     vmasmParser.input = lexResult.tokens;
     return vmasmVisitor.visit(vmasmParser.program());
 }
-// → { format, domain, registers, constants[], instructions[], lineToAddr, addrToLine }
+// → { format, domain, registers, constants[], instructions[], scopeSlots[], lineToAddr, addrToLine }
 ```
 
 > **📚 详细 AST 结构**: See `skills/jsvmp-ir-parser.md`
+
+---
+
+## 🔧 @reg 变量用于调试表达式
+
+`@reg` 指令定义了 VM 运行时变量的映射，用于生成正确的调试表达式：
+
+```vmasm
+@reg ip=a, sp=p, stack=v, bc=o, storage=l, const=Z, scope=s
+```
+
+### 调试表达式生成规则
+
+| 访问类型 | 表达式格式 | 示例 (@reg scope=s, const=Z) |
+|----------|-----------|------------------------------|
+| 作用域槽位 | `{scope}[depth][index]` | `s[0][12]` |
+| 常量池 | `{const}[index]` | `Z[132]` |
+| 栈顶 | `{stack}[{sp}-1]` | `v[p-1]` |
+| 当前指令 | `{bc}[{ip}]` | `o[a]` |
+
+### VSCode Extension Hover Provider
+
+**作用域引用悬停** (LOAD_SCOPE, STORE_SCOPE, LOAD_SCOPE_REF):
+```
+Scope Reference: s[0][8]
+Variable Name: result (if @scope_slot mapping exists)
+Debug Expression: s[0][8]
+```
+
+**K_Reference 悬停** (K[n]):
+```
+Constant K[132]
+Type: String
+Value: "window"
+Debug Expression: Z[132]
+```
+
+### @scope_slot 指令 (可选)
+
+用于映射作用域槽位到原始 JS 变量名：
+
+```vmasm
+@section scope_slots
+@scope_slot depth=0, index=0, name="arguments"
+@scope_slot depth=0, index=8, name="result", first_use="STORE_SCOPE at 0x0010"
+```
+
+当悬停在 `LOAD_SCOPE 0 8` 时，Extension 会显示映射的变量名 "result"。
 
 ---
 
@@ -499,26 +547,31 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 - [ ] 🤖 **根据分析结果**提取/解码字节码和常量池 → raw/bytecode.json, raw/constants.json (⏳依赖上面的分析)
 
 ## 阶段 3: 句法分析 + 中间代码生成 (LIR) - 反汇编器
-> **📚 参考**: `skills/jsvmp-ir-format.md` + `skills/jsvmp-ir-sourcemap.md` + `skills/jsvmp-ir-parser.md`
+> **📚 参考**: `skills/jsvmp-ir-format.md` (v1.2) + `skills/jsvmp-ir-sourcemap.md` + `skills/jsvmp-ir-parser.md`
 > **目标**: 将字节码转换为低级中间表示 (LIR)，保留显式栈操作
 > **理论基础**: 句法分析将字节码序列解析为指令流，中间代码生成将其转换为三地址码形式
-> **v1.1 格式**: 自包含 `.vmasm` 文件，内嵌常量池、寄存器映射和注入点元数据
+> **v1.2 格式**: 自包含 `.vmasm` 文件，内嵌常量池、寄存器映射、注入点元数据和作用域槽位映射
 - [ ] 🤖 编写反汇编器 (lib/disassembler.js)
   - 输入: raw/bytecode.json + raw/constants.json + NOTE.md (VM 结构信息)
-  - 输出: output/*_disasm.vmasm (LIR v1.1)
-  - **v1.1 格式要求**:
+  - 输出: output/*_disasm.vmasm (LIR v1.2)
+  - **v1.2 格式要求**:
     ```vmasm
-    @format v1.1
+    @format v1.2
     @domain {target-domain}
     @source source/{filename}.js
     @url https://*.{domain}/*/{filename}.js
-    @reg ip={ip_var}, sp={sp_var}, stack={stack_var}, bc={bc_var}, storage={storage_var}, const={const_var}
+    @reg ip={ip_var}, sp={sp_var}, stack={stack_var}, bc={bc_var}, storage={storage_var}, const={const_var}, scope={scope_var}
     
     ;; 注入点元数据 (用于 VSCode Extension 自动设置断点)
     @dispatcher line={src_line}, column={src_column}
-    @global_bytecode var={bytecode_var}, line={src_line}, column={src_column}
+    @global_bytecode var={const_var}, line={src_line}, column={src_column}
     @loop_entry line={src_line}, column={src_column}
     @breakpoint line={src_line}, column={src_column}
+    
+    ;; 作用域槽位映射 (可选，用于变量名推断)
+    @section scope_slots
+    @scope_slot depth=0, index=0, name="arguments"
+    @scope_slot depth=0, index=8, name="?", first_use="STORE_SCOPE at 0x0010"
     
     @section constants
     @const K[0] = String("...")
@@ -527,17 +580,18 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
     @section code
     @entry 0x{entry_addr}
     
-    0x0000: PUSH_CONST K[0]    ; "value"    [sp:1 | K[0]]
+    ;; v1.2 简化注释格式:
+    0x0000: STORE_SCOPE        0 12            ; scope[0][12] = val
+    0x0003: GET_GLOBAL         K[132]          ; window
+    0x0006: GET_PROP_CONST     K[277]          ; .onwheelx
+    0x0009: CALL               2               ; fn(2 args)
     ```
-  - **注入点元数据说明**:
-    - `@dispatcher`: VM 调度器循环位置 (用于设置条件断点)
-    - `@global_bytecode`: 全局字节码数组**赋值后**的位置 (用于注入 `window.__global_bytecode = {var}`)
-      - **⚠️ 重要**: 位置必须在字节码变量被赋值**之后**，这样注入的代码才能访问到它
-      - **⚠️ 重要**: 如果字节码在闭包内定义（如 `r.d`），需要在闭包内部、赋值后立即注入
-      - 示例: 如果 `var r = {...}(t);` 在 `L2:91804`，则 `@global_bytecode` 应指向下一条语句的位置
-    - `@loop_entry`: dispatcher 循环体的第一行 (用于注入 offset 计算代码，使用 `window.__global_bytecode`)
-    - `@breakpoint`: 推荐的断点位置 (opcode 读取后)
-    - `line`/`column`: 原始压缩 JS 的源码位置 (用于 CDP 断点)
+  - **v1.2 注释格式变更**:
+    - 作用域指令: `; scope[0][12] = val` (具体值，非占位符)
+    - GET_GLOBAL: `; window` (直接显示值)
+    - GET_PROP_CONST: `; .propertyName` (带点前缀)
+    - PUSH_STR: `; "stringValue"` (带引号)
+    - CALL: `; fn(N args)` (简化格式，不猜测函数名)
   - 关键: 十六进制地址，类型化常量池，保留栈操作语义，包含注入点元数据
 
 > **⚠️ IR Parsing**: Use Chevrotain for ALL IR parsing (LIR/MIR/HIR). See `skills/jsvmp-ir-parser.md`
