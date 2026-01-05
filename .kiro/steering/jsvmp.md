@@ -309,51 +309,49 @@ function parseVmasm(content) {
 
 ---
 
-## 🔧 @reg 变量用于调试表达式
+## 🔧 @reg + @opcode_transform 动态调试
 
-`@reg` 指令定义了 VM 运行时变量的映射，用于生成正确的调试表达式：
+`@reg` 定义 VM 运行时变量映射，`@opcode_transform` 定义每个 opcode 的调试表达式。
+
+**核心理念**: 不做静态 scope 推断，通过断点 + 调试表达式在运行时检查实际值。
 
 ```vmasm
 @reg ip=a, sp=p, stack=v, bc=o, storage=l, const=Z, scope=s
+
+;; CALL 调试表达式 - 最重要！
+@opcode_transform 0 CALL: argCount = bc[ip]; fn = stack[sp - argCount]; this_val = stack[sp - argCount - 1]; args = stack.slice(sp - argCount + 1, sp + 1)
 ```
 
 ### 调试表达式生成规则
 
-| 访问类型 | 表达式格式 | 示例 (@reg scope=s, const=Z) |
-|----------|-----------|------------------------------|
+| 访问类型 | 表达式格式 | 示例 |
+|----------|-----------|------|
 | 作用域槽位 | `{scope}[depth][index]` | `s[0][12]` |
 | 常量池 | `{const}[index]` | `Z[132]` |
-| 栈顶 | `{stack}[{sp}-1]` | `v[p-1]` |
-| 当前指令 | `{bc}[{ip}]` | `o[a]` |
+| 栈顶 | `{stack}[{sp}]` | `v[p]` |
+| CALL 的 fn | `{stack}[{sp} - argCount]` | `v[p - 2]` |
+| CALL 的 args | `{stack}.slice(...)` | `v.slice(p - 1, p + 1)` |
 
-### VSCode Extension Hover Provider
+### VSCode Extension Hover
 
-**作用域引用悬停** (LOAD_SCOPE, STORE_SCOPE, LOAD_SCOPE_REF):
+**CALL 指令悬停** (显示 @opcode_transform 表达式):
 ```
-Scope Reference: s[0][8]
-Variable Name: result (if @scope_slot mapping exists)
+CALL 2
+─────────────────────────
+Debug Expressions:
+  argCount = o[a]     → 2
+  fn = v[p - 2]       → (set breakpoint to inspect)
+  this_val = v[p - 3]
+  args = v.slice(p - 1, p + 1)
+```
+
+**Scope 引用悬停**:
+```
+LOAD_SCOPE 0 8
+─────────────────────────
 Debug Expression: s[0][8]
+(Set breakpoint to inspect actual value)
 ```
-
-**K_Reference 悬停** (K[n]):
-```
-Constant K[132]
-Type: String
-Value: "window"
-Debug Expression: Z[132]
-```
-
-### @scope_slot 指令 (可选)
-
-用于映射作用域槽位到原始 JS 变量名：
-
-```vmasm
-@section scope_slots
-@scope_slot depth=0, index=0, name="arguments"
-@scope_slot depth=0, index=8, name="result", first_use="STORE_SCOPE at 0x0010"
-```
-
-当悬停在 `LOAD_SCOPE 0 8` 时，Extension 会显示映射的变量名 "result"。
 
 ---
 
@@ -556,21 +554,25 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 - [ ] 🤖 **根据分析结果**提取/解码字节码和常量池 → raw/bytecode.json, raw/constants.json (⏳依赖上面的分析)
 
 ## 阶段 3: 句法分析 + 中间代码生成 (LIR) - 反汇编器
-> **📚 参考**: `skills/jsvmp-ir-format.md` (v1.3) + `skills/jsvmp-ir-sourcemap.md` + `skills/jsvmp-ir-parser.md`
+> **📚 参考**: `skills/jsvmp-ir-format.md` (v1.4) + `skills/jsvmp-ir-sourcemap.md` + `skills/jsvmp-ir-parser.md`
 > **⚠️ 开始此阶段前必须执行**: `readFile("skills/jsvmp-ir-format.md")` + `readFile("skills/jsvmp-decompiler.md")`
 > **目标**: 将字节码转换为低级中间表示 (LIR)，保留显式栈操作
 > **理论基础**: 句法分析将字节码序列解析为指令流，中间代码生成将其转换为三地址码形式
-> **v1.3 格式**: 自包含 `.vmasm` 文件，内嵌常量池、寄存器映射、注入点元数据，增强注释格式
+> **v1.4 格式**: 自包含 `.vmasm` 文件，内嵌常量池、寄存器映射、opcode_transform（用于动态调试）
 - [ ] 🤖 编写反汇编器 (lib/disassembler.js)
   - 输入: raw/bytecode.json + raw/constants.json + NOTE.md (VM 结构信息)
-  - 输出: output/*_disasm.vmasm (LIR v1.3)
-  - **v1.3 格式要求**:
+  - 输出: output/*_disasm.vmasm (LIR v1.4)
+  - **v1.4 格式要求**:
     ```vmasm
-    @format v1.3
+    @format v1.4
     @domain {target-domain}
     @source source/{filename}.js
     @url https://*.{domain}/*/{filename}.js
     @reg ip={ip_var}, sp={sp_var}, stack={stack_var}, bc={bc_var}, storage={storage_var}, const={const_var}, scope={scope_var}
+    
+    ;; opcode_transform - 用于动态调试时推断 fn/args/this_val 等
+    @opcode_transform 0 CALL: argCount = bc[ip]; fn = stack[sp - argCount]; this_val = stack[sp - argCount - 1]; args = stack.slice(sp - argCount + 1, sp + 1)
+    @opcode_transform 68 ADD: a = stack[sp - 1]; b = stack[sp]; result = a + b
     
     ;; 注入点元数据 (用于 VSCode Extension 自动设置断点)
     @dispatcher line={src_line}, column={src_column}
@@ -585,23 +587,20 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
     @section code
     @entry 0x{entry_addr}
     
-    ;; v1.3 增强注释格式 (保守推断原则):
+    ;; v1.4 简化注释格式 (不做静态 scope 推断，用 @opcode_transform 动态调试):
     0x0000: CREATE_FUNC        1               ; func_1
-    0x0002: STORE_SCOPE        0 8             ; scope[0][8] = func_1
-    0x0005: LOAD_SCOPE         0 8             ; scope[0][8] → func_1
-    0x0008: CALL               0               ; call: func_1(0 args)
+    0x0002: STORE_SCOPE        0 8             ; scope[0][8]
+    0x0005: LOAD_SCOPE         0 8             ; scope[0][8]
+    0x0008: CALL               0               ; call(0 args)
     0x000A: GET_GLOBAL         K[132]          ; "window"
     0x000C: GET_PROP_CONST     K[133]          ; ._sdkGlueVersionMap
-    0x000E: CALL               2               ; call: window._sdkGlueVersionMap(2 args)
-    0x0010: LOAD_SCOPE         1 5             ; scope[1][5]
-    0x0013: CALL               0               ; call: fn(0 args)
+    0x000E: CALL               2               ; call(2 args)
     ```
-  - **v1.3 增强注释原则 (CONSERVATIVE)**:
-    - **Scope 槽位追踪**: 只在 CREATE_FUNC 紧跟 STORE_SCOPE 时推断 `; scope[0][8] = func_1`
-    - **LOAD_SCOPE 显示**: 只在已知槽位内容时显示 `; scope[0][8] → func_1`，否则 `; scope[0][8]`
-    - **CALL 目标推测**: 只在确定时推测（func_N, 已知 scope 槽位, 简单属性链），否则 `; call: <unknown>(N args)`
-    - **属性链**: GET_GLOBAL + GET_PROP_CONST 构建链，但遇到不确定值时标记 `?`
-    - **禁止复杂推断**: 不跨多条指令追踪，不猜测未知槽位内容
+  - **v1.4 注释原则 (NO STATIC INFERENCE)**:
+    - **Scope 指令**: 只显示 `; scope[d][i]`，不推断内容
+    - **CALL 指令**: 只显示 `; call(N args)`，不推断目标
+    - **动态调试**: 使用 `@opcode_transform` 在断点处检查 fn/args/this_val
+    - **属性访问**: GET_GLOBAL/GET_PROP_CONST 显示常量值
   - **⚠️ INJECTION POINT VALIDATION (MANDATORY)**:
     After generating vmasm, MUST verify all injection point coordinates:
     1. Use `search_code_smart` to find actual code at each location
@@ -611,7 +610,7 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
     5. Verify `@loop_entry` points to opcode read (e.g., `var t = o[a++]`)
     6. Verify `@breakpoint` is right after opcode read
     7. Verify `@reg` mappings match actual VM register variables
-  - 关键: 十六进制地址，类型化常量池，保留栈操作语义，包含注入点元数据，保守推断注释
+  - 关键: 十六进制地址，类型化常量池，opcode_transform 用于动态调试
 
 > **⚠️ IR Parsing**: Use Chevrotain for ALL IR parsing (LIR/MIR/HIR). See `skills/jsvmp-ir-parser.md`
 > **📦 Parser Location**: `jsvmp-ir-extension/src/utils/vmasm-*.ts` (Lexer, Parser, Visitor)

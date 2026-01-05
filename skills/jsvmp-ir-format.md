@@ -2,32 +2,22 @@
 
 > Sub-Agent MUST read this file before generating disassembly output.
 
-## Comment Format (v1.3)
+## Comment Format (v1.4)
 
 ### Core Principle
 
-**Comments must provide semantic info, but follow CONSERVATIVE INFERENCE!**
+**Comments provide basic semantic info. NO static scope inference — use dynamic debugging instead!**
 
-- **Infer only when certain**: Don't trace across multiple instructions, don't guess unknowns
-- **Mark uncertainty**: Use `<unknown>`, `?`, `val` markers
-- **Simple tracking**: Only track direct `CREATE_FUNC → STORE_SCOPE` mappings
+| Instruction Type | Comment Format | Notes |
+|------------------|----------------|-------|
+| CREATE_FUNC | `; func_N` | Always show function ID |
+| STORE_SCOPE | `; scope[d][i]` | Show slot location only |
+| LOAD_SCOPE | `; scope[d][i]` | Show slot location only |
+| CALL | `; call(N args)` | Show arg count only |
+| GET_GLOBAL | `; "globalName"` | Show constant value |
+| GET_PROP_CONST | `; .propName` | Show property name |
 
-| Instruction Type | Comment Format | Inference Condition |
-|------------------|----------------|---------------------|
-| CREATE_FUNC | `; func_N` | Always show |
-| STORE_SCOPE (after CREATE_FUNC) | `; scope[d][i] = func_N` | Only when immediately follows CREATE_FUNC |
-| STORE_SCOPE (other) | `; scope[d][i] = val` | Don't infer content |
-| LOAD_SCOPE (known) | `; scope[d][i] → func_N` | Only when content tracked |
-| LOAD_SCOPE (unknown) | `; scope[d][i]` | Don't guess |
-| CALL (certain target) | `; call: func_N(args)` | Only when target certain |
-| CALL (uncertain) | `; call: <unknown>(args)` | When uncertain |
-
-### Reserved Scope Slots
-
-| Pattern | Comment | Condition |
-|---------|---------|-----------|
-| `LOAD_SCOPE 0 0` | `; scope[0][0] → arguments` | Convention |
-| `LOAD_SCOPE 0 1` | `; scope[0][1] → this` | Convention |
+**Dynamic Debugging**: Use `@opcode_transform` + breakpoint to inspect actual runtime values (fn, args, this_val, etc.)
 
 ---
 
@@ -35,44 +25,39 @@
 
 ```
 output/
-└── {name}_disasm.vmasm      # IR assembly (v1.3 self-contained)
+└── {name}_disasm.vmasm      # IR assembly (v1.4 self-contained)
 ```
 
 ---
 
-## File Structure (6 Sections)
+## File Structure (5 Sections)
 
 ```vmasm
 ;; 1. HEADER SECTION
-@format v1.3
+@format v1.4
 @domain target-website.com
 @source main.js
 @reg ip=a, sp=p, stack=v, bc=o, storage=l, const=Z, scope=s
 
-;; 2. OPCODE TRANSFORM SECTION
-@opcode_transform 0 CALL: argCount = bc[ip]; fn = stack[sp - argCount]; args = stack.slice(sp - argCount + 1, sp + 1)
+;; 2. OPCODE TRANSFORM SECTION (用于动态调试)
+@opcode_transform 0 CALL: argCount = bc[ip]; fn = stack[sp - argCount]; this_val = stack[sp - argCount - 1]; args = stack.slice(sp - argCount + 1, sp + 1)
 @opcode_transform 68 ADD: a = stack[sp - 1]; b = stack[sp]; result = a + b
 
 ;; 3. INJECTION POINTS
 @dispatcher line=2, column=131618
 @global_bytecode var=z, line=2, column=91578, pattern="2d_array", transform="z.map(x=>x[0])"
 
-;; 4. SCOPE SLOTS SECTION (optional)
-@section scope_slots
-@scope_slot depth=0, index=0, name="arguments"
-@scope_slot depth=0, index=8, name="func_1"
-
-;; 5. CONSTANTS SECTION
+;; 4. CONSTANTS SECTION
 @section constants
 @const K[0] = String("signature")
 @const K[1] = Number(1024)
 
-;; 6. CODE SECTION
+;; 5. CODE SECTION
 @section code
 @entry 0x00000000
 
 0x0000: CREATE_FUNC        1               ; func_1
-0x0002: STORE_SCOPE        0 8             ; scope[0][8] = func_1
+0x0002: STORE_SCOPE        0 8             ; scope[0][8]
 ```
 
 ---
@@ -96,17 +81,26 @@ output/
 
 ---
 
-## 2. OPCODE TRANSFORM SECTION
+## 2. OPCODE TRANSFORM SECTION (动态调试核心)
 
-Defines semantic mapping for each opcode for debugging. **Expressions are READ-ONLY!**
+Defines semantic mapping for each opcode. **Used at breakpoints to inspect runtime values!**
+
+### Purpose
+
+When paused at a breakpoint, use these expressions to inspect:
+- `fn` - the function being called
+- `args` - the arguments array
+- `this_val` - the `this` context
+- `a`, `b` - operands for binary operations
+- `result` - computed result
 
 ### Format
 
 ```
-@opcode_transform {opcode} {NAME}: {statement1}; {statement2}; ...
+@opcode_transform {opcode} {NAME}: {expr1}; {expr2}; ...
 ```
 
-### Stack Expression Conversion (CRITICAL)
+### Stack Expression Conversion
 
 | Original (modifies state) | Converted (read-only) |
 |---------------------------|----------------------|
@@ -117,7 +111,7 @@ Defines semantic mapping for each opcode for debugging. **Expressions are READ-O
 ### Common Templates
 
 ```vmasm
-;; CALL
+;; CALL - 最重要的调试表达式
 @opcode_transform 0 CALL: argCount = bc[ip]; fn = stack[sp - argCount]; this_val = stack[sp - argCount - 1]; args = stack.slice(sp - argCount + 1, sp + 1)
 
 ;; BINARY_OP (ADD, SUB, MUL, DIV, MOD)
@@ -126,12 +120,28 @@ Defines semantic mapping for each opcode for debugging. **Expressions are READ-O
 ;; UNARY_OP (NOT, NEG, TYPEOF)
 @opcode_transform 77 NOT: operand = stack[sp]; result = !operand
 
-;; LOAD/STORE
+;; LOAD/STORE SCOPE
 @opcode_transform 82 LOAD_SCOPE: depth = bc[ip]; idx = bc[ip + 1]; value = scope[depth][idx]
+@opcode_transform 83 STORE_SCOPE: depth = bc[ip]; idx = bc[ip + 1]; value = stack[sp]
 
 ;; JUMP
 @opcode_transform 80 JMP: offset = bc[ip]; target = ip + offset + 1
 @opcode_transform 81 JF: offset = bc[ip]; condition = stack[sp]; target = ip + offset + 1
+```
+
+### VSCode Extension Integration
+
+When hovering over an instruction, the extension shows:
+- Debug expressions from `@opcode_transform`
+- Actual variable names from `@reg` mapping
+
+Example hover on `CALL 2`:
+```
+Debug Expressions:
+  argCount = o[a]     → 2
+  fn = v[p - 2]       → inspect at breakpoint
+  this_val = v[p - 3] → inspect at breakpoint
+  args = v.slice(p - 1, p + 1)
 ```
 
 ---
@@ -161,20 +171,7 @@ Metadata for VSCode Extension auto-breakpoints:
 
 ---
 
-## 4. SCOPE SLOTS SECTION (Optional)
-
-Maps scope slots to original JS variable names:
-
-```vmasm
-@section scope_slots
-@scope_slot depth=0, index=0, name="arguments"
-@scope_slot depth=0, index=1, name="this"
-@scope_slot depth=0, index=8, name="func_1"
-```
-
----
-
-## 5. CONSTANTS SECTION
+## 4. CONSTANTS SECTION
 
 ### Supported Types
 
@@ -190,7 +187,7 @@ Maps scope slots to original JS variable names:
 
 ---
 
-## 6. CODE SECTION
+## 5. CODE SECTION
 
 ### Format
 
@@ -204,14 +201,14 @@ Maps scope slots to original JS variable names:
 ### Instruction Comment Examples
 
 ```vmasm
-;; Scope instructions
+;; Scope instructions (no static inference)
 0x0000: CREATE_FUNC        1               ; func_1
-0x0002: STORE_SCOPE        0 8             ; scope[0][8] = func_1
-0x0010: LOAD_SCOPE         0 8             ; scope[0][8] → func_1
+0x0002: STORE_SCOPE        0 8             ; scope[0][8]
+0x0010: LOAD_SCOPE         0 8             ; scope[0][8]
 
-;; CALL instructions
-0x0100: CALL               2               ; call: func_1(2 args)
-0x0200: CALL               0               ; call: window.fetch(0 args)
+;; CALL instructions (use @opcode_transform for runtime inspection)
+0x0100: CALL               2               ; call(2 args)
+0x0200: CALL               0               ; call(0 args)
 
 ;; K_Reference instructions
 0x00B3: GET_GLOBAL         K[0]            ; "window"
@@ -258,4 +255,5 @@ Maps scope slots to original JS variable names:
 2. **Operands**: Parse based on opcode operand type/count
 3. **Constants**: Embedded in file header, no external JSON dependency
 4. **Jumps**: Target = current address + offset + instruction length
-5. **Debug expressions**: Use variable names from `@reg`, not hardcoded `scope`/`K`
+5. **Debug expressions**: Use variable names from `@reg` + `@opcode_transform`
+6. **No static scope inference**: Use `@opcode_transform` at breakpoints to inspect fn/args/this_val

@@ -96,48 +96,35 @@ read_code_smart({ file_path: "/abs/path/source/main.js", start_line: 148, end_li
 
 ---
 
-## 🎯 Scope Slot Tracking (CRITICAL)
+## 🎯 Dynamic Debugging with @opcode_transform (CRITICAL)
 
-**Track `CREATE_FUNC → STORE_SCOPE` mappings for readable output:**
+**NO static scope inference! Use @opcode_transform for runtime inspection.**
+
+### CALL Instruction Debugging
+
+When you need to know what function is being called:
+1. Set breakpoint at the CALL instruction
+2. Use debug expressions from `@opcode_transform`:
 
 ```vmasm
-;; ❌ Hard to read
-0x0000: CREATE_FUNC        1               ; func_1
-0x0002: STORE_SCOPE        0 8             ; scope[0][8] = val
-0x0122: LOAD_SCOPE         0 8             ; scope[0][8]
-0x0125: CALL               0               ; fn(0 args)
-
-;; ✅ Clear and readable
-0x0000: CREATE_FUNC        1               ; func_1
-0x0002: STORE_SCOPE        0 8             ; scope[0][8] = func_1
-0x0122: LOAD_SCOPE         0 8             ; scope[0][8] → func_1
-0x0125: CALL               0               ; call: func_1(0 args)
+@opcode_transform 0 CALL: argCount = bc[ip]; fn = stack[sp - argCount]; this_val = stack[sp - argCount - 1]; args = stack.slice(sp - argCount + 1, sp + 1)
 ```
 
-**Reserved slots**:
-- `scope[0][0]` → `arguments`
-- `scope[0][1]` → `this`
+At breakpoint, evaluate:
+- `v[p - 2]` → the actual function being called
+- `v.slice(p - 1, p + 1)` → the actual arguments
 
----
-
-## 🎯 Call Target Inference (CRITICAL)
-
-**CALL must infer target, not just `fn(N args)`!**
-
-| Pattern | Comment Format |
-|---------|----------------|
-| `LOAD_SCOPE d i` → `CALL` | `call: func_N(args)` |
-| `GET_GLOBAL K[n]` → `CALL` | `call: {globalName}(args)` |
-| `GET_PROP_CONST K[n]` → `CALL` | `call: {obj}.{method}(args)` |
-| `CREATE_FUNC N` → `CALL` | `call: func_N(args) [IIFE]` |
+### Comment Format (Simplified)
 
 ```vmasm
-;; ✅ Enhanced output
-0x00B3: GET_GLOBAL         K[132]          ; "window"
-0x00B5: GET_PROP_CONST     K[151]          ; .localStorage
-0x00B7: GET_PROP_CONST     K[152]          ; .getItem
-0x00B9: PUSH_STR           K[153]          ; "xmst"
-0x00BB: CALL               1               ; call: window.localStorage.getItem(1 args)
+;; ✅ CORRECT - Simple, no inference
+0x0000: CREATE_FUNC        1               ; func_1
+0x0002: STORE_SCOPE        0 8             ; scope[0][8]
+0x0122: LOAD_SCOPE         0 8             ; scope[0][8]
+0x0125: CALL               2               ; call(2 args)
+
+;; ❌ WRONG - Don't try to infer call targets statically
+0x0125: CALL               2               ; call: func_1(2 args)  ← NO!
 ```
 
 ---
