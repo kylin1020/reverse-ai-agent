@@ -247,13 +247,44 @@ global.navigator.connection = { effectiveType: '4g', rtt: 50 };
 
 Do NOT stop after creating files and ask user to run. Execute the commands, read the output, iterate automatically.
 
-## Verification
+## Verification (Phase 1 Complete)
 
-Success criteria:
-- Node output matches browser output byte-for-byte
-- Works with fresh inputs, not just captured values
-- No `undefined` or `NaN` in output
-- MISSING list is empty
+Success criteria for **Phase 1 (Environment Detection)**:
+- JS loads without errors
+- No browser-related MISSING properties
+- Exported functions/objects are accessible
+
+**⚠️ Phase 1 completion does NOT mean the work is done!**
+
+## Phase 2: Function Debugging (User Interaction Required)
+
+After environment detection completes successfully, **MUST ASK the user**:
+
+```
+✅ Phase 1 Complete - Environment detection done. JS loaded successfully.
+   Exported: [list exported functions/objects]
+
+To continue with Phase 2 (function debugging), I need:
+1. Which function to test?
+2. Example input parameters (from browser DevTools)
+3. Expected output (from browser DevTools)
+
+Note: Init functions may need config/token values. Please provide if applicable.
+```
+
+### Why User Input is Required
+
+- Init functions need specific parameters (config, tokens, timestamps)
+- Signature functions need real input to verify correctness
+- Without browser-captured examples, cannot verify output
+- Runtime values may affect results
+
+### Phase 2 Workflow
+
+1. User provides: function + input + expected output
+2. AI writes test, runs it, compares output
+3. If mismatch → trace, find more missing env
+4. Repeat until output matches
 
 ## Autonomous Execution Rules
 
