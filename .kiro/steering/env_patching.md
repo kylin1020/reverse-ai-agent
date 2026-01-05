@@ -35,6 +35,8 @@ Before patching, verify:
 
 LOCATE → EXTRACT → TRACE → ANALYZE MISSING → PATCH → RE-TRACE → VERIFY
 
+**AI must execute the full loop autonomously** - run tracer, analyze output, patch, re-run, repeat until done. Do NOT stop and ask user to run commands.
+
 The key output is the **MISSING list** - properties that were accessed but returned undefined.
 
 ## Phase 1: Locate Entry Point
@@ -206,14 +208,14 @@ global.navigator.connection = { effectiveType: '4g', rtt: 50 };
 
 ## Phase 5: Iterative Refinement
 
-This is a LOOP, not one-shot:
+**AI must run this loop autonomously without user intervention:**
 
-1. TRACE → Get MISSING list
-2. PATCH → Fix missing properties
-3. RE-TRACE → New missing may appear (child props of newly patched parents)
-4. Repeat until no missing and output matches browser
+1. Run tracer: `node env_tracer.js` → capture MISSING list from output
+2. Patch missing properties in env.js
+3. Re-run tracer → check for new missing (child props of newly patched parents)
+4. Repeat until MISSING list is empty and output matches expected
 
-Each iteration reveals NEW missing properties that weren't accessed before because their parent was undefined.
+Do NOT stop after creating files and ask user to run. Execute the commands, read the output, iterate automatically.
 
 ## Verification
 
@@ -222,6 +224,27 @@ Success criteria:
 - Works with fresh inputs, not just captured values
 - No `undefined` or `NaN` in output
 - MISSING list is empty
+
+## Autonomous Execution Rules
+
+1. **Run commands yourself** - use `executeBash` to run tracer, don't tell user to run
+2. **Parse output** - extract MISSING list from command output
+3. **Patch immediately** - update env.js based on missing list
+4. **Re-run automatically** - execute tracer again after patching
+5. **Loop until done** - continue until no missing properties
+6. **Report only when complete** - show final status, not intermediate steps
+
+Example autonomous flow:
+```
+AI: [runs node env_tracer.js]
+AI: [reads output, finds 5 missing properties]
+AI: [patches env.js with those 5 properties]
+AI: [runs node env_tracer.js again]
+AI: [reads output, finds 2 new missing]
+AI: [patches env.js]
+AI: [runs again, no missing]
+AI: "Done. Patched 7 properties total."
+```
 
 ## Status Report
 
