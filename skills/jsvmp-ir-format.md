@@ -13,7 +13,8 @@
 | CREATE_FUNC | `; func_N` | Always show function ID |
 | STORE_SCOPE | `; scope[d][i]` | Show slot location only |
 | LOAD_SCOPE | `; scope[d][i]` | Show slot location only |
-| CALL | `; call(N args)` | Show arg count only |
+| CALL | `; fn()` or `; fn(...args)` | 0 args → `fn()`, N args → `fn(...args)` |
+| NEW | `; new class()` or `; new class(...args)` | 0 args → `new class()`, N args → `new class(...args)` |
 | GET_GLOBAL | `; "globalName"` | Show constant value |
 | GET_PROP_CONST | `; .propName` | Show property name |
 
@@ -114,6 +115,9 @@ When paused at a breakpoint, use these expressions to inspect:
 ;; CALL - 最重要的调试表达式
 @opcode_transform 0 CALL: argCount = bc[ip]; fn = stack[sp - argCount]; this_val = stack[sp - argCount - 1]; args = stack.slice(sp - argCount + 1, sp + 1)
 
+;; NEW - 构造函数调用
+@opcode_transform 1 NEW: argCount = bc[ip]; constructor = stack[sp - argCount]; args = stack.slice(sp - argCount + 1, sp + 1)
+
 ;; BINARY_OP (ADD, SUB, MUL, DIV, MOD)
 @opcode_transform 68 ADD: a = stack[sp - 1]; b = stack[sp]; result = a + b
 
@@ -141,6 +145,14 @@ Debug Expressions:
   argCount = o[a]     → 2
   fn = v[p - 2]       → inspect at breakpoint
   this_val = v[p - 3] → inspect at breakpoint
+  args = v.slice(p - 1, p + 1)
+```
+
+Example hover on `NEW 2`:
+```
+Debug Expressions:
+  argCount = o[a]     → 2
+  constructor = v[p - 2] → inspect at breakpoint
   args = v.slice(p - 1, p + 1)
 ```
 
@@ -207,8 +219,12 @@ Metadata for VSCode Extension auto-breakpoints:
 0x0010: LOAD_SCOPE         0 8             ; scope[0][8]
 
 ;; CALL instructions (use @opcode_transform for runtime inspection)
-0x0100: CALL               2               ; call(2 args)
-0x0200: CALL               0               ; call(0 args)
+0x0100: CALL               2               ; fn(...args)
+0x0200: CALL               0               ; fn()
+
+;; NEW instructions (use @opcode_transform for runtime inspection)
+0x0300: NEW                2               ; new class(...args)
+0x0400: NEW                0               ; new class()
 
 ;; K_Reference instructions
 0x00B3: GET_GLOBAL         K[0]            ; "window"

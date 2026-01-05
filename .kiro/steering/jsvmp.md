@@ -591,14 +591,17 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
     0x0000: CREATE_FUNC        1               ; func_1
     0x0002: STORE_SCOPE        0 8             ; scope[0][8]
     0x0005: LOAD_SCOPE         0 8             ; scope[0][8]
-    0x0008: CALL               0               ; call(0 args)
+    0x0008: CALL               0               ; fn()
     0x000A: GET_GLOBAL         K[132]          ; "window"
     0x000C: GET_PROP_CONST     K[133]          ; ._sdkGlueVersionMap
-    0x000E: CALL               2               ; call(2 args)
+    0x000E: CALL               2               ; fn(...args)
+    0x0010: NEW                0               ; new class()
+    0x0012: NEW                3               ; new class(...args)
     ```
   - **v1.4 注释原则 (NO STATIC INFERENCE)**:
     - **Scope 指令**: 只显示 `; scope[d][i]`，不推断内容
-    - **CALL 指令**: 只显示 `; call(N args)`，不推断目标
+    - **CALL 指令**: 只显示 `; fn()` 或 `; fn(...args)`，不推断目标
+    - **NEW 指令**: 只显示 `; new class()` 或 `; new class(...args)`，不推断类名
     - **动态调试**: 使用 `@opcode_transform` 在断点处检查 fn/args/this_val
     - **属性访问**: GET_GLOBAL/GET_PROP_CONST 显示常量值
   - **⚠️ INJECTION POINT VALIDATION (MANDATORY)**:
