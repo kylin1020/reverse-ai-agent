@@ -18,6 +18,13 @@
 | GET_GLOBAL | `; "globalName"` | Show constant value |
 | GET_PROP_CONST | `; .propName` | Show property name |
 
+**⚠️ String Escaping in Comments (CRITICAL)**:
+- Newline `\n` → display as `\n` (escaped), NOT actual newline
+- Carriage return `\r` → display as `\r`
+- Tab `\t` → display as `\t`
+- Example: `; "\n"` ✅ correct, `; "` + actual newline + `"` ❌ wrong
+- Reason: Lexer cannot parse comments that span multiple lines
+
 **Dynamic Debugging**: Use `@opcode_transform` + breakpoint to inspect actual runtime values (fn, args, this_val, etc.)
 
 ---

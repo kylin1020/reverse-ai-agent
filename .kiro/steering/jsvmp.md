@@ -604,6 +604,12 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
     - **NEW 指令**: 只显示 `; new class()` 或 `; new class(...args)`，不推断类名
     - **动态调试**: 使用 `@opcode_transform` 在断点处检查 fn/args/this_val
     - **属性访问**: GET_GLOBAL/GET_PROP_CONST 显示常量值
+    - **⚠️ 字符串转义 (CRITICAL)**: 注释中的字符串值必须转义特殊字符！
+      - 换行符 `\n` → 显示为 `\n`（转义形式），不是实际换行
+      - 回车符 `\r` → 显示为 `\r`
+      - 制表符 `\t` → 显示为 `\t`
+      - 示例: `; "\n"` ✅ 正确，`; "` + 实际换行 + `"` ❌ 错误
+      - 原因: Lexer 无法解析跨行的注释字符串
   - **⚠️ INJECTION POINT VALIDATION (MANDATORY)**:
     After generating vmasm, MUST verify all injection point coordinates:
     1. Use `search_code_smart` to find actual code at each location
