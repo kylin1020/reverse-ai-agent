@@ -37,7 +37,26 @@ LOCATE → EXTRACT → TRACE → ANALYZE MISSING → PATCH → RE-TRACE → VERI
 
 **AI must execute the full loop autonomously** - run tracer, analyze output, patch, re-run, repeat until done. Do NOT stop and ask user to run commands.
 
+**CRITICAL RULES:**
+1. Only patch **browser properties** - if a property is not a standard browser API, do NOT patch it
+2. **NEVER read original JS directly** - use `read_code_smart` / `search_code_smart` tools for all code reading
+3. Loop until all browser-related MISSING properties are patched
+
 The key output is the **MISSING list** - properties that were accessed but returned undefined.
+
+## Code Reading Rules
+
+**⚠️ NEVER use `readFile`, `cat`, `head`, `tail`, `grep` to read JS source code!**
+
+Always use Smart-FS tools with **ABSOLUTE paths**:
+
+| Action | Tool | Example |
+|--------|------|---------|
+| Read code | `read_code_smart` | `file_path="/abs/path/source/main.js", start_line=1, end_line=50` |
+| Search pattern | `search_code_smart` | `file_path="/abs/path/source/main.js", query="navigator"` |
+| Trace variable | `find_usage_smart` | `file_path="/abs/path/source/main.js", identifier="_0xabc", line=105` |
+
+**Why**: Original JS is minified/obfuscated. Smart-FS tools beautify and provide source mapping.
 
 ## Phase 1: Locate Entry Point
 
@@ -190,13 +209,24 @@ process.on('exit', generateReport);
 
 ## Phase 4: Targeted Patching
 
-**Only patch what's in the MISSING list!**
+**Only patch BROWSER properties from the MISSING list!**
+
+### Browser Property Check
+
+Before patching any property, verify it's a standard browser API:
+- `window.*`, `document.*`, `navigator.*`, `screen.*`, `location.*` → Browser API ✅
+- `performance.*`, `crypto.*`, `localStorage.*`, `sessionStorage.*` → Browser API ✅
+- `XMLHttpRequest`, `fetch`, `WebSocket`, `Worker` → Browser API ✅
+- `Canvas`, `WebGL`, `AudioContext` → Browser API ✅
+- Custom properties like `window.bdms`, `window._customVar` → NOT browser API ❌ (skip)
+
+**Do NOT patch non-browser properties** - they are application-specific and should remain undefined.
 
 | Trace Type | Meaning | Patch Strategy |
 |------------|---------|----------------|
-| GET missing | Code reads undefined property | Return appropriate value |
-| HAS failed | Code checks `prop in obj` | Ensure property exists |
-| CALL | Code invokes function | Implement function logic |
+| GET missing | Code reads undefined property | Return appropriate value (if browser API) |
+| HAS failed | Code checks `prop in obj` | Ensure property exists (if browser API) |
+| CALL | Code invokes function | Implement function logic (if browser API) |
 
 ### Depth-Aware Patching
 
@@ -229,21 +259,24 @@ Success criteria:
 
 1. **Run commands yourself** - use `executeBash` to run tracer, don't tell user to run
 2. **Parse output** - extract MISSING list from command output
-3. **Patch immediately** - update env.js based on missing list
-4. **Re-run automatically** - execute tracer again after patching
-5. **Loop until done** - continue until no missing properties
-6. **Report only when complete** - show final status, not intermediate steps
+3. **Filter browser APIs only** - skip non-browser properties in MISSING list
+4. **Patch immediately** - update env.js based on filtered missing list
+5. **Re-run automatically** - execute tracer again after patching
+6. **Loop until done** - continue until no browser-related missing properties
+7. **Use Smart-FS for code reading** - never use readFile/cat/grep for JS files
+8. **Report only when complete** - show final status, not intermediate steps
 
 Example autonomous flow:
 ```
 AI: [runs node env_tracer.js]
-AI: [reads output, finds 5 missing properties]
-AI: [patches env.js with those 5 properties]
+AI: [reads output, finds 5 missing: navigator.connection, window.bdms, screen.width, ...]
+AI: [filters: navigator.connection ✅ browser, window.bdms ❌ skip, screen.width ✅ browser]
+AI: [patches env.js with browser properties only]
 AI: [runs node env_tracer.js again]
-AI: [reads output, finds 2 new missing]
+AI: [reads output, finds 1 new missing: navigator.connection.rtt ✅ browser]
 AI: [patches env.js]
-AI: [runs again, no missing]
-AI: "Done. Patched 7 properties total."
+AI: [runs again, remaining missing are all non-browser → done]
+AI: "Done. Patched 4 browser properties."
 ```
 
 ## Status Report
@@ -269,6 +302,28 @@ artifacts/jsrev/{domain}/
 ```
 
 ## Anti-Patterns
+
+### ❌ Reading JS with readFile/cat/grep
+```javascript
+// WRONG: Direct file reading
+readFile({ path: "source/main.js" })  // ❌ Minified, unreadable
+executeBash({ command: "cat source/main.js" })  // ❌ Same problem
+
+// RIGHT: Use Smart-FS tools
+read_code_smart({ file_path: "/abs/path/source/main.js", start_line: 1, end_line: 50 })
+search_code_smart({ file_path: "/abs/path/source/main.js", query: "navigator" })
+```
+
+### ❌ Patching Non-Browser Properties
+```javascript
+// WRONG: Patching application-specific properties
+global.window.bdms = {};  // ❌ Not a browser API
+global.window._customTracker = {};  // ❌ Not a browser API
+
+// RIGHT: Only patch standard browser APIs
+global.navigator.connection = { effectiveType: '4g' };  // ✅ Browser API
+global.screen.width = 1920;  // ✅ Browser API
+```
 
 ### ❌ Blind Patching
 ```javascript
