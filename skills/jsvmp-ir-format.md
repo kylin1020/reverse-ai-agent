@@ -102,11 +102,14 @@ When paused at a breakpoint, use these expressions to inspect:
 - `a`, `b` - operands for binary operations
 - `result` - computed result
 
-### Format
+### Format (v1.4 - Quoted String Format)
 
 ```
-@opcode_transform {opcode} {NAME}: {expr1}; {expr2}; ...
+@opcode_transform {opcode} {NAME}: "{pre:|post:}expr1"; "{pre:|post:}expr2"; ...
 ```
+
+- `pre:` - Expression evaluated BEFORE instruction execution (default if omitted)
+- `post:` - Expression evaluated AFTER instruction execution (e.g., CALL/NEW return value)
 
 ### Stack Expression Conversion
 
@@ -116,28 +119,47 @@ When paused at a breakpoint, use these expressions to inspect:
 | `stack[sp--]` | `stack[sp]` |
 | `stack[sp] = x` | ❌ Forbidden |
 
+### ⚠️ Verification Requirement (CRITICAL)
+
+**Every @opcode_transform MUST be verified against original JS handler code!**
+
+```javascript
+// STEP 1: Search for handler
+search_code_smart({ query: "{opcode} === t" })
+
+// STEP 2: Read handler code, understand stack operations
+// Example handler (opcode 32 = LT):
+//   if (32 === t) {
+//     v[p - 1] = v[p - 1] < v[p];  // compare top two values
+//     p--;                          // pop one value
+//   }
+
+// STEP 3: Convert to pre/post expressions
+@opcode_transform 32 LT: "pre:a = v[p - 1]"; "pre:b = v[p]"; "pre:result = a < b"
+```
+
 ### Common Templates
 
 ```vmasm
-;; CALL - 最重要的调试表达式
-@opcode_transform 0 CALL: argCount = bc[ip]; fn = stack[sp - argCount]; this_val = stack[sp - argCount - 1]; args = stack.slice(sp - argCount + 1, sp + 1)
+;; CALL - 最重要的调试表达式 (有 post 返回值)
+@opcode_transform 0 CALL: "pre:argCount = o[a]"; "pre:fn = v[p - argCount]"; "pre:this_val = v[p - argCount - 1]"; "pre:args = v.slice(p - argCount + 1, p + 1)"; "post:result = v[p]"
 
-;; NEW - 构造函数调用
-@opcode_transform 1 NEW: argCount = bc[ip]; constructor = stack[sp - argCount]; args = stack.slice(sp - argCount + 1, sp + 1)
+;; NEW - 构造函数调用 (有 post 返回值)
+@opcode_transform 59 NEW: "pre:argCount = o[a]"; "pre:ctor = v[p - argCount]"; "pre:args = v.slice(p - argCount + 1, p + 1)"; "post:result = v[p]"
 
 ;; BINARY_OP (ADD, SUB, MUL, DIV, MOD)
-@opcode_transform 68 ADD: a = stack[sp - 1]; b = stack[sp]; result = a + b
+@opcode_transform 68 ADD: "pre:a = v[p - 1]"; "pre:b = v[p]"; "pre:result = a + b"
 
 ;; UNARY_OP (NOT, NEG, TYPEOF)
-@opcode_transform 77 NOT: operand = stack[sp]; result = !operand
+@opcode_transform 29 NOT: "pre:operand = v[p]"; "pre:result = !operand"
 
 ;; LOAD/STORE SCOPE
-@opcode_transform 82 LOAD_SCOPE: depth = bc[ip]; idx = bc[ip + 1]; value = scope[depth][idx]
-@opcode_transform 83 STORE_SCOPE: depth = bc[ip]; idx = bc[ip + 1]; value = stack[sp]
+@opcode_transform 74 LOAD_SCOPE: "pre:depth = o[a]"; "pre:idx = o[a + 1]"; "pre:value = s[depth][idx]"
+@opcode_transform 54 STORE_SCOPE: "pre:depth = o[a]"; "pre:idx = o[a + 1]"; "pre:value = v[p]"
 
 ;; JUMP
-@opcode_transform 80 JMP: offset = bc[ip]; target = ip + offset + 1
-@opcode_transform 81 JF: offset = bc[ip]; condition = stack[sp]; target = ip + offset + 1
+@opcode_transform 53 JMP: "pre:offset = o[a]"; "pre:target = a + offset + 2"
+@opcode_transform 41 JF: "pre:offset = o[a]"; "pre:condition = v[p]"; "pre:target = a + offset + 2"
 ```
 
 ### VSCode Extension Integration

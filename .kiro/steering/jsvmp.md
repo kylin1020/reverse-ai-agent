@@ -319,8 +319,81 @@ function parseVmasm(content) {
 @reg ip=a, sp=p, stack=v, bc=o, storage=l, const=Z, scope=s
 
 ;; CALL 调试表达式 - 最重要！
-@opcode_transform 0 CALL: argCount = bc[ip]; fn = stack[sp - argCount]; this_val = stack[sp - argCount - 1]; args = stack.slice(sp - argCount + 1, sp + 1)
+@opcode_transform 0 CALL: "pre:argCount = o[a]"; "pre:fn = v[p - argCount]"; "pre:this_val = v[p - argCount - 1]"; "pre:args = v.slice(p - argCount + 1, p + 1)"; "post:result = v[p]"
 ```
+
+### ⚠️ @opcode_transform 准确性验证 (CRITICAL)
+
+**每个 @opcode_transform 必须从原始 JS 代码验证！不要猜测！**
+
+#### 验证流程 (MANDATORY)
+
+```javascript
+// STEP 1: 定位 opcode handler
+// 使用 search_code_smart 搜索 opcode 值
+search_code_smart({ 
+  file_path: "/abs/path/output/main_deob.js", 
+  query: "32 === t"  // 搜索 opcode 32 的 handler
+})
+
+// STEP 2: 阅读 handler 代码，理解栈操作
+// 示例 handler (opcode 32 = LT):
+//   if (32 === t) {
+//     v[p - 1] = v[p - 1] < v[p];  // 比较栈顶两个值
+//     p--;                          // 弹出一个值
+//   }
+
+// STEP 3: 转换为 pre/post 表达式
+// - pre: 执行前可求值的表达式 (操作数)
+// - post: 执行后才能求值的表达式 (结果)
+@opcode_transform 32 LT: "pre:a = v[p - 1]"; "pre:b = v[p]"; "pre:result = a < b"
+
+// STEP 4: 验证表达式正确性
+// - a = v[p - 1] ✅ 正确：左操作数在 sp-1
+// - b = v[p]     ✅ 正确：右操作数在 sp
+// - result = a < b ✅ 正确：小于比较
+```
+
+#### 常见 Handler 模式识别
+
+| Handler 代码模式 | 操作类型 | @opcode_transform 模板 |
+|-----------------|---------|----------------------|
+| `v[p-1] = v[p-1] OP v[p]; p--` | 二元运算 | `"pre:a = v[p-1]"; "pre:b = v[p]"; "pre:result = a OP b"` |
+| `v[p] = OP v[p]` | 一元运算 | `"pre:operand = v[p]"; "pre:result = OP operand"` |
+| `v[++p] = VALUE` | 压栈 | `"pre:value = VALUE"` |
+| `p--` | 弹栈 | `"pre:value = v[p]"` |
+| `fn.apply(this, args)` | 函数调用 | `"pre:fn = ..."; "pre:args = ..."; "post:result = v[p]"` |
+
+#### 栈指针偏移规则
+
+**关键**: 表达式在指令执行**前**求值，所以要用执行前的 sp 值！
+
+| 操作 | 执行前 sp | 执行后 sp | 表达式中用 |
+|------|----------|----------|-----------|
+| 二元运算 | p | p-1 | `v[p-1]`, `v[p]` |
+| 一元运算 | p | p | `v[p]` |
+| PUSH | p | p+1 | N/A (无输入) |
+| POP | p | p-1 | `v[p]` |
+| CALL n | p | p-n | `v[p-n]` (fn), `v.slice(p-n+1, p+1)` (args) |
+
+#### 验证检查清单
+
+生成每个 @opcode_transform 后，必须检查：
+
+- [ ] **Handler 定位**: 找到了原始 JS 中的 handler 代码？
+- [ ] **栈操作理解**: 理解了 handler 如何操作栈？
+- [ ] **操作数位置**: pre 表达式中的栈偏移正确？
+- [ ] **结果位置**: post 表达式（如果有）指向正确的结果位置？
+- [ ] **运算符匹配**: 表达式中的运算符与 handler 一致？
+
+#### ❌ 常见错误
+
+| 错误 | 正确 | 原因 |
+|------|------|------|
+| `a = v[p]` | `a = v[p-1]` | 二元运算左操作数在 sp-1 |
+| `result = v[p-1]` | `result = a OP b` | result 应该是计算表达式，不是栈位置 |
+| `argCount = o[a++]` | `argCount = o[a]` | 表达式不应修改状态 |
+| 缺少 `post:result` | 添加 `"post:result = v[p]"` | CALL/NEW 的返回值需要 post |
 
 ### 调试表达式生成规则
 
@@ -571,8 +644,9 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
     @reg ip={ip_var}, sp={sp_var}, stack={stack_var}, bc={bc_var}, storage={storage_var}, const={const_var}, scope={scope_var}
     
     ;; opcode_transform - 用于动态调试时推断 fn/args/this_val 等
-    @opcode_transform 0 CALL: argCount = bc[ip]; fn = stack[sp - argCount]; this_val = stack[sp - argCount - 1]; args = stack.slice(sp - argCount + 1, sp + 1)
-    @opcode_transform 68 ADD: a = stack[sp - 1]; b = stack[sp]; result = a + b
+    ;; ⚠️ 必须从原始 JS handler 代码验证每个表达式！
+    @opcode_transform 0 CALL: "pre:argCount = o[a]"; "pre:fn = v[p - argCount]"; "pre:this_val = v[p - argCount - 1]"; "pre:args = v.slice(p - argCount + 1, p + 1)"; "post:result = v[p]"
+    @opcode_transform 68 ADD: "pre:a = v[p - 1]"; "pre:b = v[p]"; "pre:result = a + b"
     
     ;; 注入点元数据 (用于 VSCode Extension 自动设置断点)
     @dispatcher line={src_line}, column={src_column}
@@ -619,7 +693,28 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
     5. Verify `@loop_entry` points to opcode read (e.g., `var t = o[a++]`)
     6. Verify `@breakpoint` is right after opcode read
     7. Verify `@reg` mappings match actual VM register variables
+  - **⚠️ @opcode_transform VALIDATION (MANDATORY)**:
+    Each @opcode_transform MUST be verified against original JS handler code:
+    1. Search for handler: `search_code_smart({ query: "{opcode} === t" })`
+    2. Read handler code to understand stack operations
+    3. Verify pre expressions use correct stack offsets (before execution)
+    4. Verify post expressions point to correct result location (after execution)
+    5. Verify operators match the actual handler logic
+    **Example verification for opcode 32 (LT)**:
+    ```javascript
+    // Handler code: v[p - 1] = v[p - 1] < v[p]; p--;
+    // Verification:
+    //   - a = v[p - 1] ✅ left operand at sp-1
+    //   - b = v[p]     ✅ right operand at sp
+    //   - result = a < b ✅ less-than comparison
+    @opcode_transform 32 LT: "pre:a = v[p - 1]"; "pre:b = v[p]"; "pre:result = a < b"
+    ```
   - 关键: 十六进制地址，类型化常量池，opcode_transform 用于动态调试
+- [ ] 🤖 验证 @opcode_transform 准确性
+  - 对每个 opcode，在原始 JS 中搜索其 handler
+  - 比对 handler 代码与 @opcode_transform 表达式
+  - 修正任何不匹配的表达式
+  - 记录验证结果到 NOTE.md
 
 > **⚠️ IR Parsing**: Use Chevrotain for ALL IR parsing (LIR/MIR/HIR). See `skills/jsvmp-ir-parser.md`
 > **📦 Parser Location**: `jsvmp-ir-extension/src/utils/vmasm-*.ts` (Lexer, Parser, Visitor)

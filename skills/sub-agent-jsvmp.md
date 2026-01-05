@@ -100,6 +100,35 @@ read_code_smart({ file_path: "/abs/path/source/main.js", start_line: 148, end_li
 
 **NO static scope inference! Use @opcode_transform for runtime inspection.**
 
+### @opcode_transform Verification (MANDATORY)
+
+**Every @opcode_transform MUST be verified against original JS handler code!**
+
+```javascript
+// STEP 1: Search for handler in deobfuscated JS
+search_code_smart({ 
+  file_path: "/abs/path/output/main_deob.js", 
+  query: "32 === t"  // Search for opcode 32 handler
+})
+
+// STEP 2: Read handler code, understand stack operations
+// Example handler (opcode 32 = LT):
+//   if (32 === t) {
+//     v[p - 1] = v[p - 1] < v[p];  // compare top two values
+//     p--;                          // pop one value
+//   }
+
+// STEP 3: Convert to pre/post expressions
+// - pre: evaluated BEFORE instruction execution
+// - post: evaluated AFTER instruction execution
+@opcode_transform 32 LT: "pre:a = v[p - 1]"; "pre:b = v[p]"; "pre:result = a < b"
+
+// STEP 4: Verify correctness
+// - a = v[p - 1] ✅ left operand at sp-1
+// - b = v[p]     ✅ right operand at sp
+// - result = a < b ✅ less-than comparison
+```
+
 ### CALL Instruction Debugging
 
 When you need to know what function is being called:
@@ -107,12 +136,21 @@ When you need to know what function is being called:
 2. Use debug expressions from `@opcode_transform`:
 
 ```vmasm
-@opcode_transform 0 CALL: argCount = bc[ip]; fn = stack[sp - argCount]; this_val = stack[sp - argCount - 1]; args = stack.slice(sp - argCount + 1, sp + 1)
+@opcode_transform 0 CALL: "pre:argCount = o[a]"; "pre:fn = v[p - argCount]"; "pre:this_val = v[p - argCount - 1]"; "pre:args = v.slice(p - argCount + 1, p + 1)"; "post:result = v[p]"
 ```
 
 At breakpoint, evaluate:
 - `v[p - 2]` → the actual function being called
 - `v.slice(p - 1, p + 1)` → the actual arguments
+
+### Common Handler Patterns
+
+| Handler Code Pattern | Operation Type | @opcode_transform Template |
+|---------------------|----------------|---------------------------|
+| `v[p-1] = v[p-1] OP v[p]; p--` | Binary Op | `"pre:a = v[p-1]"; "pre:b = v[p]"; "pre:result = a OP b"` |
+| `v[p] = OP v[p]` | Unary Op | `"pre:operand = v[p]"; "pre:result = OP operand"` |
+| `v[++p] = VALUE` | Push | `"pre:value = VALUE"` |
+| `fn.apply(this, args)` | Call | `"pre:fn = ..."; "pre:args = ..."; "post:result = v[p]"` |
 
 ### Comment Format (Simplified)
 
