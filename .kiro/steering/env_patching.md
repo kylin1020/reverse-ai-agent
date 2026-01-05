@@ -6,16 +6,16 @@ inclusion: manual
 
 Emulate browser APIs in Node.js to run extracted JS code.
 
-**Core Principle**: NEVER blind-patch. Always trace first, patch only what's accessed.
+**Core Principle**: NEVER blind-patch. Trace first, patch only what's accessed and MISSING.
 
-## ⚠️ CRITICAL: Proxy-First Workflow
+## Trace-First Workflow
 
-**禁止盲补环境！** 直接补大量环境属性是错误做法：
-- 不知道原 JS 实际访问了哪些属性
-- 无法针对性优化，浪费资源
-- 可能引入不必要的检测点
+**DO NOT blind-patch environments!** Patching without tracing is wrong because:
+- You don't know what properties the JS actually accesses
+- Cannot optimize precisely, wastes resources
+- May introduce unnecessary detection points
 
-**正确流程**：先用 Proxy 追踪 → 分析访问日志 → 只补缺失的
+**Correct flow**: Trace with Proxy → Analyze MISSING list → Patch only missing → Re-trace → Repeat
 
 ## When to Use
 
@@ -29,22 +29,19 @@ Before patching, verify:
 1. Entry point located via stack trace (not grep)
 2. Code deobfuscated if contains `_0x`, `\x` patterns
 3. Dependencies identified via closure analysis
-4. Extracted code runs but fails only on browser APIs (no ReferenceErrors)
+4. Extracted code runs but fails only on browser APIs
 
 ## Pipeline
 
-```
-LOCATE → EXTRACT → TRACE → ANALYZE → PATCH → VERIFY
-                    ↑
-              Proxy追踪是核心！
-```
+LOCATE → EXTRACT → TRACE → ANALYZE MISSING → PATCH → RE-TRACE → VERIFY
+
+The key output is the **MISSING list** - properties that were accessed but returned undefined.
 
 ## Phase 1: Locate Entry Point
 
 Hook network calls to find param generation:
 
 ```javascript
-// Inject via evaluate_script
 (function() {
     const TARGET = 'signature';
     const _send = XMLHttpRequest.prototype.send;
@@ -58,19 +55,6 @@ Hook network calls to find param generation:
 })();
 ```
 
-### evaluate_script Tips
-
-`evaluate_script` works like DevTools Console. Just type a function name to see its declaration and source location:
-
-```javascript
-myFunction
-// Response:
-// function _0x1b01d3(){var _0xfd6122=_0x86a7ea,...}
-// 📍 VM24:1:37477
-```
-
-Invaluable for locating function definitions without grepping minified code.
-
 ## Phase 2: Extract Code
 
 1. Identify free variables (used but not defined locally)
@@ -78,230 +62,158 @@ Invaluable for locating function definitions without grepping minified code.
 3. Extract with Babel Generator
 4. Test: `node extracted.js` should fail only on browser APIs
 
-## Phase 3: Proxy Tracing (核心步骤)
+## Phase 3: Transparent Proxy Tracing
 
-**这是最重要的步骤！** 用递归 Proxy 追踪所有属性访问：
+### Core Goal: Detect MISSING Properties
 
-### 3.1 完整的追踪 Proxy
+The tracer's job is NOT to list all browser properties. It must:
+1. Detect what the JS code actually accesses
+2. Report which accessed properties are NOT implemented (MISSING)
+3. Guide iterative patching - fix missing → re-trace → repeat
+
+The **MISSING list** is the actionable output that drives patching work.
+
+### Design Principles
+
+1. **Use Reflect for ALL operations** - prevents proxy detection, maintains native behavior
+2. **Track accessed AND missing** - flag properties that returned undefined
+3. **Nested depth tracking** - know exactly which level is missing
+4. **Wrap real JSDOM objects** - not empty objects with property maps
+
+### Why Reflect Matters
+
+- `Reflect.get(target, prop, receiver)` preserves `this` binding (vs `target[prop]`)
+- `Reflect.has(target, prop)` matches native `in` operator behavior
+- `Reflect.ownKeys(target)` returns same as native `Object.keys`
+- Fully transparent proxy that passes anti-bot detection
+
+### Proxy Detection Prevention
+
+Anti-bot scripts detect proxies via toString behavior, property descriptor mismatches, prototype chain checks, and ownKeys enumeration. Using Reflect for ALL operations ensures the proxy is undetectable.
+
+### Key Implementation
 
 ```javascript
-// env_tracer.js - 环境追踪器
 const accessLog = [];
-const callLog = [];
+const missingLog = [];  // KEY: Track what's MISSING
 
-function createTracingProxy(name, realValue = undefined) {
+function createTracingProxy(name, target, depth = 0) {
+    if (depth > 20) return target;
+    if (target === null || target === undefined) {
+        missingLog.push({ path: name, reason: 'target is null/undefined' });
+        return target;
+    }
+    if (typeof target !== 'object' && typeof target !== 'function') return target;
+    
     const handler = {
         get(target, prop, receiver) {
-            const path = `${name}.${String(prop)}`;
-            
-            // 跳过内部符号
             if (typeof prop === 'symbol') return Reflect.get(target, prop, receiver);
-            if (prop === 'then') return undefined; // 避免 Promise 检测
             
-            // 记录访问
-            accessLog.push({ type: 'get', path, timestamp: Date.now() });
+            const path = `${name}.${prop}`;
+            const value = Reflect.get(target, prop, receiver);
             
-            // 如果有真实值，返回真实值的代理
-            if (realValue !== undefined && prop in realValue) {
-                const val = realValue[prop];
-                if (typeof val === 'object' && val !== null) {
-                    return createTracingProxy(path, val);
-                }
-                if (typeof val === 'function') {
-                    return createTracingFunction(path, val);
-                }
-                return val;
+            // KEY: Check if value is missing
+            const isMissing = value === undefined && !(prop in target);
+            
+            accessLog.push({ type: 'get', path, depth, missing: isMissing });
+            
+            if (isMissing) {
+                missingLog.push({ path, reason: 'property not defined' });
+                // Return empty proxy to continue tracing child accesses
+                return createTracingProxy(path, {}, depth + 1);
             }
             
-            // 返回新的代理继续追踪
-            return createTracingProxy(path);
-        },
-        
-        set(target, prop, value) {
-            const path = `${name}.${String(prop)}`;
-            accessLog.push({ type: 'set', path, value: typeof value, timestamp: Date.now() });
-            return true;
+            if (value && typeof value === 'object') {
+                return createTracingProxy(path, value, depth + 1);
+            }
+            if (typeof value === 'function') {
+                return createTracingFunction(path, value, target);
+            }
+            return value;
         },
         
         has(target, prop) {
-            const path = `${name}.${String(prop)}`;
-            accessLog.push({ type: 'has', path, timestamp: Date.now() });
-            return true; // 假装都有，继续追踪
+            const path = `${name}.${prop}`;
+            const exists = Reflect.has(target, prop);
+            accessLog.push({ type: 'has', path, exists });
+            if (!exists) {
+                missingLog.push({ path, reason: 'in check failed' });
+            }
+            return exists;
         },
         
-        apply(target, thisArg, args) {
-            callLog.push({ path: name, args: args.map(a => typeof a), timestamp: Date.now() });
-            return createTracingProxy(`${name}()`);
+        set(target, prop, value, receiver) {
+            accessLog.push({ type: 'set', path: `${name}.${prop}` });
+            return Reflect.set(target, prop, value, receiver);
         },
         
-        construct(target, args) {
-            callLog.push({ path: `new ${name}`, args: args.map(a => typeof a), timestamp: Date.now() });
-            return createTracingProxy(`new ${name}`);
-        }
+        // All other traps delegate to Reflect.*
+        deleteProperty: (t, p) => Reflect.deleteProperty(t, p),
+        ownKeys: (t) => Reflect.ownKeys(t),
+        getOwnPropertyDescriptor: (t, p) => Reflect.getOwnPropertyDescriptor(t, p),
+        getPrototypeOf: (t) => Reflect.getPrototypeOf(t),
     };
     
-    return new Proxy(function() {}, handler);
+    return new Proxy(target, handler);
 }
-
-function createTracingFunction(name, realFn) {
-    return new Proxy(realFn, {
-        apply(target, thisArg, args) {
-            callLog.push({ path: name, args: args.map(a => typeof a), timestamp: Date.now() });
-            try {
-                return Reflect.apply(target, thisArg, args);
-            } catch (e) {
-                accessLog.push({ type: 'error', path: name, error: e.message });
-                return createTracingProxy(`${name}()`);
-            }
-        }
-    });
-}
-
-// 设置全局追踪
-global.window = createTracingProxy('window');
-global.document = createTracingProxy('document');
-global.navigator = createTracingProxy('navigator');
-global.location = createTracingProxy('location');
-global.screen = createTracingProxy('screen');
-global.self = global.window;
-
-// 退出时输出报告
-process.on('exit', () => {
-    console.log('\n' + '='.repeat(60));
-    console.log('📊 ENVIRONMENT ACCESS REPORT');
-    console.log('='.repeat(60));
-    
-    // 去重并分类
-    const gets = [...new Set(accessLog.filter(l => l.type === 'get').map(l => l.path))].sort();
-    const sets = [...new Set(accessLog.filter(l => l.type === 'set').map(l => l.path))].sort();
-    const has = [...new Set(accessLog.filter(l => l.type === 'has').map(l => l.path))].sort();
-    const calls = [...new Set(callLog.map(l => l.path))].sort();
-    
-    console.log(`\n📖 GET (${gets.length} unique):`);
-    gets.forEach(p => console.log(`  ${p}`));
-    
-    console.log(`\n✏️ SET (${sets.length} unique):`);
-    sets.forEach(p => console.log(`  ${p}`));
-    
-    console.log(`\n❓ HAS/IN (${has.length} unique):`);
-    has.forEach(p => console.log(`  ${p}`));
-    
-    console.log(`\n📞 CALLS (${calls.length} unique):`);
-    calls.forEach(p => console.log(`  ${p}`));
-    
-    // 输出可直接使用的补丁清单
-    console.log('\n' + '='.repeat(60));
-    console.log('📝 PATCH CHECKLIST (copy to env.js):');
-    console.log('='.repeat(60));
-    const allPaths = [...new Set([...gets, ...sets, ...has])];
-    const grouped = {};
-    allPaths.forEach(p => {
-        const root = p.split('.')[0];
-        if (!grouped[root]) grouped[root] = [];
-        grouped[root].push(p);
-    });
-    Object.entries(grouped).forEach(([root, paths]) => {
-        console.log(`\n// ${root}:`);
-        paths.forEach(p => console.log(`// - ${p}`));
-    });
-});
-
-module.exports = { accessLog, callLog };
 ```
 
-### 3.2 使用追踪器
+### Setup with Real JSDOM Objects
 
-```bash
-# 运行追踪
-node -r ./lib/env_tracer.js ./source/target.js
+```javascript
+const { JSDOM } = require('jsdom');
+const dom = new JSDOM('<!DOCTYPE html>', { url: 'https://example.com' });
+const realWindow = dom.window;
 
-# 输出示例:
-# 📊 ENVIRONMENT ACCESS REPORT
-# ============================================================
-# 📖 GET (23 unique):
-#   navigator.userAgent
-#   navigator.platform
-#   document.createElement
-#   window.innerWidth
-#   ...
+// Proxy wraps REAL objects, Reflect returns real values
+global.window = createTracingProxy('window', realWindow, 0);
+global.document = createTracingProxy('document', realWindow.document, 0);
+global.navigator = createTracingProxy('navigator', realWindow.navigator, 0);
 ```
 
-### 3.3 分析追踪结果
+### Report Generator
 
-追踪完成后，你会得到：
-1. **实际访问的属性列表** - 只补这些
-2. **调用的函数列表** - 需要实现的方法
-3. **属性检测 (has/in)** - 可能是反检测点
+```javascript
+function generateReport() {
+    const uniqueMissing = [...new Map(missingLog.map(m => [m.path, m])).values()];
+    
+    console.log(`\n❌ MISSING (${uniqueMissing.length}) - PATCH THESE:`);
+    uniqueMissing.forEach(m => console.log(`  ${m.path} - ${m.reason}`));
+    
+    console.log(`\n📝 PATCH TODO:`);
+    uniqueMissing.forEach(m => console.log(`// TODO: ${m.path}`));
+}
+process.on('exit', generateReport);
+```
 
 ## Phase 4: Targeted Patching
 
-**只补追踪到的属性！** 按优先级分层：
+**Only patch what's in the MISSING list!**
 
-| Level | 触发条件 | 补丁策略 |
-|-------|----------|----------|
-| L0 | 追踪到 GET | 返回合理值 |
-| L1 | 追踪到 CALL | 实现函数逻辑 |
-| L2 | 追踪到 HAS | 确保属性存在 |
-| L3 | 追踪到 SET | 允许写入 |
+| Trace Type | Meaning | Patch Strategy |
+|------------|---------|----------------|
+| GET missing | Code reads undefined property | Return appropriate value |
+| HAS failed | Code checks `prop in obj` | Ensure property exists |
+| CALL | Code invokes function | Implement function logic |
 
-### L0: 简单属性 (从追踪结果生成)
+### Depth-Aware Patching
 
-```javascript
-// 只补追踪到的属性！
-// 来自追踪: navigator.userAgent, navigator.platform
-global.navigator = {
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)...',
-    platform: 'Win32'
-    // 不要补没追踪到的属性！
-};
-```
-
-### L1: 函数调用
+If trace shows nested access like `navigator.connection.effectiveType`, patch all levels:
 
 ```javascript
-// 来自追踪: document.createElement
-const { JSDOM } = require('jsdom');
-const dom = new JSDOM('<!DOCTYPE html>');
-global.document = {
-    createElement: dom.window.document.createElement.bind(dom.window.document)
-    // 只暴露追踪到的方法
-};
-```
-
-### L2: 属性检测 (反检测)
-
-```javascript
-// 来自追踪: 'webdriver' in navigator
-Object.defineProperty(navigator, 'webdriver', {
-    get: () => false,
-    configurable: true
-});
-```
-
-### L3: Native 伪装 (仅在检测到时使用)
-
-```javascript
-// 只有追踪到 toString 调用时才需要
-const makeNative = (fn, name) => {
-    Object.defineProperty(fn, 'toString', {
-        value: () => `function ${name}() { [native code] }`
-    });
-    return fn;
-};
+global.navigator.connection = { effectiveType: '4g', rtt: 50 };
 ```
 
 ## Phase 5: Iterative Refinement
 
-补丁是迭代过程：
+This is a LOOP, not one-shot:
 
-```
-追踪 → 补丁 → 再追踪 → 补漏 → 验证
-  ↑__________________________|
-```
+1. TRACE → Get MISSING list
+2. PATCH → Fix missing properties
+3. RE-TRACE → New missing may appear (child props of newly patched parents)
+4. Repeat until no missing and output matches browser
 
-每次补丁后重新追踪，直到：
-1. 无新的未定义访问
-2. 输出与浏览器一致
+Each iteration reveals NEW missing properties that weren't accessed before because their parent was undefined.
 
 ## Verification
 
@@ -309,20 +221,16 @@ Success criteria:
 - Node output matches browser output byte-for-byte
 - Works with fresh inputs, not just captured values
 - No `undefined` or `NaN` in output
-- **追踪报告显示所有访问都已处理**
+- MISSING list is empty
 
 ## Status Report
 
-When blocked:
-
 ```
 📊 ENV PATCH STATUS:
-- Phase: [Location|Extraction|Tracing|Patching|Verification]
-- Traced APIs: [list from tracer]
-- Patched: [x/y APIs]
-- Missing: [unpatched APIs]
+- Phase: [Tracing|Patching|Verification]
+- Missing: [count] properties
+- TODO: [list of missing paths]
 - Blocker: [specific issue]
-- Options: A) ... B) ...
 ```
 
 ## File Structure
@@ -330,34 +238,43 @@ When blocked:
 ```
 artifacts/jsrev/{domain}/
 ├── lib/
-│   ├── env_tracer.js   # Proxy追踪器 (先用这个！)
-│   ├── env.js          # 最终环境补丁 (基于追踪结果)
-│   └── sign.js         # 提取的签名逻辑
-├── tests/
-│   ├── trace_test.js   # 追踪测试
-│   └── env_test.js     # 补丁验证
+│   ├── env_tracer.js   # Tracing proxy
+│   └── env.js          # Final patches (from MISSING list)
 ├── logs/
-│   └── access_log.json # 追踪日志
-└── output/             # 提取/修改的代码
+│   └── access_log.json # Trace output with missing flags
+└── source/             # Extracted JS code
 ```
 
-## Anti-Pattern: 盲补环境 ❌
+## Anti-Patterns
 
+### ❌ Blind Patching
 ```javascript
-// ❌ 错误做法：不知道需要什么就全补
-global.navigator = {
-    userAgent: '...',
-    platform: '...',
-    language: '...',
-    languages: [...],
-    cookieEnabled: true,
-    // ... 100+ 属性
-};
+// WRONG: Patching without knowing what's accessed
+global.navigator = { userAgent, platform, language, ... };  // 100+ props
+```
 
-// ✅ 正确做法：只补追踪到的
-// 追踪结果: navigator.userAgent, navigator.platform
-global.navigator = {
-    userAgent: '...',
-    platform: '...'
-};
+### ❌ Tracer Without MISSING Detection
+```javascript
+// WRONG: Only logs, doesn't report what's missing
+get(target, prop) {
+    console.log(`accessed: ${prop}`);  // Useless - is it implemented?
+    return Reflect.get(target, prop);
+}
+```
+
+### ❌ Non-Transparent Proxy
+```javascript
+// WRONG: Always returns Proxy, hides missing properties
+get(target, prop) {
+    return createProxy(path);  // Never returns undefined!
+}
+```
+
+### ✅ Correct Approach
+```javascript
+// 1. Run tracer, get MISSING list
+// 2. Patch ONLY missing:
+global.navigator.connection = { effectiveType: '4g' };
+// 3. Re-trace, find new missing
+// 4. Repeat until done
 ```
