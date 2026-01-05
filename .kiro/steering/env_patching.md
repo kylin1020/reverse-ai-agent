@@ -93,16 +93,15 @@ Anti-bot scripts detect proxies via toString behavior, property descriptor misma
 
 ### Key Implementation
 
+The tracer must be **fully transparent** - return exactly what the real object returns (including undefined). Only log and report at the end.
+
 ```javascript
 const accessLog = [];
-const missingLog = [];  // KEY: Track what's MISSING
+const missingLog = [];
 
 function createTracingProxy(name, target, depth = 0) {
     if (depth > 20) return target;
-    if (target === null || target === undefined) {
-        missingLog.push({ path: name, reason: 'target is null/undefined' });
-        return target;
-    }
+    if (target === null || target === undefined) return target;
     if (typeof target !== 'object' && typeof target !== 'function') return target;
     
     const handler = {
@@ -112,24 +111,23 @@ function createTracingProxy(name, target, depth = 0) {
             const path = `${name}.${prop}`;
             const value = Reflect.get(target, prop, receiver);
             
-            // KEY: Check if value is missing
+            // Check if missing (undefined AND not a defined property)
             const isMissing = value === undefined && !(prop in target);
             
             accessLog.push({ type: 'get', path, depth, missing: isMissing });
-            
             if (isMissing) {
                 missingLog.push({ path, reason: 'property not defined' });
-                // Return empty proxy to continue tracing child accesses
-                return createTracingProxy(path, {}, depth + 1);
             }
             
+            // CRITICAL: Return actual value, even if undefined!
+            // Do NOT return a proxy for missing properties - that changes behavior
             if (value && typeof value === 'object') {
                 return createTracingProxy(path, value, depth + 1);
             }
             if (typeof value === 'function') {
                 return createTracingFunction(path, value, target);
             }
-            return value;
+            return value;  // Returns undefined if missing - this is correct!
         },
         
         has(target, prop) {
@@ -139,7 +137,7 @@ function createTracingProxy(name, target, depth = 0) {
             if (!exists) {
                 missingLog.push({ path, reason: 'in check failed' });
             }
-            return exists;
+            return exists;  // Return real boolean
         },
         
         set(target, prop, value, receiver) {
@@ -147,7 +145,7 @@ function createTracingProxy(name, target, depth = 0) {
             return Reflect.set(target, prop, value, receiver);
         },
         
-        // All other traps delegate to Reflect.*
+        // All traps delegate to Reflect - fully transparent
         deleteProperty: (t, p) => Reflect.deleteProperty(t, p),
         ownKeys: (t) => Reflect.ownKeys(t),
         getOwnPropertyDescriptor: (t, p) => Reflect.getOwnPropertyDescriptor(t, p),
@@ -157,6 +155,8 @@ function createTracingProxy(name, target, depth = 0) {
     return new Proxy(target, handler);
 }
 ```
+
+**Key rule**: The proxy only LOGS access, it does NOT change behavior. Missing properties return undefined, just like the real object would. The MISSING report is generated at exit.
 
 ### Setup with Real JSDOM Objects
 
@@ -262,12 +262,18 @@ get(target, prop) {
 }
 ```
 
-### ❌ Non-Transparent Proxy
+### ❌ Returning Proxy for Missing Properties
 ```javascript
-// WRONG: Always returns Proxy, hides missing properties
-get(target, prop) {
-    return createProxy(path);  // Never returns undefined!
+// WRONG: Returns proxy instead of undefined - changes code behavior!
+if (isMissing) {
+    return createTracingProxy(path, {}, depth + 1);  // Code sees object, not undefined!
 }
+
+// RIGHT: Return undefined, just log it
+if (isMissing) {
+    missingLog.push({ path });
+}
+return value;  // undefined - preserves original behavior
 ```
 
 ### ✅ Correct Approach
