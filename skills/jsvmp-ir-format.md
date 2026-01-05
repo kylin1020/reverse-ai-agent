@@ -107,7 +107,7 @@ output/
 
 ---
 
-## 文件结构 (四段式)
+## 文件结构 (六段式)
 
 ```vmasm
 ;; ==========================================
@@ -120,7 +120,14 @@ output/
 @reg ip=a, sp=p, stack=v, bc=o, storage=l, const=Z, scope=s
 
 ;; ==========================================
-;; 2. INJECTION POINTS (断点注入元数据)
+;; 2. OPCODE TRANSFORM SECTION (调试变量映射)
+;; ==========================================
+@opcode_transform 0 CALL: argCount = bc[ip]; fn = stack[sp - argCount]; this_val = stack[sp - argCount - 1]; args = stack.slice(sp - argCount + 1, sp + 1)
+@opcode_transform 68 ADD: a = stack[sp - 1]; b = stack[sp]; result = a + b
+@opcode_transform 77 NOT: operand = stack[sp]; result = !operand
+
+;; ==========================================
+;; 3. INJECTION POINTS (断点注入元数据)
 ;; ==========================================
 @dispatcher line=2, column=131618
 @global_bytecode var=z, line=2, column=91578, pattern="2d_array", transform="z.map(x=>x[0])"
@@ -128,7 +135,7 @@ output/
 @breakpoint line=2, column=131639
 
 ;; ==========================================
-;; 3. SCOPE SLOTS SECTION (可选，用于变量名推断)
+;; 4. SCOPE SLOTS SECTION (可选，用于变量名推断)
 ;; ==========================================
 @section scope_slots
 @scope_slot depth=0, index=0, name="arguments"
@@ -136,14 +143,14 @@ output/
 @scope_slot depth=0, index=2, name="?", first_use="STORE_SCOPE at 0x0010"
 
 ;; ==========================================
-;; 4. CONSTANTS SECTION (常量池声明)
+;; 5. CONSTANTS SECTION (常量池声明)
 ;; ==========================================
 @section constants
 @const K[0] = String("signature")
 @const K[1] = Number(1024)
 
 ;; ==========================================
-;; 5. CODE SECTION (反汇编指令)
+;; 6. CODE SECTION (反汇编指令)
 ;; ==========================================
 @section code
 @entry 0x00000000
@@ -199,7 +206,187 @@ output/
 
 ---
 
-## 2. INJECTION POINTS SECTION
+## 2. OPCODE TRANSFORM SECTION (调试变量映射)
+
+### 概述
+
+`@opcode_transform` 指令定义每个 opcode 的语义映射，使得在调试时能够动态求出变量值（如 fn/args/a/b 等）。这些表达式是**只读的**，不会修改 VM 状态。
+
+### 格式规范
+
+```
+@opcode_transform {opcode} {NAME}: {statement1}; {statement2}; ...
+```
+
+| 字段 | 说明 | 示例 |
+|------|------|------|
+| `{opcode}` | opcode 编号 (0-255) | `0`, `68` |
+| `{NAME}` | opcode 名称 (大写+下划线) | `CALL`, `ADD`, `LOAD_SCOPE` |
+| `{statement}` | 变量定义语句 | `fn = stack[sp - argCount]` |
+
+### 栈表达式转换规则 (CRITICAL)
+
+**Transform 中的表达式必须是只读的，不能修改 VM 状态！**
+
+将栈指针修改操作转换为不影响 VM 状态的表达式形式：
+
+| 原始形式 (修改状态) | 转换后形式 (只读) | 说明 |
+|---------------------|-------------------|------|
+| `sp--` | `stack[sp - 1]` | 读取栈顶下一个元素 |
+| `sp++` | `stack[sp + 1]` | 读取栈顶上一个位置 |
+| `sp = sp - N` | `stack[sp - N]` | 读取偏移 N 的位置 |
+| `stack[sp--]` | `stack[sp]` | 先读取当前栈顶 |
+| `stack[++sp] = x` | `stack[sp + 1]` | 读取下一个位置 |
+| `stack[sp] = x` | ❌ 禁止 | 不能有赋值操作 |
+
+### 通用 Opcode 类别模板
+
+#### CALL 类 (函数调用)
+```vmasm
+@opcode_transform N CALL: argCount = bc[ip]; fn = stack[sp - argCount]; this_val = stack[sp - argCount - 1]; args = stack.slice(sp - argCount + 1, sp + 1)
+```
+
+**必需变量**: `argCount`, `fn`, `this_val`, `args`
+
+#### NEW 类 (构造函数)
+```vmasm
+@opcode_transform N NEW: argCount = bc[ip]; ctor = stack[sp - argCount]; args = stack.slice(sp - argCount + 1, sp + 1)
+```
+
+**必需变量**: `argCount`, `ctor`, `args`
+
+#### BINARY_OP 类 (二元运算: ADD, SUB, MUL, DIV, MOD, AND, OR, XOR, SHL, SHR, USHR)
+```vmasm
+@opcode_transform N ADD: a = stack[sp - 1]; b = stack[sp]; result = a + b
+@opcode_transform N SUB: a = stack[sp - 1]; b = stack[sp]; result = a - b
+@opcode_transform N MUL: a = stack[sp - 1]; b = stack[sp]; result = a * b
+@opcode_transform N DIV: a = stack[sp - 1]; b = stack[sp]; result = a / b
+@opcode_transform N MOD: a = stack[sp - 1]; b = stack[sp]; result = a % b
+```
+
+**必需变量**: `a`, `b`, `result`
+
+#### COMPARISON 类 (比较运算: EQ, NE, LT, GT, LE, GE, EQ_STRICT, NE_STRICT)
+```vmasm
+@opcode_transform N EQ: a = stack[sp - 1]; b = stack[sp]; result = a == b
+@opcode_transform N LT: a = stack[sp - 1]; b = stack[sp]; result = a < b
+@opcode_transform N EQ_STRICT: a = stack[sp - 1]; b = stack[sp]; result = a === b
+```
+
+**必需变量**: `a`, `b`, `result`
+
+#### UNARY_OP 类 (一元运算: NOT, NEG, TYPEOF, BITWISE_NOT)
+```vmasm
+@opcode_transform N NOT: operand = stack[sp]; result = !operand
+@opcode_transform N NEG: operand = stack[sp]; result = -operand
+@opcode_transform N TYPEOF: operand = stack[sp]; result = typeof operand
+@opcode_transform N BITWISE_NOT: operand = stack[sp]; result = ~operand
+```
+
+**必需变量**: `operand`, `result`
+
+#### LOAD 类 (加载变量)
+```vmasm
+@opcode_transform N LOAD_SCOPE: depth = bc[ip]; idx = bc[ip + 1]; value = scope[depth][idx]
+@opcode_transform N LOAD_CLOSURE: idx = bc[ip]; value = closure[idx]
+@opcode_transform N GET_GLOBAL: name = const[bc[ip]]; value = globalThis[name]
+@opcode_transform N GET_PROP_CONST: obj = stack[sp]; prop = const[bc[ip]]; value = obj[prop]
+```
+
+**必需变量**: 根据具体指令，通常包含 `value`
+
+#### STORE 类 (存储变量)
+```vmasm
+@opcode_transform N STORE_SCOPE: depth = bc[ip]; idx = bc[ip + 1]; value = stack[sp]; target = scope[depth][idx]
+@opcode_transform N SET_PROP_CONST: obj = stack[sp - 1]; prop = const[bc[ip]]; value = stack[sp]
+```
+
+**必需变量**: `value`, `target` 或 `obj`, `prop`
+
+#### JUMP 类 (跳转控制)
+```vmasm
+@opcode_transform N JMP: offset = bc[ip]; target = ip + offset + 1
+@opcode_transform N JF: offset = bc[ip]; condition = stack[sp]; target = ip + offset + 1
+@opcode_transform N JT: offset = bc[ip]; condition = stack[sp]; target = ip + offset + 1
+```
+
+**必需变量**: `offset`, `target`; 条件跳转还需 `condition`
+
+### 从 VM 调度器代码推导 Transform
+
+分析原始 VM 调度器代码时，按以下步骤推导 transform：
+
+1. **识别 opcode 处理分支**: 找到 switch/case 或 if-else 链中的 opcode 处理代码
+2. **提取栈操作**: 识别 `stack[sp]`, `sp--`, `sp++` 等操作
+3. **转换为只读表达式**: 将修改操作转换为读取表达式
+4. **命名关键变量**: 为操作数和结果命名（如 `a`, `b`, `fn`, `args`）
+
+**示例：从调度器代码推导 ADD transform**
+
+```javascript
+// 原始调度器代码
+case 68: // ADD
+  var b = stack[sp--];
+  var a = stack[sp];
+  stack[sp] = a + b;
+  break;
+```
+
+转换为：
+```vmasm
+@opcode_transform 68 ADD: a = stack[sp - 1]; b = stack[sp]; result = a + b
+```
+
+**示例：从调度器代码推导 CALL transform**
+
+```javascript
+// 原始调度器代码
+case 0: // CALL
+  var argCount = bytecode[ip++];
+  var args = [];
+  for (var i = 0; i < argCount; i++) {
+    args.unshift(stack[sp--]);
+  }
+  var fn = stack[sp--];
+  var thisVal = stack[sp--];
+  stack[++sp] = fn.apply(thisVal, args);
+  break;
+```
+
+转换为：
+```vmasm
+@opcode_transform 0 CALL: argCount = bc[ip]; fn = stack[sp - argCount]; this_val = stack[sp - argCount - 1]; args = stack.slice(sp - argCount + 1, sp + 1)
+```
+
+### 完整示例
+
+```vmasm
+;; ==========================================
+;; OPCODE TRANSFORM SECTION
+;; ==========================================
+@opcode_transform 0 CALL: argCount = bc[ip]; fn = stack[sp - argCount]; this_val = stack[sp - argCount - 1]; args = stack.slice(sp - argCount + 1, sp + 1)
+@opcode_transform 59 NEW: argCount = bc[ip]; ctor = stack[sp - argCount]; args = stack.slice(sp - argCount + 1, sp + 1)
+@opcode_transform 68 ADD: a = stack[sp - 1]; b = stack[sp]; result = a + b
+@opcode_transform 69 SUB: a = stack[sp - 1]; b = stack[sp]; result = a - b
+@opcode_transform 70 MUL: a = stack[sp - 1]; b = stack[sp]; result = a * b
+@opcode_transform 71 DIV: a = stack[sp - 1]; b = stack[sp]; result = a / b
+@opcode_transform 72 MOD: a = stack[sp - 1]; b = stack[sp]; result = a % b
+@opcode_transform 73 EQ: a = stack[sp - 1]; b = stack[sp]; result = a == b
+@opcode_transform 74 NE: a = stack[sp - 1]; b = stack[sp]; result = a != b
+@opcode_transform 75 LT: a = stack[sp - 1]; b = stack[sp]; result = a < b
+@opcode_transform 76 GT: a = stack[sp - 1]; b = stack[sp]; result = a > b
+@opcode_transform 77 NOT: operand = stack[sp]; result = !operand
+@opcode_transform 78 NEG: operand = stack[sp]; result = -operand
+@opcode_transform 79 TYPEOF: operand = stack[sp]; result = typeof operand
+@opcode_transform 80 JMP: offset = bc[ip]; target = ip + offset + 1
+@opcode_transform 81 JF: offset = bc[ip]; condition = stack[sp]; target = ip + offset + 1
+@opcode_transform 82 LOAD_SCOPE: depth = bc[ip]; idx = bc[ip + 1]; value = scope[depth][idx]
+@opcode_transform 83 STORE_SCOPE: depth = bc[ip]; idx = bc[ip + 1]; value = stack[sp]; target = scope[depth][idx]
+```
+
+---
+
+## 3. INJECTION POINTS SECTION
 
 注入点元数据用于 VSCode Extension 自动设置断点：
 
@@ -246,7 +433,7 @@ output/
 
 ---
 
-## 3. SCOPE SLOTS SECTION (可选)
+## 4. SCOPE SLOTS SECTION (可选)
 
 用于映射作用域槽位到原始 JS 变量名：
 
@@ -273,7 +460,7 @@ output/
 
 ---
 
-## 4. CONSTANTS SECTION
+## 5. CONSTANTS SECTION
 
 ### 格式
 ```vmasm
@@ -313,7 +500,7 @@ function getConstantType(value) {
 
 ---
 
-## 5. CODE SECTION
+## 6. CODE SECTION
 
 ### 格式
 ```vmasm
@@ -390,6 +577,13 @@ function getConstantType(value) {
 @domain {domain}
 @source {source_path}
 @reg ip=a, sp=p, stack=v, bc=o, storage=l, const=Z, scope=s
+
+;; Opcode Transform Section
+@opcode_transform 0 CALL: argCount = bc[ip]; fn = stack[sp - argCount]; this_val = stack[sp - argCount - 1]; args = stack.slice(sp - argCount + 1, sp + 1)
+@opcode_transform 59 NEW: argCount = bc[ip]; ctor = stack[sp - argCount]; args = stack.slice(sp - argCount + 1, sp + 1)
+@opcode_transform 68 ADD: a = stack[sp - 1]; b = stack[sp]; result = a + b
+@opcode_transform 77 NOT: operand = stack[sp]; result = !operand
+@opcode_transform 80 JF: offset = bc[ip]; condition = stack[sp]; target = ip + offset + 1
 
 @dispatcher line=N, column=M
 @global_bytecode var=z, line=N, column=M, pattern="2d_array", transform="z.map(x=>x[0])"
