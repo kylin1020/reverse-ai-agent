@@ -152,14 +152,14 @@ At breakpoint, evaluate:
 | `v[++p] = VALUE` | Push | `"pre:value = VALUE"` |
 | `fn.apply(this, args)` | Call | `"pre:fn = ..."; "pre:args = ..."; "post:result = v[p]"` |
 
-### Comment Format (Simplified)
+### Comment Format (v1.5 - Stack Effect)
 
 ```vmasm
-;; ✅ CORRECT - Simple, no inference
-0x0000: CREATE_FUNC        1               ; func_1
-0x0002: STORE_SCOPE        0 8             ; scope[0][8]
-0x0122: LOAD_SCOPE         0 8             ; scope[0][8]
-0x0125: CALL               2               ; call(2 args)
+;; ✅ CORRECT - Show stack effect with →
+0x0000: CREATE_FUNC        1               ; func_1 → stack[sp]
+0x0002: STORE_SCOPE        0 8             ; stack[sp] → scope[0][8]
+0x0122: LOAD_SCOPE         0 8             ; scope[0][8] → stack[sp]
+0x0125: CALL               2               ; fn(2 args) → stack[sp]
 
 ;; ❌ WRONG - Don't try to infer call targets statically
 0x0125: CALL               2               ; call: func_1(2 args)  ← NO!

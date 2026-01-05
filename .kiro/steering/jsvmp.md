@@ -634,10 +634,10 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 > **v1.4 格式**: 自包含 `.vmasm` 文件，内嵌常量池、寄存器映射、opcode_transform（用于动态调试）
 - [ ] 🤖 编写反汇编器 (lib/disassembler.js)
   - 输入: raw/bytecode.json + raw/constants.json + NOTE.md (VM 结构信息)
-  - 输出: output/*_disasm.vmasm (LIR v1.4)
-  - **v1.4 格式要求**:
+  - 输出: output/*_disasm.vmasm (LIR v1.5)
+  - **v1.5 格式要求**:
     ```vmasm
-    @format v1.4
+    @format v1.5
     @domain {target-domain}
     @source source/{filename}.js
     @url https://*.{domain}/*/{filename}.js
@@ -661,23 +661,26 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
     @section code
     @entry 0x{entry_addr}
     
-    ;; v1.4 简化注释格式 (不做静态 scope 推断，用 @opcode_transform 动态调试):
-    0x0000: CREATE_FUNC        1               ; func_1
-    0x0002: STORE_SCOPE        0 8             ; scope[0][8]
-    0x0005: LOAD_SCOPE         0 8             ; scope[0][8]
-    0x0008: CALL               0               ; fn()
-    0x000A: GET_GLOBAL         K[132]          ; "window"
-    0x000C: GET_PROP_CONST     K[133]          ; ._sdkGlueVersionMap
-    0x000E: CALL               2               ; fn(...args)
-    0x0010: NEW                0               ; new class()
-    0x0012: NEW                3               ; new class(...args)
+    ;; v1.5 注释格式 (显示栈效果，不做静态 scope 推断，用 @opcode_transform 动态调试):
+    0x0000: CREATE_FUNC        1               ; func_1 → stack[sp]
+    0x0002: STORE_SCOPE        0 8             ; stack[sp] → scope[0][8]
+    0x0005: LOAD_SCOPE         0 8             ; scope[0][8] → stack[sp]
+    0x0008: CALL               0               ; fn(0 args) → stack[sp]
+    0x000A: GET_GLOBAL         K[132]          ; "window" → stack[sp]
+    0x000C: GET_PROP_CONST     K[133]          ; .propName → stack[sp]
+    0x000E: CALL               2               ; fn(2 args) → stack[sp]
+    0x0010: NEW                0               ; new(0 args) → stack[sp]
+    0x0012: NEW                3               ; new(3 args) → stack[sp]
     ```
-  - **v1.4 注释原则 (NO STATIC INFERENCE)**:
-    - **Scope 指令**: 只显示 `; scope[d][i]`，不推断内容
-    - **CALL 指令**: 只显示 `; fn()` 或 `; fn(...args)`，不推断目标
-    - **NEW 指令**: 只显示 `; new class()` 或 `; new class(...args)`，不推断类名
+  - **v1.5 注释原则 (STACK EFFECT + NO STATIC INFERENCE)**:
+    - **栈效果标注**: 使用 `→` 显示数据流方向
+      - `→ stack[sp]` = 结果压入栈顶
+      - `stack[sp] →` = 从栈顶弹出值
+    - **Scope 指令**: 显示 `; stack[sp] → scope[d][i]` 或 `; scope[d][i] → stack[sp]`
+    - **CALL 指令**: 显示 `; fn(N args) → stack[sp]`，不推断目标
+    - **NEW 指令**: 显示 `; new(N args) → stack[sp]`，不推断类名
     - **动态调试**: 使用 `@opcode_transform` 在断点处检查 fn/args/this_val
-    - **属性访问**: GET_GLOBAL/GET_PROP_CONST 显示常量值
+    - **属性访问**: GET_GLOBAL/GET_PROP_CONST 显示常量值 + `→ stack[sp]`
     - **⚠️ 字符串转义 (CRITICAL)**: 注释中的字符串值必须转义特殊字符！
       - 换行符 `\n` → 显示为 `\n`（转义形式），不是实际换行
       - 回车符 `\r` → 显示为 `\r`

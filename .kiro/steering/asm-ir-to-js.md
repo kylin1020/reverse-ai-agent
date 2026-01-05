@@ -714,21 +714,21 @@ REPEAT quality check until all sub-agents report no issues.
 
 ## INSTRUCTION REFERENCE (Quick)
 
-| Opcode | Semantics | JS Equivalent |
-|--------|-----------|---------------|
-| PUSH_STR x | Push K[x] | `"string"` |
-| PUSH_IMM n | Push number | `n` |
-| LOAD_SCOPE d i | scope[d][i] | variable access |
-| STORE_SCOPE d i | scope[d][i] = pop() | assignment |
-| GET_PROP_CONST x | obj[K[x]] | property access |
-| SET_PROP_CONST x | obj[K[x]] = val | property set |
-| CALL n | fn.apply(this, args) | function call |
-| NEW n | new Fn(...args) | constructor |
-| JF offset | if (!pop()) jump | conditional |
-| JZ offset | if (pop()) nop else jump | conditional |
-| JNZ offset | if (pop()) jump else nop | conditional |
-| RETURN | return pop() | return |
-| CREATE_FUNC id | create closure | function def |
+| Opcode | Semantics | Stack Effect | JS Equivalent |
+|--------|-----------|--------------|---------------|
+| PUSH_STR x | Push K[x] | → stack[sp] | `"string"` |
+| PUSH_IMM n | Push number | → stack[sp] | `n` |
+| LOAD_SCOPE d i | scope[d][i] | → stack[sp] | variable access |
+| STORE_SCOPE d i | scope[d][i] = pop() | stack[sp] → | assignment |
+| GET_PROP_CONST x | obj[K[x]] | → stack[sp] | property access |
+| SET_PROP_CONST x | obj[K[x]] = val | stack[sp] → | property set |
+| CALL n | fn.apply(this, args) | pop n+2, push 1 | function call |
+| NEW n | new Fn(...args) | pop n+1, push 1 | constructor |
+| JF offset | if (!pop()) jump | stack[sp] → | conditional |
+| JZ offset | if (pop()) nop else jump | stack[sp] → | conditional |
+| JNZ offset | if (pop()) jump else nop | stack[sp] → | conditional |
+| RETURN | return pop() | stack[sp] → | return |
+| CREATE_FUNC id | create closure | → stack[sp] | function def |
 
 ---
 

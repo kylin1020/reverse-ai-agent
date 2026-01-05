@@ -73,12 +73,17 @@ For each instruction, track:
 ```
 
 Key analysis points:
-- **LOAD_SCOPE d i**: Resolve to concrete name
+- **LOAD_SCOPE d i**: Resolve to concrete name, pushes to stack
   - d=0: current function scope (params start at i=2)
   - d=1: parent closure scope
   - d=2+: outer closure scopes
-- **CREATE_FUNC id**: Note child function reference
+  - Stack effect: `scope[d][i] → stack[sp]`
+- **STORE_SCOPE d i**: Pops value from stack to scope slot
+  - Stack effect: `stack[sp] → scope[d][i]`
+- **CREATE_FUNC id**: Creates closure, pushes to stack
+  - Stack effect: `func_id → stack[sp]`
 - **CALL n**: Identify callee (from stack state)
+  - Stack effect: pops fn+this+args, pushes result
 - **Control flow**: Map JF/JZ/JNZ/JMP to if/else/while/for
 
 ### Step 5: Infer Function Purpose
