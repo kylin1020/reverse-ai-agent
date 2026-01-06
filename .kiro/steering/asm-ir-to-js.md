@@ -56,10 +56,11 @@ Algorithm verification workflow:
 
 Example:
 ```
-Coordinator: Dispatch sub-agent to verify fn279 (RC4)
+Coordinator: Dispatch sub-agent to verify fn279 (algorithm function)
 Sub-Agent:
   - Search "function 279\(" in vmasm
-  - load_vmasm + set_vmasm_breakpoint at entry
+  - load_vmasm + navigate to real website
+  - set_vmasm_breakpoint at entry
   - Capture VM input/output values
   - Write test with captured values
   - Report: PASS/FAIL with details
@@ -322,18 +323,29 @@ Fix loop: Find issue → Re-read ASM → Fix → Re-check → Until all pass
 
 **Browser debugging is single-threaded - dispatch sub-agents ONE AT A TIME**
 
+Coordinator preparation:
+1. Use grepSearch to find function addresses: `function {id}\(` in vmasm
+2. Extract function entry address (first instruction address)
+3. Determine target website URL (from vmasm @source or user config)
+4. Pass address + URL to sub-agent
+
 Workflow:
 1. Read TODO list, get next item
-2. Dispatch ONE sub-agent for that item
-3. Wait for completion, collect result
-4. Update TODO list
-5. Move to next item
+2. Search function address if not cached
+3. Dispatch ONE sub-agent with function address + target URL
+4. Wait for completion, collect result
+5. Update TODO list
+6. Move to next item
 
 Example:
 ```
-Iteration 1: Dispatch sub-agent for fn103 → Wait → Collect → Update TODO
-Iteration 2: Dispatch sub-agent for fn150 → Wait → Collect → Update TODO
-Iteration 3: Dispatch sub-agent for fn279 → Wait → Collect → Update TODO
+Coordinator: grepSearch "function 103\(" → Found at 0x0000
+Iteration 1: Dispatch sub-agent for fn103 (address: 0x0000, url: https://target-site.com)
+  → Sub-agent navigates to real site, sets breakpoint, captures values
+  → Wait → Collect → Update
+Coordinator: grepSearch "function 150\(" → Found at 0x1000
+Iteration 2: Dispatch sub-agent for fn150 (address: 0x1000, url: https://target-site.com)
+  → Wait → Collect → Update
 ...
 ```
 
@@ -345,15 +357,26 @@ Context:
 - Workspace: {abs_path}
 - VMASM: {vmasm_path}
 - Decompiled: output/decompiled.js
+- Function address: 0x{address}
+- Target URL: {real_website_url} (e.g., https://example.com/page)
 
 Steps:
-1. Search "function {id}\(" in vmasm
-2. load_vmasm + navigate_page reload
-3. set_vmasm_breakpoint at function entry
-4. Trigger function, capture input via evaluate_on_call_frame
-5. set_vmasm_breakpoint at RETURN, capture output
-6. Write test: tests/test_fn{id}_{name}.js
-7. Run test, report PASS/FAIL
+1. load_vmasm({ filePath: "{abs_vmasm_path}" })
+2. navigate_page({ url: "{real_website_url}", type: "url" })
+   - Navigate to REAL website, not local HTML
+   - VMASM intercepts and injects debug script automatically
+3. set_vmasm_breakpoint({ address: "0x{address}" })
+4. Interact with page to trigger function (or wait for auto-trigger)
+5. When paused, capture input: evaluate_on_call_frame({ expression: "e" })
+6. set_vmasm_breakpoint at return, capture output
+7. Write test: tests/test_fn{id}_{name}.js
+8. Run test, report PASS/FAIL
+
+CRITICAL:
+- Do NOT create local HTML files (may trigger detection)
+- Do NOT read entire vmasm file (context explosion)
+- Navigate to real website URL
+- VMASM debugging works via script interception
 
 Output JSON:
 {
