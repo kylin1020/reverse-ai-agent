@@ -207,73 +207,151 @@ Algorithm recognition requirements:
 
 Fix loop: Find issue → Re-read ASM → Fix → Re-check → Until all pass
 
-### PHASE 7.5: VMASM Dynamic Debugging Verification (MANDATORY for Ambiguous Cases)
+### PHASE 7.5: VMASM Incremental Verification (MANDATORY)
 
-**When to use VMASM debugging (DO NOT GUESS):**
-- Entry function parameters: Verify actual values passed from caller
-- Configuration objects: Check real property values (aid, pageId, version, etc.)
-- Ambiguous constants: Determine if hardcoded or computed
-- Complex function parameters: Trace actual argument values
-- Algorithm verification: Confirm MD5/SHA/AES implementations
-- Return value validation: Verify function outputs
-- Scope variable resolution: Identify closure captures vs parameters
+**Core Principle: Test-Driven Decompilation**
+- For each key function/step, write a test JS snippet to compare input/output with VM actual values
+- Use TODO list to track verification progress
+- Discover new issues → Add new TODOs → Verify → Repeat until all pass
 
-**CRITICAL: Browser Debugging Workflow**
-
-1. `load_vmasm({ filePath })` - Load vmasm file (MUST use absolute path)
-2. `navigate_page({ type: "reload" })` - Refresh page to activate debug script
-3. **`get_vm_state()` - IMMEDIATELY check VM state after page reload**
-4. Based on `get_vm_state()` response:
-   - If paused: Analyze state, then `resume_execution()` or continue debugging
-   - If not paused: Proceed to `set_vmasm_breakpoint({ address })`
-5. `set_vmasm_breakpoint({ address })` - Set breakpoint at function entry or key instruction
-6. Trigger the target function execution (interact with page, call API, etc.)
-7. `get_vm_state()` - Inspect VM state when paused at breakpoint
-8. `evaluate_on_call_frame({ expression })` - Evaluate expressions:
-   - Use `@opcode_transform` expressions from vmasm to access VM registers
-   - Example: `e[0]` for first parameter, `e[1]` for second, etc.
-   - Example: `E.aid` for config object properties
-9. `step_over()` / `step_into()` / `resume_execution()` - Control execution flow
-10. `clear_vmasm_breakpoints()` - Cleanup when done
-
-**Debugging Examples:**
-
-Example 1: Verify entry function parameters
+**Verification Workspace Structure:**
 ```
-set_vmasm_breakpoint({ address: "0x0000" })  // fn150 entry
-// Trigger function call
-get_vm_state()  // Check JSVMP Registers
-evaluate_on_call_frame({ expression: "e" })  // Get all parameters array
-evaluate_on_call_frame({ expression: "e[3]" })  // Get urlParams (4th param)
+{workspace}/
+├── output/decompiled.js          # Main decompiled code
+└── tests/
+    ├── _verification_todo.md     # Master TODO list (MUST maintain)
+    ├── test_fn{id}_{name}.js     # Per-function test files
+    └── test_results.md           # Test results log
 ```
 
-Example 2: Check configuration object
-```
-set_vmasm_breakpoint({ address: "0x1234" })  // Where config is accessed
-get_vm_state()
-evaluate_on_call_frame({ expression: "E" })  // Get config object
-evaluate_on_call_frame({ expression: "E.aid" })  // Get specific property
-evaluate_on_call_frame({ expression: "E.pageId" })
+**_verification_todo.md Template:**
+```markdown
+# Verification TODO List
+
+## Status: {passed}/{total} verified
+
+### Priority 1: Entry & Config
+- [ ] fn103: Entry function params (mode, flag, dataType, urlParams, body, ua, pageId, aid, version)
+- [ ] Config object E: Verify aid, pageId, version, ddrt, boe, magic actual values
+
+### Priority 2: Core Functions
+- [ ] fn150: Signature generation - verify all 9 params
+- [ ] fn279: RC4 encrypt (forward S-box) - input/output comparison
+- [ ] fn280: RC4 encrypt (reverse S-box) - input/output comparison
+- [ ] fn130: Base64 encode - verify table selection and output
+- [ ] fn131: RC4+Base64 combo - end-to-end test
+
+### Priority 3: Data Processing
+- [ ] fn148: Data obfuscation - byte array transformation
+- [ ] fn147: Array expansion - mode handling
+- [ ] fn151: Version string parsing - verify ~~x behavior
+
+### Priority 4: Discovered Issues
+(Add new TODOs here as issues are found during verification)
+
+### Completed
+- [x] fn{id}: {description} - PASS @ {timestamp}
 ```
 
-Example 3: Trace intermediate values
-```
-set_vmasm_breakpoint({ address: "0x2000" })  // Before complex calculation
-get_vm_state()  // Check stack and local variables
-evaluate_on_call_frame({ expression: "scope[0][10]" })  // Local variable
-step_over()  // Execute one instruction
-get_vm_state()  // Check result
+**Verification Workflow:**
+
+1. **Initialize TODO List**
+   - Create `tests/_verification_todo.md` with all key functions
+   - Prioritize: Entry → Core algorithms → Data processing → Helpers
+
+2. **For Each TODO Item:**
+
+   a. **Set Breakpoint & Capture VM State**
+   ```
+   set_vmasm_breakpoint({ address: "0x{fn_entry}" })
+   // Trigger function execution
+   get_vm_state()
+   evaluate_on_call_frame({ expression: "e" })  // Capture input params
+   ```
+
+   b. **Step Through & Capture Output**
+   ```
+   // Set breakpoint at function return or after key operation
+   set_vmasm_breakpoint({ address: "0x{fn_return}" })
+   resume_execution()
+   get_vm_state()
+   evaluate_on_call_frame({ expression: "stack[sp]" })  // Capture return value
+   ```
+
+   c. **Write Test JS File** (`tests/test_fn{id}_{name}.js`)
+   ```javascript
+   // Test: fn{id} - {description}
+   // VM Captured Input: {captured_input}
+   // VM Captured Output: {captured_output}
+   
+   const { fn{id} } = require('../output/decompiled.js');
+   
+   // Test case from VM capture
+   const input = {captured_input};
+   const expected = {captured_output};
+   const actual = fn{id}(input);
+   
+   console.log('Input:', input);
+   console.log('Expected (VM):', expected);
+   console.log('Actual (JS):', actual);
+   console.log('Match:', JSON.stringify(actual) === JSON.stringify(expected) ? 'PASS ✓' : 'FAIL ✗');
+   
+   // If mismatch, log diff for debugging
+   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+     console.log('Diff:', { expected, actual });
+   }
+   ```
+
+   d. **Run Test & Update TODO**
+   ```bash
+   node tests/test_fn{id}_{name}.js
+   ```
+   - PASS → Mark `[x]` in TODO, move to Completed section
+   - FAIL → Analyze diff, fix decompiled code, re-test
+   - Discovered new issue → Add new TODO item to "Priority 4: Discovered Issues"
+
+3. **Iteration Rules:**
+   - Never skip a TODO - verify ALL items
+   - If fix introduces regression, add regression test
+   - If discover dependency issue, add dependency to TODO
+   - Update `{passed}/{total}` count after each verification
+
+**Example Verification Session:**
+
+```markdown
+## Verifying fn151: versionToArray
+
+### Step 1: Capture VM values
+set_vmasm_breakpoint at fn151 entry
+Input captured: "1.0.1.19-fix.01"
+Output captured: [1, 0, 1, 0]  // Note: ~~"19-fix" = 0, not 19!
+
+### Step 2: Write test
+// tests/test_fn151_versionToArray.js
+const input = "1.0.1.19-fix.01";
+const expected = [1, 0, 1, 0];  // From VM
+const actual = versionToArray(input);
+// Result: FAIL - actual was [1, 0, 1, 19] using parseInt
+
+### Step 3: Fix code
+// Changed: v.split('.').map(x => parseInt(x))
+// To:      v.split('.').map(x => ~~x)
+
+### Step 4: Re-test
+// Result: PASS ✓
+
+### Step 5: Update TODO
+- [x] fn151: Version parsing - PASS @ 2024-01-06 14:30
 ```
 
-**Mandatory debugging checklist:**
-- [ ] Entry function: Verify ALL parameter values (mode, flag, dataType, urlParams, body, userAgent, pageId, aid, version)
-- [ ] Config object: Confirm actual property values (aid, pageId, version, ddrt, boe, magic)
-- [ ] All unidentified_algo functions
-- [ ] All unused_params functions (verify params are actually unused)
-- [ ] Key algorithm functions (MD5, RC4, Base64, etc.)
-- [ ] Signature/token generation functions
-- [ ] Any function with >3 parameters
-- [ ] Any hardcoded constants that seem arbitrary
+**Mandatory Verification Checklist:**
+- [ ] Created `tests/_verification_todo.md` with all key functions
+- [ ] All Priority 1 items verified (Entry & Config)
+- [ ] All Priority 2 items verified (Core Functions)
+- [ ] All Priority 3 items verified (Data Processing)
+- [ ] All Priority 4 items verified (Discovered Issues)
+- [ ] Final status: {total}/{total} verified
+- [ ] No FAIL items remaining
 
 ### PHASE 8: Final Verification
 - Function count matches
@@ -311,3 +389,6 @@ get_vm_state()  // Check result
 - Cross-batch inconsistency: Re-read ASM to determine correct interpretation
 - Quality check failure: Fix all issues before proceeding, re-run checkers
 - VMASM verification failure: Compare VM actual values with decompiled code, locate differences, re-analyze corresponding ASM
+- **Test mismatch: Add to Priority 4 TODO, analyze diff, fix code, re-verify**
+- **Regression detected: Add regression test, fix without breaking other tests**
+- **New dependency discovered: Add dependency function to TODO list**
