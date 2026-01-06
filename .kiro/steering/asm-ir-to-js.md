@@ -9,6 +9,32 @@ inclusion: manual
 
 ---
 
+## CRITICAL: Evidence-Based Analysis Only
+
+**ABSOLUTE RULE: NO GUESSING - Use VMASM debugging to verify ALL assumptions**
+
+When analyzing code behavior:
+1. ❌ NEVER guess based on "looks like" or "should be"
+2. ❌ NEVER assume standard implementations without verification
+3. ❌ NEVER compare expected vs actual without capturing actual values first
+4. ✅ ALWAYS use VMASM debugging to capture actual runtime values
+5. ✅ ALWAYS base conclusions on captured VM data, not assumptions
+6. ✅ ALWAYS verify with get_vm_state() before making claims
+
+Examples of WRONG approach:
+- "This looks like Base64, so it uses standard table" → WRONG, verify actual table used
+- "Output length is wrong, must be environment data issue" → WRONG, debug to find real cause
+- "Expected 188 chars but got 508, probably data collection" → WRONG, capture actual values
+
+Examples of CORRECT approach:
+- Set breakpoint → get_vm_state() → evaluate_on_call_frame("table") → Verify actual table
+- Set breakpoint → Capture input → Capture output → Compare with decompiled → Find diff
+- Debug step by step → Identify exact instruction causing difference → Fix based on evidence
+
+**If you find yourself guessing, STOP and use VMASM debugging instead.**
+
+---
+
 ## VMASM File Format (CRITICAL - READ FIRST)
 
 **Basic Structure:**
