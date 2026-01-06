@@ -364,21 +364,25 @@ Steps:
 1. load_vmasm({ filePath: "{abs_vmasm_path}" })
 2. navigate_page({ url: "{real_website_url}", type: "url" })
 3. set_vmasm_breakpoint({ address: "0x{address}" })
-4. **IMMEDIATELY call get_vm_state() to check if already paused**
-   - If paused: Proceed to step 5
-   - If not paused: Wait or interact with page to trigger
-5. When paused, capture input: evaluate_on_call_frame({ expression: "e" })
+4. **IMMEDIATELY call get_vm_state() to check VM registers**
+   - Use get_vm_state() NOT get_debugger_status()
+   - If paused: VM state shows registers, stack, bytecode
+   - If not paused: Wait or interact with page
+5. Capture input: evaluate_on_call_frame({ expression: "e" }) for params
 6. Find RETURN address, set_vmasm_breakpoint, resume_execution()
-7. **IMMEDIATELY call get_vm_state() to check if paused at return**
+7. **IMMEDIATELY call get_vm_state() again**
 8. Capture output: evaluate_on_call_frame({ expression: "stack[sp]" })
 9. Write test: tests/test_fn{id}_{name}.js
 10. Run test, report PASS/FAIL
 
-CRITICAL:
-- After setting breakpoint, ALWAYS check get_vm_state() first
-- Do NOT assume function needs triggering - check if already paused
-- Do NOT create local HTML files (may trigger detection)
-- Do NOT read entire vmasm file (context explosion)
+CRITICAL - Use VMASM tools for breakpoints and state:
+- ✅ get_vm_state() - Get JSVMP registers, stack, bytecode (NOT get_debugger_status)
+- ✅ set_vmasm_breakpoint() - Set breakpoint at bytecode address (NOT set_breakpoint)
+- ✅ evaluate_on_call_frame() - Read VM variables (e, stack, scope)
+- ✅ list_vmasm_breakpoints() - List VMASM breakpoints
+- ✅ clear_vmasm_breakpoints() - Clear VMASM breakpoints
+- ❌ get_debugger_status() - Regular JS debugger (WRONG for VMASM)
+- ❌ set_breakpoint() - Regular JS breakpoint (WRONG for VMASM)
 
 Output JSON:
 {
