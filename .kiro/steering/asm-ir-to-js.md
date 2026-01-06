@@ -209,8 +209,8 @@ Fix loop: Find issue → Re-read ASM → Fix → Re-check → Until all pass
 
 ### PHASE 7.5: VMASM Incremental Verification (MANDATORY)
 
-**Core Principle: Test-Driven Decompilation**
-- For each key function/step, write a test JS snippet to compare input/output with VM actual values
+**Core Principle: Test-Driven Decompilation with Parallel Sub-Agents**
+- For each key function/step, dispatch sub-agent to verify and write test
 - Use TODO list to track verification progress
 - Discover new issues → Add new TODOs → Verify → Repeat until all pass
 
@@ -253,105 +253,154 @@ Fix loop: Find issue → Re-read ASM → Fix → Re-check → Until all pass
 - [x] fn{id}: {description} - PASS @ {timestamp}
 ```
 
-**Verification Workflow:**
+**Coordinator Workflow:**
 
-1. **Initialize TODO List**
-   - Create `tests/_verification_todo.md` with all key functions
-   - Prioritize: Entry → Core algorithms → Data processing → Helpers
+**Step 1: Initialize TODO List**
+- Create `tests/_verification_todo.md` with all key functions
+- Prioritize: Entry → Core algorithms → Data processing → Helpers
+- Group TODOs into batches (3-5 items per batch for parallel execution)
 
-2. **For Each TODO Item:**
+**Step 2: Dispatch Verification Sub-Agents (Parallel)**
 
-   a. **Set Breakpoint & Capture VM State**
-   ```
-   set_vmasm_breakpoint({ address: "0x{fn_entry}" })
-   // Trigger function execution
-   get_vm_state()
-   evaluate_on_call_frame({ expression: "e" })  // Capture input params
-   ```
+Invoke multiple sub-agents in ONE turn to verify different functions:
 
-   b. **Step Through & Capture Output**
-   ```
-   // Set breakpoint at function return or after key operation
-   set_vmasm_breakpoint({ address: "0x{fn_return}" })
-   resume_execution()
-   get_vm_state()
-   evaluate_on_call_frame({ expression: "stack[sp]" })  // Capture return value
-   ```
+```
+Sub-Agent 1: Verify fn103 (Entry function)
+Sub-Agent 2: Verify fn150 (Signature generation)
+Sub-Agent 3: Verify fn279 (RC4 forward)
+Sub-Agent 4: Verify fn280 (RC4 reverse)
+Sub-Agent 5: Verify fn130 (Base64)
+...
+Invoke ALL sub-agents in ONE turn (parallel execution)
+```
 
-   c. **Write Test JS File** (`tests/test_fn{id}_{name}.js`)
-   ```javascript
-   // Test: fn{id} - {description}
-   // VM Captured Input: {captured_input}
-   // VM Captured Output: {captured_output}
-   
-   const { fn{id} } = require('../output/decompiled.js');
-   
-   // Test case from VM capture
-   const input = {captured_input};
-   const expected = {captured_output};
-   const actual = fn{id}(input);
-   
-   console.log('Input:', input);
-   console.log('Expected (VM):', expected);
-   console.log('Actual (JS):', actual);
-   console.log('Match:', JSON.stringify(actual) === JSON.stringify(expected) ? 'PASS ✓' : 'FAIL ✗');
-   
-   // If mismatch, log diff for debugging
-   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-     console.log('Diff:', { expected, actual });
-   }
-   ```
+**Sub-Agent Prompt Template:**
+```
+Verify function fn{id} ({name}) and write test script
 
-   d. **Run Test & Update TODO**
-   ```bash
-   node tests/test_fn{id}_{name}.js
-   ```
-   - PASS → Mark `[x]` in TODO, move to Completed section
-   - FAIL → Analyze diff, fix decompiled code, re-test
-   - Discovered new issue → Add new TODO item to "Priority 4: Discovered Issues"
+Context:
+- Workspace: {abs_path}
+- VMASM file: {vmasm_path}
+- Decompiled code: output/decompiled.js
+- Function ASM location: L{start}-L{end}
+- Function address: 0x{address}
 
-3. **Iteration Rules:**
-   - Never skip a TODO - verify ALL items
-   - If fix introduces regression, add regression test
-   - If discover dependency issue, add dependency to TODO
-   - Update `{passed}/{total}` count after each verification
+Task:
+1. Load VMASM and set breakpoint at function entry (0x{address})
+2. Trigger function execution (provide trigger method if needed)
+3. Capture input parameters using evaluate_on_call_frame
+4. Set breakpoint at function return/exit
+5. Capture output/return value
+6. Write test file: tests/test_fn{id}_{name}.js
+7. Run test and report result (PASS/FAIL)
+8. If FAIL: Analyze diff, identify issue, suggest fix
+9. If new issue discovered: Report for TODO addition
 
-**Example Verification Session:**
+Output format:
+- Test file path: tests/test_fn{id}_{name}.js
+- Test result: PASS ✓ / FAIL ✗
+- VM captured input: {input}
+- VM captured output: {output}
+- Decompiled output: {actual}
+- Issue found (if FAIL): {description}
+- Suggested fix (if FAIL): {fix}
+- New TODO items (if discovered): {new_todos}
+
+Critical rules:
+- MUST use absolute paths for all file operations
+- MUST capture actual VM values, not guessed values
+- MUST write runnable test script (node tests/test_fn{id}.js)
+- If function not triggered, report trigger method needed
+- If breakpoint not hit, report debugging info
+```
+
+**Step 3: Collect Sub-Agent Results**
+
+After all sub-agents complete, coordinator:
+1. Read all test result outputs
+2. Update `_verification_todo.md`:
+   - Mark PASS items as `[x]` and move to Completed
+   - Keep FAIL items as `[ ]` with issue notes
+   - Add new TODOs to Priority 4
+3. Update status count: `{passed}/{total}`
+
+**Step 4: Fix Failed Tests**
+
+For each FAIL item:
+1. Review sub-agent's suggested fix
+2. Apply fix to `output/decompiled.js`
+3. Re-dispatch sub-agent to re-verify (or verify manually)
+4. Update TODO when PASS
+
+**Step 5: Handle New TODOs**
+
+If new TODOs discovered:
+1. Add to Priority 4 in `_verification_todo.md`
+2. Group into new batch
+3. Dispatch new sub-agents (parallel)
+4. Repeat Step 3-5 until no new TODOs
+
+**Step 6: Final Verification**
+
+When all TODOs marked `[x]`:
+1. Run all test scripts sequentially to ensure no regression
+2. Verify final status: `{total}/{total} verified`
+3. Archive test results to `tests/test_results.md`
+
+**Example Sub-Agent Execution:**
 
 ```markdown
-## Verifying fn151: versionToArray
+## Coordinator dispatches 5 sub-agents in parallel:
 
-### Step 1: Capture VM values
-set_vmasm_breakpoint at fn151 entry
-Input captured: "1.0.1.19-fix.01"
-Output captured: [1, 0, 1, 0]  // Note: ~~"19-fix" = 0, not 19!
+Sub-Agent 1 Task:
+Verify fn151 (versionToArray)
+- Breakpoint: 0x1234
+- Capture input: "1.0.1.19-fix.01"
+- Capture output: [1, 0, 1, 0]
+- Write: tests/test_fn151_versionToArray.js
+- Result: FAIL - actual [1, 0, 1, 19]
+- Issue: Using parseInt instead of ~~
+- Fix: Change .map(x => parseInt(x)) to .map(x => ~~x)
 
-### Step 2: Write test
-// tests/test_fn151_versionToArray.js
-const input = "1.0.1.19-fix.01";
-const expected = [1, 0, 1, 0];  // From VM
-const actual = versionToArray(input);
-// Result: FAIL - actual was [1, 0, 1, 19] using parseInt
+Sub-Agent 2 Task:
+Verify fn279 (rc4Encrypt)
+- Breakpoint: 0x2000
+- Capture input: key="test", data="hello"
+- Capture output: "\x8a\x3f..."
+- Write: tests/test_fn279_rc4Encrypt.js
+- Result: PASS ✓
 
-### Step 3: Fix code
-// Changed: v.split('.').map(x => parseInt(x))
-// To:      v.split('.').map(x => ~~x)
+... (Sub-Agent 3, 4, 5 execute in parallel)
 
-### Step 4: Re-test
-// Result: PASS ✓
+## Coordinator collects results:
+- fn151: FAIL → Apply fix, re-verify
+- fn279: PASS → Mark [x]
+- fn280: PASS → Mark [x]
+- fn130: FAIL → New TODO: Verify table selection logic
+- fn131: PASS → Mark [x]
 
-### Step 5: Update TODO
-- [x] fn151: Version parsing - PASS @ 2024-01-06 14:30
+## Update TODO:
+Status: 3/5 verified
+Priority 4: Discovered Issues
+- [ ] fn130: Base64 table selection - verify s1 vs s4 usage
 ```
+
+**Parallel Execution Benefits:**
+- Avoid context explosion: Each sub-agent has isolated context
+- Faster verification: Multiple functions verified simultaneously
+- Clear responsibility: Each sub-agent owns one verification task
+- Easy retry: Re-dispatch failed sub-agent without affecting others
 
 **Mandatory Verification Checklist:**
 - [ ] Created `tests/_verification_todo.md` with all key functions
-- [ ] All Priority 1 items verified (Entry & Config)
-- [ ] All Priority 2 items verified (Core Functions)
-- [ ] All Priority 3 items verified (Data Processing)
-- [ ] All Priority 4 items verified (Discovered Issues)
+- [ ] Dispatched sub-agents for all Priority 1 items (parallel)
+- [ ] Dispatched sub-agents for all Priority 2 items (parallel)
+- [ ] Dispatched sub-agents for all Priority 3 items (parallel)
+- [ ] Dispatched sub-agents for all Priority 4 items (parallel)
+- [ ] All FAIL items fixed and re-verified
 - [ ] Final status: {total}/{total} verified
 - [ ] No FAIL items remaining
+- [ ] All test scripts runnable and passing
 
 ### PHASE 8: Final Verification
 - Function count matches
