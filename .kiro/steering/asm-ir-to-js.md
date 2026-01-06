@@ -43,62 +43,27 @@ function 150(mode, flag, dataType, urlParams, body, userAgent, pageId, aid, vers
 
 ---
 
-## MANDATORY VMASM Debugging for Algorithm Verification
+## MANDATORY VMASM Debugging via Sub-Agents
 
-**CRITICAL: DO NOT guess algorithm implementations - ALWAYS use VMASM debugging via Sub-Agents**
+**Coordinator dispatches sub-agents for algorithm verification - use VMASM debugging to capture actual VM values**
 
-**Coordinator MUST dispatch sub-agents for algorithm verification - NEVER do it yourself**
+Algorithm verification workflow:
+1. Coordinator dispatches sub-agent for target function
+2. Sub-agent searches `function {id}\(` in vmasm
+3. Sub-agent uses VMASM debugging to capture input/output
+4. Sub-agent writes test comparing VM values with decompiled code
+5. Sub-agent reports result to coordinator
 
-When verifying algorithms (MD5, SHA, RC4, Base64, etc.):
-1. ❌ NEVER just read ASM and guess the implementation
-2. ❌ NEVER compare with "standard" algorithms without VM verification
-3. ❌ NEVER verify algorithms yourself - ALWAYS dispatch sub-agent
-4. ✅ ALWAYS dispatch sub-agent to set breakpoint at algorithm function entry
-5. ✅ Sub-agent captures actual input parameters from VM
-6. ✅ Sub-agent steps through and captures intermediate values
-7. ✅ Sub-agent captures actual output from VM
-8. ✅ Sub-agent writes test comparing VM values with decompiled code
-
-**Why sub-agents are mandatory:**
-- Algorithms are often modified (custom S-box, different constants, etc.)
-- Static analysis misses subtle differences (forward vs reverse S-box)
-- VM values are ground truth - your guesses are not
-- Sub-agents have isolated context for debugging
-- Coordinator context would explode with debugging details
-
-**Example: RC4 Algorithm Verification**
+Example:
 ```
-❌ WRONG approach (Coordinator does it):
-1. Coordinator reads ASM for fn279
-2. Coordinator: "Looks like RC4"
-3. Coordinator copies standard RC4 implementation
-4. Hope it works
-Result: WRONG - missed custom S-box initialization
-
-✅ CORRECT approach (Dispatch sub-agent):
-Coordinator: Dispatch sub-agent to verify fn279
-Sub-Agent task:
-  1. Search vmasm for "function 279\("
-  2. load_vmasm({ filePath: "/abs/path/to/file.vmasm" })
-  3. navigate_page({ type: "reload" })
-  4. set_vmasm_breakpoint({ address: "0x{fn279_entry}" })
-  5. Trigger function (interact with page)
-  6. get_vm_state() - Capture input: key, data
-  7. set_vmasm_breakpoint({ address: "0x{fn279_return}" })
-  8. resume_execution()
-  9. get_vm_state() - Capture output
-  10. Write test with captured values
-  11. Compare with decompiled implementation
-  12. If mismatch: Step through VM to find difference
-  13. Report result to coordinator
-Result: CORRECT - sub-agent found reverse S-box variant
+Coordinator: Dispatch sub-agent to verify fn279 (RC4)
+Sub-Agent:
+  - Search "function 279\(" in vmasm
+  - load_vmasm + set_vmasm_breakpoint at entry
+  - Capture VM input/output values
+  - Write test with captured values
+  - Report: PASS/FAIL with details
 ```
-
-**If coordinator skips sub-agent dispatch:**
-- Algorithm will be wrong
-- Time wasted on guessing
-- Need to redo work anyway
-- Context explosion in coordinator
 
 ---
 
@@ -353,130 +318,88 @@ Fix loop: Find issue → Re-read ASM → Fix → Re-check → Until all pass
 - Prioritize: Entry → Core algorithms → Data processing → Helpers
 - Group TODOs into batches (3-5 items per batch for parallel execution)
 
-**Step 2: Dispatch Verification Sub-Agents (MANDATORY - DO NOT DO THIS YOURSELF)**
+**Step 2: Dispatch Verification Sub-Agents (Serial Execution)**
 
-**CRITICAL: Coordinator MUST dispatch sub-agents, NEVER verify functions directly**
+**Browser debugging is single-threaded - dispatch sub-agents ONE AT A TIME**
 
-Why sub-agents are mandatory:
-- Avoid context explosion in coordinator
-- Each sub-agent has isolated debugging session
-- Parallel execution speeds up verification
-- Clear responsibility and error isolation
+Workflow:
+1. Read TODO list, get next item
+2. Dispatch ONE sub-agent for that item
+3. Wait for completion, collect result
+4. Update TODO list
+5. Move to next item
 
-Invoke multiple sub-agents in ONE turn to verify different functions:
-
+Example:
 ```
-WRONG ❌: Coordinator tries to verify functions itself
-- Coordinator reads vmasm
-- Coordinator guesses algorithm
-- Coordinator writes test
-- Result: Wrong implementation, wasted time
-
-CORRECT ✅: Coordinator dispatches sub-agents
-Sub-Agent 1: Verify fn103 (Entry function)
-Sub-Agent 2: Verify fn150 (Signature generation)
-Sub-Agent 3: Verify fn279 (RC4 forward)
-Sub-Agent 4: Verify fn280 (RC4 reverse)
-Sub-Agent 5: Verify fn130 (Base64)
+Iteration 1: Dispatch sub-agent for fn103 → Wait → Collect → Update TODO
+Iteration 2: Dispatch sub-agent for fn150 → Wait → Collect → Update TODO
+Iteration 3: Dispatch sub-agent for fn279 → Wait → Collect → Update TODO
 ...
-Invoke ALL sub-agents in ONE turn (parallel execution)
 ```
-
-**Coordinator responsibilities:**
-- Create TODO list
-- Group TODOs into batches (3-5 per batch)
-- Dispatch sub-agents with clear instructions
-- Collect results
-- Update TODO list
-- Apply fixes if needed
-- Re-dispatch for failed items
-
-**Coordinator MUST NOT:**
-- ❌ Read vmasm and guess implementations
-- ❌ Verify functions without VMASM debugging
-- ❌ Write tests without VM captured values
-- ❌ Skip sub-agent dispatch to "save time"
 
 **Sub-Agent Prompt Template:**
 ```
-Verify function fn{id} ({name}) and write test script
+Verify fn{id} ({name}) using VMASM debugging
 
 Context:
 - Workspace: {abs_path}
-- VMASM file: {vmasm_path}
-- Decompiled code: output/decompiled.js
-- Function ASM location: Search for "function {id}\(" in vmasm file
-- Function address: 0x{address} (get from vmasm function header)
+- VMASM: {vmasm_path}
+- Decompiled: output/decompiled.js
 
-Task:
-1. Search vmasm file for "function {id}\(" to locate function definition
-2. Load VMASM: load_vmasm({ filePath: "{abs_vmasm_path}" })
-3. Reload page: navigate_page({ type: "reload" })
-4. Set breakpoint at function entry: set_vmasm_breakpoint({ address: "0x{address}" })
-5. Trigger function execution (interact with page or wait for auto-trigger)
-6. When paused, capture input: evaluate_on_call_frame({ expression: "e" })
-7. Set breakpoint at function return (search for RETURN instruction address)
-8. Resume: resume_execution()
-9. When paused at return, capture output: evaluate_on_call_frame({ expression: "stack[sp]" })
-10. Write test file: tests/test_fn{id}_{name}.js
-11. Run test: node tests/test_fn{id}_{name}.js
-12. Report result (PASS/FAIL)
+Steps:
+1. Search "function {id}\(" in vmasm
+2. load_vmasm + navigate_page reload
+3. set_vmasm_breakpoint at function entry
+4. Trigger function, capture input via evaluate_on_call_frame
+5. set_vmasm_breakpoint at RETURN, capture output
+6. Write test: tests/test_fn{id}_{name}.js
+7. Run test, report PASS/FAIL
 
-CRITICAL RULES:
-- MUST use VMASM debugging - DO NOT guess by reading ASM
-- MUST search "function {id}\(" NOT "function fn{id}\(" or "func {id}"
-- MUST capture actual VM values, not assumed values
-- MUST write runnable test script
-- If function not triggered, report trigger method needed
-- If breakpoint not hit, report debugging info and retry
-
-Output format:
-```json
+Output JSON:
 {
   "test_file": "tests/test_fn{id}_{name}.js",
   "result": "PASS" | "FAIL",
-  "vm_input": <captured_input>,
-  "vm_output": <captured_output>,
-  "decompiled_output": <actual_output>,
-  "issue": "<description if FAIL>",
-  "suggested_fix": "<fix if FAIL>",
-  "new_todos": ["<new TODO items if discovered>"]
+  "vm_input": <captured>,
+  "vm_output": <captured>,
+  "issue": "<if FAIL>",
+  "fix": "<if FAIL>",
+  "new_todos": []
 }
 ```
-```
 
-**Step 3: Collect Sub-Agent Results**
+**Step 3: Collect Result & Update TODO**
 
-After all sub-agents complete, coordinator:
-1. Read all test result outputs
+After each sub-agent completes:
+1. Read test result from sub-agent
 2. Update `_verification_todo.md`:
-   - Mark PASS items as `[x]` and move to Completed
-   - Keep FAIL items as `[ ]` with issue notes
-   - Add new TODOs to Priority 4
-3. Update status count: `{passed}/{total}`
+   - PASS: Mark `[x]`, move to Completed
+   - FAIL: Keep `[ ]`, add issue notes
+   - New TODOs: Add to Priority 4
+3. Update status: `{passed}/{total}`
+4. Proceed to next item
 
 **Step 4: Fix Failed Tests**
 
-For each FAIL item:
+For FAIL items:
 1. Review sub-agent's suggested fix
 2. Apply fix to `output/decompiled.js`
-3. Re-dispatch sub-agent to re-verify (or verify manually)
+3. Re-dispatch sub-agent to re-verify
 4. Update TODO when PASS
 
-**Step 5: Handle New TODOs**
+**Step 5: Handle New TODOs (Sequential)**
 
-If new TODOs discovered:
+If new TODOs discovered during verification:
 1. Add to Priority 4 in `_verification_todo.md`
-2. Group into new batch
-3. Dispatch new sub-agents (parallel)
-4. Repeat Step 3-5 until no new TODOs
+2. After completing current priority level, start Priority 4
+3. Dispatch sub-agents for new TODOs ONE BY ONE
+4. Repeat Step 2-5 until no new TODOs
 
 **Step 6: Final Verification**
 
 When all TODOs marked `[x]`:
-1. Run all test scripts sequentially to ensure no regression
-2. Verify final status: `{total}/{total} verified`
-3. Archive test results to `tests/test_results.md`
+1. Run all tests to ensure no regression
+2. Verify status: `{total}/{total}`
+3. Archive results to `tests/test_results.md`
 
 **Example Sub-Agent Execution:**
 
@@ -517,21 +440,15 @@ Priority 4: Discovered Issues
 ```
 
 **Parallel Execution Benefits:**
-- Avoid context explosion: Each sub-agent has isolated context
-- Faster verification: Multiple functions verified simultaneously
-- Clear responsibility: Each sub-agent owns one verification task
-- Easy retry: Re-dispatch failed sub-agent without affecting others
+- Sub-agents have isolated context (avoid coordinator context explosion)
+- Clear responsibility per function
+- Easy retry on failure
 
-**Mandatory Verification Checklist:**
-- [ ] Created `tests/_verification_todo.md` with all key functions
-- [ ] Dispatched sub-agents for all Priority 1 items (parallel)
-- [ ] Dispatched sub-agents for all Priority 2 items (parallel)
-- [ ] Dispatched sub-agents for all Priority 3 items (parallel)
-- [ ] Dispatched sub-agents for all Priority 4 items (parallel)
+**Mandatory Checklist:**
+- [ ] Created `tests/_verification_todo.md`
+- [ ] Dispatched sub-agents for all Priority 1-4 items (serial)
 - [ ] All FAIL items fixed and re-verified
-- [ ] Final status: {total}/{total} verified
-- [ ] No FAIL items remaining
-- [ ] All test scripts runnable and passing
+- [ ] Status: {total}/{total} verified
 
 ### PHASE 8: Final Verification
 - Function count matches
