@@ -720,7 +720,7 @@ REPEAT quality check until all sub-agents report no issues.
 | Tool | Purpose | Key Parameters |
 |------|---------|----------------|
 | `load_vmasm` | Load vmasm file, generate debug script | `filePath` (required, absolute path), `sourceFilePath` (optional) |
-| `set_vmasm_breakpoint` | Set breakpoint at bytecode address | `address` (required, number), `condition` (optional) |
+| `set_vmasm_breakpoint` | Set breakpoint at bytecode address | `address` (required, number) |
 | `get_vm_state` | Get VM state (IP, opcode, stack, sp) | `maxStackItems`, `maxConstants` (optional) |
 | `list_vmasm_breakpoints` | List all vmasm breakpoints | none |
 | `remove_vmasm_breakpoint` | Remove single breakpoint | `breakpointId` (required) |
