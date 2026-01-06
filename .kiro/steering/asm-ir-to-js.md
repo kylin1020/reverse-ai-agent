@@ -179,11 +179,14 @@ Use cases:
 - Parameter tracing: Confirm actual parameter values received by functions
 - Return value confirmation: Verify function return values
 
-Tool usage:
+**CRITICAL: Browser Debugging Workflow**
+
 1. `load_vmasm({ filePath })` - Load vmasm file (MUST use absolute path)
 2. `navigate_page({ type: "reload" })` - Refresh page to activate debug script
-3. `set_vmasm_breakpoint({ address })` - Set breakpoint at bytecode address
-4. `get_vm_state()` - Get VM state when paused (IP, stack, scope)
+3. **`get_vm_state()` - IMMEDIATELY check VM state after page reload**
+4. Based on `get_vm_state()` response:
+   - If paused: Analyze state, then `resume_execution()` or continue debugging
+   - If not paused: Proceed to `set_vmasm_breakpoint({ address })`
 5. `evaluate_on_call_frame({ expression })` - Evaluate expression in current frame
 6. `step_over()` / `step_into()` - Step execution
 7. `clear_vmasm_breakpoints()` - Cleanup breakpoints
