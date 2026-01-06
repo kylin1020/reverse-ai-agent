@@ -363,20 +363,22 @@ Context:
 Steps:
 1. load_vmasm({ filePath: "{abs_vmasm_path}" })
 2. navigate_page({ url: "{real_website_url}", type: "url" })
-   - Navigate to REAL website, not local HTML
-   - VMASM intercepts and injects debug script automatically
 3. set_vmasm_breakpoint({ address: "0x{address}" })
-4. Interact with page to trigger function (or wait for auto-trigger)
+4. **IMMEDIATELY call get_vm_state() to check if already paused**
+   - If paused: Proceed to step 5
+   - If not paused: Wait or interact with page to trigger
 5. When paused, capture input: evaluate_on_call_frame({ expression: "e" })
-6. set_vmasm_breakpoint at return, capture output
-7. Write test: tests/test_fn{id}_{name}.js
-8. Run test, report PASS/FAIL
+6. Find RETURN address, set_vmasm_breakpoint, resume_execution()
+7. **IMMEDIATELY call get_vm_state() to check if paused at return**
+8. Capture output: evaluate_on_call_frame({ expression: "stack[sp]" })
+9. Write test: tests/test_fn{id}_{name}.js
+10. Run test, report PASS/FAIL
 
 CRITICAL:
+- After setting breakpoint, ALWAYS check get_vm_state() first
+- Do NOT assume function needs triggering - check if already paused
 - Do NOT create local HTML files (may trigger detection)
 - Do NOT read entire vmasm file (context explosion)
-- Navigate to real website URL
-- VMASM debugging works via script interception
 
 Output JSON:
 {
