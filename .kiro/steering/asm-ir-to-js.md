@@ -20,8 +20,38 @@ inclusion: manual
 - All paths MUST be absolute, run `pwd` first
 - All comments MUST be in Chinese, format: `// [ASM:L{line}-L{line}] fn{id}: {中文描述}`
 - Resolve scope parameters to concrete variables (params, closure captures, outer scope refs)
+- **When uncertain about parameter values or constants, use VMASM debugging to verify - DO NOT GUESS**
 
-### Rule 2: No Invalid Functions
+### Rule 2: Preserve Exact Operator Semantics
+- NEVER substitute operators with "equivalent" functions - they have different edge-case behavior
+
+**Integer coercion (NOT interchangeable):**
+- `~~x` ≠ `parseInt(x)`: `~~"19xs"` → 0, `parseInt("19xs")` → 19
+- `x | 0` ≠ `Math.floor(x)`: `Math.floor(-1.5)` → -2, `-1.5 | 0` → -1
+- `x >> 0` - signed 32-bit truncation, preserve as-is
+- `x >>> 0` - unsigned 32-bit conversion, NOT `Math.abs()`
+
+**Boolean coercion (preserve exact form):**
+- `!x` - single NOT (inverted boolean)
+- `!!x` - double NOT (truthy check)
+- `Boolean(x)` - explicit conversion
+- These are NOT equivalent for all edge cases
+
+**Bitwise operations (NEVER simplify):**
+- `& | ^ ~ << >> >>>` must remain exactly as in ASM
+- `x & 0xff` ≠ `x % 256` for negative numbers
+- `x >> n` ≠ `Math.floor(x / 2**n)` for negatives
+
+**Arithmetic (preserve original):**
+- `x / y | 0` - integer division, NOT `Math.trunc(x/y)`
+- `x % y` - remainder (sign follows dividend)
+- `Math.floor()` vs `Math.trunc()` - different for negatives
+
+**String coercion:**
+- `x + ""` ≠ `String(x)` ≠ `x.toString()` for null/undefined
+- Preserve the exact form used in ASM
+
+### Rule 3: No Invalid Functions
 - Function body must implement complete logic
 - All declared parameters must be used
 - Complex algorithms must be labeled
@@ -81,6 +111,7 @@ Context:
 - Workspace: {abs_path}
 - Constants: raw/constants.json
 - Scope inheritance: {parent_scope_info}
+- VMASM file: {vmasm_path} (use for debugging ambiguous cases)
 
 Task:
 1. Read ASM lines for each function
@@ -90,6 +121,8 @@ Task:
 Rules:
 - Do NOT simplify any logic
 - Resolve ALL scope references to concrete names
+- If parameter values or constants are ambiguous, use VMASM debugging to verify
+- Mark uncertain values with /* VERIFY: description */ and add to debugging checklist
 ```
 
 ### PHASE 3: Batch File Format
@@ -153,6 +186,8 @@ Synthesis checklist:
 - [ ] Resolved ALL fn{id} placeholders
 - [ ] Verified param counts match
 - [ ] Output function count matches ASM declaration
+- [ ] Identified all /* VERIFY: */ markers from batch files
+- [ ] Created VMASM debugging plan for ambiguous cases
 
 ### PHASE 7: Quality Verification (Parallel Sub-Agents)
 
@@ -172,12 +207,16 @@ Algorithm recognition requirements:
 
 Fix loop: Find issue → Re-read ASM → Fix → Re-check → Until all pass
 
-### PHASE 7.5: VMASM Dynamic Debugging Verification (Recommended)
+### PHASE 7.5: VMASM Dynamic Debugging Verification (MANDATORY for Ambiguous Cases)
 
-Use cases:
-- Algorithm verification: Confirm MD5/SHA/AES implementations are correct
-- Parameter tracing: Confirm actual parameter values received by functions
-- Return value confirmation: Verify function return values
+**When to use VMASM debugging (DO NOT GUESS):**
+- Entry function parameters: Verify actual values passed from caller
+- Configuration objects: Check real property values (aid, pageId, version, etc.)
+- Ambiguous constants: Determine if hardcoded or computed
+- Complex function parameters: Trace actual argument values
+- Algorithm verification: Confirm MD5/SHA/AES implementations
+- Return value validation: Verify function outputs
+- Scope variable resolution: Identify closure captures vs parameters
 
 **CRITICAL: Browser Debugging Workflow**
 
@@ -187,18 +226,54 @@ Use cases:
 4. Based on `get_vm_state()` response:
    - If paused: Analyze state, then `resume_execution()` or continue debugging
    - If not paused: Proceed to `set_vmasm_breakpoint({ address })`
-5. `evaluate_on_call_frame({ expression })` - Evaluate expression in current frame
-6. `step_over()` / `step_into()` - Step execution
-7. `clear_vmasm_breakpoints()` - Cleanup breakpoints
+5. `set_vmasm_breakpoint({ address })` - Set breakpoint at function entry or key instruction
+6. Trigger the target function execution (interact with page, call API, etc.)
+7. `get_vm_state()` - Inspect VM state when paused at breakpoint
+8. `evaluate_on_call_frame({ expression })` - Evaluate expressions:
+   - Use `@opcode_transform` expressions from vmasm to access VM registers
+   - Example: `e[0]` for first parameter, `e[1]` for second, etc.
+   - Example: `E.aid` for config object properties
+9. `step_over()` / `step_into()` / `resume_execution()` - Control execution flow
+10. `clear_vmasm_breakpoints()` - Cleanup when done
 
-Use `@opcode_transform` expressions from vmasm file to access VM registers (stack, scope, etc.)
+**Debugging Examples:**
 
-Verification checklist:
+Example 1: Verify entry function parameters
+```
+set_vmasm_breakpoint({ address: "0x0000" })  // fn150 entry
+// Trigger function call
+get_vm_state()  // Check JSVMP Registers
+evaluate_on_call_frame({ expression: "e" })  // Get all parameters array
+evaluate_on_call_frame({ expression: "e[3]" })  // Get urlParams (4th param)
+```
+
+Example 2: Check configuration object
+```
+set_vmasm_breakpoint({ address: "0x1234" })  // Where config is accessed
+get_vm_state()
+evaluate_on_call_frame({ expression: "E" })  // Get config object
+evaluate_on_call_frame({ expression: "E.aid" })  // Get specific property
+evaluate_on_call_frame({ expression: "E.pageId" })
+```
+
+Example 3: Trace intermediate values
+```
+set_vmasm_breakpoint({ address: "0x2000" })  // Before complex calculation
+get_vm_state()  // Check stack and local variables
+evaluate_on_call_frame({ expression: "scope[0][10]" })  // Local variable
+step_over()  // Execute one instruction
+get_vm_state()  // Check result
+```
+
+**Mandatory debugging checklist:**
+- [ ] Entry function: Verify ALL parameter values (mode, flag, dataType, urlParams, body, userAgent, pageId, aid, version)
+- [ ] Config object: Confirm actual property values (aid, pageId, version, ddrt, boe, magic)
 - [ ] All unidentified_algo functions
-- [ ] All unused_params functions
-- [ ] Entry function params and return value
-- [ ] Key algorithm functions
+- [ ] All unused_params functions (verify params are actually unused)
+- [ ] Key algorithm functions (MD5, RC4, Base64, etc.)
 - [ ] Signature/token generation functions
+- [ ] Any function with >3 parameters
+- [ ] Any hardcoded constants that seem arbitrary
 
 ### PHASE 8: Final Verification
 - Function count matches
