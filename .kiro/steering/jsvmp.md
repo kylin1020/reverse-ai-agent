@@ -718,6 +718,13 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
   - 比对 handler 代码与 @opcode_transform 表达式
   - 修正任何不匹配的表达式
   - 记录验证结果到 NOTE.md
+- [ ] 🤖 **使用 vmasm 调试验证 LIR 正确性** (⚠️ 关键验证步骤)
+  - 使用 `load_vmasm` 加载生成的 `.vmasm` 文件
+  - 在关键地址设置断点 (`set_vmasm_breakpoint`)
+  - 触发操作后用 `get_vm_state` 检查 VM 状态
+  - 验证: IP、opcode、栈内容是否与 LIR 注释一致
+  - 验证: 常量池索引是否正确
+  - 记录验证结果到 NOTE.md
 
 > **⚠️ IR Parsing**: Use Chevrotain for ALL IR parsing (LIR/MIR/HIR). See `skills/jsvmp-ir-parser.md`
 > **📦 Parser Location**: `jsvmp-ir-extension/src/utils/vmasm-*.ts` (Lexer, Parser, Visitor)
@@ -855,44 +862,89 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 
 ---
 
-## 🔧 IR Debugging Tools
+## 🔧 VMASM 调试工具 (验证 LIR 正确性)
 
-Use IR debugger tools to debug JSVMP at IR level instead of raw JS. Requires Source Map (`.vmap`).
+> **⚠️ 核心用途**: 使用 vmasm 调试工具在 IR 层级调试 JSVMP，验证反汇编生成的 LIR 是否正确。
+> **工作原理**: 加载 `.vmasm` 文件后，工具会生成带断点插桩的调试脚本，通过 Fetch 拦截替换原始脚本。
+
+### 验证 LIR 的典型场景
+
+1. **验证 opcode 语义**: 在特定地址设断点，检查 VM 状态是否符合预期
+2. **验证栈操作**: 对比实际栈内容与 LIR 注释中的栈效果
+3. **验证常量池索引**: 确认 `K[n]` 引用的值是否正确
+4. **验证控制流**: 跟踪 IP 变化，确认跳转目标正确
 
 ### Workflow
 ```javascript
-// 1. Load IR source map (can be done before script loads)
-load_ir_source_map(sourceMapPath="output/main_disasm.vmap")
-// Returns: irId
+// 1. 加载 vmasm 文件 (自动生成调试脚本并配置拦截)
+// ⚠️ filePath 必须是绝对路径！
+load_vmasm({ filePath: "/abs/path/output/main_disasm.vmasm" })
+// 可选: sourceFilePath 指定原始 JS 文件路径 (如果 vmasm 中没有 @source 指令)
 
-// 2. Set breakpoint at IR line (will resolve when script loads)
-ir_set_breakpoint(irId="...", irLine=15)
+// 2. 刷新页面使调试脚本生效
+navigate_page({ type: "reload" })
 
-// 3. Trigger action in browser, then get IR state when paused
-ir_get_state(irId="...")  // irId is optional - auto-detected from paused location
-// Returns: $pc, $opcode, $stack[0..2], $sp, IR context lines
+// 3. 在 vmasm 地址设置断点 (十进制或十六进制)
+set_vmasm_breakpoint({ address: 0x0000 })  // 入口点
+set_vmasm_breakpoint({ address: 256 })      // 0x0100
+// 可选: condition 参数添加条件表达式
+set_vmasm_breakpoint({ address: 0x0050, condition: "v[p] === 'test'" })
 
-// 4. Step/resume as needed
-step_over() / step_into() / resume_execution()
+// 4. 触发操作，断点命中后获取 VM 状态
+get_vm_state()
+// 返回: Virtual IP, 当前 opcode, 栈内容, 栈指针, 字节码信息, 常量池, 作用域链
+// ⚠️ 使用 @reg 中定义的变量映射来定位正确的 VM 寄存器
 
-// 5. Cleanup
-ir_clear_breakpoints(irId="...") // or unload_ir_source_map(irId="...")
+// 5. 单步调试
+step_over() / step_into() / step_out() / resume_execution()
+
+// 6. 管理断点
+list_vmasm_breakpoints()                           // 列出所有 vmasm 断点
+remove_vmasm_breakpoint({ breakpointId: "vmasm-bp-1" })  // 移除单个断点
+clear_vmasm_breakpoints()                          // 清除所有 vmasm 断点
 ```
 
 ### Key Tools
-| Tool | Purpose |
-|------|---------|
-| `load_ir_source_map` | Load source map, returns irId for subsequent operations |
-| `ir_set_breakpoint` | Set breakpoint at IR line (resolves when script loads) |
-| `ir_get_state` | Get VM state in IR form when paused (irId optional, auto-detected) |
-| `ir_remove_breakpoint` | Remove single IR breakpoint |
-| `ir_clear_breakpoints` | Clear all breakpoints for an irId |
-| `list_ir_source_maps` | List all loaded source maps with irId, paths, breakpoint counts |
-| `unload_ir_source_map` | Unload source map and clear all its breakpoints |
+| Tool | Purpose | 关键参数 |
+|------|---------|---------|
+| `load_vmasm` | 加载 vmasm 文件，生成调试脚本，配置拦截 | `filePath` (必需, 绝对路径), `sourceFilePath` (可选) |
+| `set_vmasm_breakpoint` | 在字节码地址设置断点 | `address` (必需, 数字), `condition` (可选) |
+| `get_vm_state` | 获取 VM 状态 (IP, opcode, stack, sp 等) | `maxStackItems`, `maxConstants` (可选) |
+| `list_vmasm_breakpoints` | 列出所有 vmasm 断点 | 无 |
+| `remove_vmasm_breakpoint` | 移除单个断点 | `breakpointId` (必需) |
+| `clear_vmasm_breakpoints` | 清除所有 vmasm 断点 | 无 |
 
-### Integration with Standard Debugger
-- `get_debugger_status` now shows IR context when paused at an IR breakpoint (auto-detected)
-- `list_breakpoints` shows IR metadata (irId, irLine, opcode) for IR breakpoints
+### 验证 LIR 示例
+
+```javascript
+// 场景: 验证 0x0008 处的 CALL 指令是否正确
+// vmasm 内容:
+//   0x0008: CALL 2    ; fn(2 args) → stack[sp]
+
+// 1. 加载 vmasm
+load_vmasm({ filePath: "/Users/xxx/artifacts/jsvmp/example.com/output/main_disasm.vmasm" })
+
+// 2. 刷新页面
+navigate_page({ type: "reload" })
+
+// 3. 在 CALL 指令前设断点
+set_vmasm_breakpoint({ address: 0x0008 })
+
+// 4. 触发操作后，检查 VM 状态
+get_vm_state()
+// 验证:
+//   - Virtual IP 应该是 8 (0x0008)
+//   - 当前 opcode 应该是 CALL 对应的值
+//   - 栈顶应该有 fn 和 2 个参数
+
+// 5. 使用 @opcode_transform 中的表达式检查具体值
+evaluate_on_call_frame({ expression: "v[p - 2]" })  // fn
+evaluate_on_call_frame({ expression: "v.slice(p - 1, p + 1)" })  // args
+```
+
+### 与标准调试器集成
+- `get_debugger_status` 在 vmasm 断点暂停时会显示 IR 上下文
+- `list_breakpoints` 会显示 vmasm 断点的元数据 (地址, opcode)
 
 ---
 

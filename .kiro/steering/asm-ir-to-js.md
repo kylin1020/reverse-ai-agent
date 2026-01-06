@@ -700,6 +700,147 @@ REPEAT quality check until all sub-agents report no issues.
 
 ---
 
+## PHASE 7.5: VMASM DYNAMIC DEBUGGING VERIFICATION (Optional but Highly Recommended)
+
+> **⚠️ Core Purpose**: Use vmasm debugging tools to verify decompiled JS logic at runtime.
+> **Use Cases**: Algorithm verification, parameter tracing, return value confirmation, boundary condition testing.
+
+### 7.5.1 When to Use VMASM Debugging
+
+| Scenario | Description | Priority |
+|----------|-------------|----------|
+| Algorithm Verification | Verify MD5/SHA/AES implementations are correct | ⭐⭐⭐ High |
+| Parameter Tracing | Confirm actual parameter values received by functions | ⭐⭐⭐ High |
+| Return Value Confirmation | Verify function return values match expectations | ⭐⭐ Medium |
+| Branch Coverage | Verify actual execution paths of conditional branches | ⭐⭐ Medium |
+| Closure Capture | Confirm actual values of closure variables | ⭐ Low |
+
+### 7.5.2 VMASM Debugging Tools
+
+| Tool | Purpose | Key Parameters |
+|------|---------|----------------|
+| `load_vmasm` | Load vmasm file, generate debug script | `filePath` (required, absolute path), `sourceFilePath` (optional) |
+| `set_vmasm_breakpoint` | Set breakpoint at bytecode address | `address` (required, number), `condition` (optional) |
+| `get_vm_state` | Get VM state (IP, opcode, stack, sp) | `maxStackItems`, `maxConstants` (optional) |
+| `list_vmasm_breakpoints` | List all vmasm breakpoints | none |
+| `remove_vmasm_breakpoint` | Remove single breakpoint | `breakpointId` (required) |
+| `clear_vmasm_breakpoints` | Clear all vmasm breakpoints | none |
+
+### 7.5.3 Verification Workflow
+
+```javascript
+// 1. Load vmasm file (⚠️ MUST use absolute path!)
+load_vmasm({ filePath: "/abs/path/output/main_disasm.vmasm" })
+
+// 2. Refresh page to activate debug script
+navigate_page({ type: "reload" })
+
+// 3. Set breakpoint at target function entry
+// Look up function's ASM address from _index.md
+set_vmasm_breakpoint({ address: 0x0100 })  // fn5 entry
+
+// 4. Trigger target functionality, check VM state when breakpoint hits
+get_vm_state()
+// Returns: Virtual IP, current opcode, stack contents, stack pointer, constants
+
+// 5. Use @opcode_transform expressions to check specific values
+evaluate_on_call_frame({ expression: "v[p]" })      // stack top value
+evaluate_on_call_frame({ expression: "s[0][2]" })   // scope[0][2] value
+
+// 6. Step through execution, trace execution flow
+step_over()  // execute one instruction
+get_vm_state()  // check state changes
+
+// 7. Clean up breakpoints
+clear_vmasm_breakpoints()
+```
+
+### 7.5.4 Verification Scenario Examples
+
+#### Scenario 1: Verify Function Parameters
+
+```javascript
+// Problem: fn15's param2 is unused in decompiled code, suspect analysis error
+// Goal: Confirm actual parameters received by fn15
+
+// 1. Find fn15's entry address from _index.md: 0x0200
+set_vmasm_breakpoint({ address: 0x0200 })
+
+// 2. Trigger operation that calls fn15
+
+// 3. When breakpoint hits, check parameters
+// Assuming @reg defines: scope=s, stack=v, sp=p
+evaluate_on_call_frame({ expression: "s[0][0]" })  // param1
+evaluate_on_call_frame({ expression: "s[0][1]" })  // param2
+evaluate_on_call_frame({ expression: "s[0][2]" })  // param3 (if exists)
+
+// 4. If param2 has a value, decompiled code missed its usage
+//    Need to re-analyze LOAD_SCOPE 0 1 instructions in ASM
+```
+
+#### Scenario 2: Verify Algorithm Output
+
+```javascript
+// Problem: Decompiled MD5 function output doesn't match expected
+// Goal: Compare VM execution result with decompiled code result
+
+// 1. Set breakpoint before MD5 function returns (RETURN instruction address)
+set_vmasm_breakpoint({ address: 0x0500 })  // RETURN instruction
+
+// 2. Trigger MD5 calculation
+
+// 3. When breakpoint hits, check return value
+get_vm_state()  // view stack top (value about to be returned)
+evaluate_on_call_frame({ expression: "v[p]" })  // return value
+
+// 4. Compare:
+//    - VM return value: "d41d8cd98f00b204e9800998ecf8427e"
+//    - Decompiled code return: "d41d8cd98f00b204..."
+//    If different, decompiled code has errors
+```
+
+#### Scenario 3: Trace Conditional Branches
+
+```javascript
+// Problem: Uncertain about actual execution path of an if-else branch
+// Goal: Confirm actual value of condition expression
+
+// 1. Set breakpoint before JF/JZ/JNZ instruction
+set_vmasm_breakpoint({ address: 0x0300 })  // JF instruction
+
+// 2. Trigger execution
+
+// 3. When breakpoint hits, check condition value
+get_vm_state()
+evaluate_on_call_frame({ expression: "v[p]" })  // condition expression result
+
+// 4. Determine actual branch taken based on condition value (truthy/falsy)
+```
+
+### 7.5.5 Verification Checklist
+
+After completing PHASE 7 quality check, perform vmasm dynamic verification on these functions:
+
+```
+[ ] 所有标记为 "unidentified_algo" 的函数
+[ ] 所有有 "unused_params" 问题的函数 (即使已修复)
+[ ] 入口函数 (fn0) 的参数和返回值
+[ ] 关键算法函数 (MD5/SHA/AES 等)
+[ ] 生成签名/token 的核心函数
+```
+
+### 7.5.6 Common Issue Troubleshooting
+
+| Issue | Troubleshooting Method |
+|-------|------------------------|
+| Parameter value mismatch | Set breakpoint at function entry, check `s[0][n]` |
+| Wrong return value | Set breakpoint at RETURN instruction, check `v[p]` |
+| Incorrect loop count | Set breakpoint at loop entry, add `condition: "loopCounter > 10"` |
+| Wrong closure value | Check `s[1][n]`, `s[2][n]` for outer scopes |
+| Wrong constant pool index | Check `Z[n]` or `K[n]` (per @reg definition) |
+
+---
+
 ## PHASE 8: FINAL VERIFICATION
 
 ```
@@ -747,7 +888,12 @@ REPEAT quality check until all sub-agents report no issues.
    → If issues found: main agent re-analyzes ASM and fixes
    → Repeat until all checkers pass
 
-6. FINAL VERIFY: Confirm counts, no placeholders, valid JS
+6. VMASM VERIFY (recommended): Use vmasm debugging to verify key functions
+   → load_vmasm → set_vmasm_breakpoint → get_vm_state
+   → 验证参数、返回值、算法输出是否正确
+   → 如有差异，重新分析 ASM 并修正
+
+7. FINAL VERIFY: Confirm counts, no placeholders, valid JS
 ```
 
 ---
@@ -762,6 +908,8 @@ REPEAT quality check until all sub-agents report no issues.
 - **Cross-batch inconsistency**: Re-read ASM, determine correct interpretation, document decision
 - **Simplified function detected**: Re-analyze ASM, generate complete implementation, replace placeholder
 - **Quality check failure**: Fix all critical issues before proceeding, re-run checkers until PASS
+- **VMASM verification failure**: Compare VM actual values with decompiled code, locate differences, re-analyze corresponding ASM instructions
+- **Parameter tracing difficulty**: Use `set_vmasm_breakpoint` + `evaluate_on_call_frame` to check `s[d][i]` values at runtime
 
 ---
 
