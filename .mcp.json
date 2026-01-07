@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "browser-debugger": {
+    "rc-devtools": {
       "command": "npx",
       "args": [
         "@reverse-craft/rc-devtools-mcp@latest"
@@ -44,6 +44,17 @@
         "apply_custom_transform"
       ],
       "disabled": false
+    },
+    "ai-tools": {
+      "command": "npx",
+      "args": [
+        "@reverse-craft/ai-tools@latest"
+      ],
+      "autoApprove": [
+        "read_code_smart",
+        "search_code_smart",
+        "apply_custom_transform"
+      ]
     }
   }
 }
