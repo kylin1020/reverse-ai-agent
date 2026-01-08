@@ -327,6 +327,10 @@ Fix loop: Find issue → Re-read ASM → Fix → Re-check → Until all pass
 - Collect sub-agent's evidence-based results
 - Apply fixes based on sub-agent's findings
 
+**Deterministic Verification Principle:**
+
+Validate the complete generation pipeline, not just isolated functions. For non-deterministic steps (random number generation), extract and hardcode those values. Then verify each downstream encryption step with fixed inputs to ensure deterministic, reproducible output across the entire chain.
+
 Verification workflow:
 - Coordinator creates TODO list
 - For each TODO: Dispatch ONE sub-agent
