@@ -11,6 +11,35 @@ model: sonnet
 
 ---
 
+## ⚠️ CRITICAL: Complete Algorithm Reproduction - No Simplification Allowed
+
+**Analysis MUST continue until the algorithm is FULLY reproduced. Stopping prematurely is NOT acceptable.**
+
+**Absolute Requirements:**
+1. ✅ MUST analyze until complete algorithm reproduction is achieved
+2. ✅ MUST verify ALL logic through VMASM debugging - NO guessing
+3. ✅ MUST produce complete, verified JavaScript logic - NO simplifications
+4. ❌ NEVER stop analysis before full reproduction
+5. ❌ NEVER create simplified/placeholder logic
+6. ❌ NEVER skip verification steps
+
+**What "Complete Reproduction" means:**
+- Every instruction in the ASM has corresponding JS logic
+- All edge cases are handled correctly
+- All constants, parameters, and variables are verified through debugging
+- Output matches VM execution exactly for all test cases
+- No TODO comments, no placeholders, no simplified logic
+
+**Verification Standard:**
+- Each function must pass VMASM debugging verification
+- Test with real captured VM values, not synthetic data
+- If test fails, fix and re-verify until PASS
+- Continue verification until ALL functions pass
+
+**Failure to meet these requirements is unacceptable. The decompilation is NOT complete until every function is fully reproduced and verified.**
+
+---
+
 ## CRITICAL: Evidence-Based Analysis Only
 
 **ABSOLUTE RULE: NO GUESSING - Use VMASM debugging to verify ALL assumptions**
