@@ -289,6 +289,92 @@ apply_custom_transform({ target_file: `${WORKSPACE}/source/main.js`, script_path
 
 ---
 
+## 🗺️ FUNCTION NAVIGATION (v1.6 NEW!)
+
+> **Purpose**: Enable fast navigation to specific functions in large vmasm files using grep/search tools.
+> **Problem Solved**: Large vmasm files (10,000+ lines) are slow to read entirely. Function Line Map allows reading only the relevant function.
+
+### @func_map Format
+
+```vmasm
+;; @func_map <func_id> <start_line> <end_line> <addr_range> <name_hint>
+@func_map func_0 45 120 0x0000-0x0050 "entry_point"
+@func_map func_1 122 250 0x0052-0x00F0 "signature_gen"
+```
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| `func_id` | Unique function identifier | `func_0`, `func_1` |
+| `start_line` | Line number where `@func` directive starts | `45` |
+| `end_line` | Line number where `@endfunc` directive ends | `120` |
+| `addr_range` | Bytecode address range | `0x0000-0x0050` |
+| `name_hint` | Human-readable name (from analysis) | `"signature_gen"` |
+
+### Navigation Workflow
+
+```javascript
+// STEP 1: Find function by ID or name hint
+// Using grepSearch (preferred for large files):
+grepSearch({ query: "@func_map func_5", includePattern: "**/*.vmasm" })
+// Or by name hint:
+grepSearch({ query: "@func_map.*signature", includePattern: "**/*.vmasm" })
+
+// Output example:
+// output/main_disasm.vmasm:12:@func_map func_5 382 520 0x0200-0x02F0 "signature_gen"
+
+// STEP 2: Extract line range from @func_map
+// From output: start_line=382, end_line=520
+
+// STEP 3: Read only the target function
+read_code_smart({ 
+  file_path: "/abs/path/output/main_disasm.vmasm", 
+  start_line: 382, 
+  end_line: 520 
+})
+```
+
+### Quick Navigation Commands
+
+| Task | Command |
+|------|---------|
+| List all functions | `grepSearch({ query: "^@func_map", includePattern: "**/*.vmasm" })` |
+| Find by func_id | `grepSearch({ query: "@func_map func_5", includePattern: "**/*.vmasm" })` |
+| Find by name hint | `grepSearch({ query: "@func_map.*encrypt", includePattern: "**/*.vmasm" })` |
+| Find by address | `grepSearch({ query: "@func_map.*0x0200", includePattern: "**/*.vmasm" })` |
+| Read function body | `read_code_smart({ file_path: "...", start_line: X, end_line: Y })` |
+
+### @func / @endfunc Markers
+
+Each function in the code section is wrapped with markers:
+
+```vmasm
+@func func_5 "signature_gen" addr=0x0200
+;; function body with instructions
+0x0200: PUSH_CONST         K[10]           ; "secret" → stack[sp]
+0x0202: CALL               1               ; fn(1 args) → stack[sp]
+;; ...
+@endfunc func_5
+```
+
+### Benefits
+
+1. **Fast Search**: grep/rg can find function metadata in O(1) without reading entire file
+2. **Precise Reading**: Read only 100-200 lines instead of 10,000+ lines
+3. **Address Mapping**: Quickly find which function contains a specific bytecode address
+4. **Name Hints**: Human-readable names help identify function purpose
+
+### Generating @func_map
+
+The disassembler should:
+1. Track line numbers as it writes each function
+2. After writing all functions, generate @func_map entries at the file header
+3. Include name hints from:
+   - `CREATE_FUNC` target analysis
+   - Scope slot names (if available)
+   - Call site analysis (what calls this function)
+
+---
+
 ## 🧩 IR PARSER (Chevrotain)
 
 > **⛔ NEVER regex parse `.vmasm`/`.vmir`/`.vmhir`. Use `jsvmp-ir-extension/src/utils/vmasm-*.ts`**
@@ -629,21 +715,39 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 - [ ] 🤖 **根据分析结果**提取/解码字节码和常量池 → raw/bytecode.json, raw/constants.json (⏳依赖上面的分析)
 
 ## 阶段 3: 句法分析 + 中间代码生成 (LIR) - 反汇编器
-> **📚 参考**: `.claude/skills/jsvmp-ir-format/SKILL.md` (v1.4) + `.claude/skills/jsvmp-ir-sourcemap/SKILL.md` + `.claude/skills/jsvmp-ir-parser/SKILL.md`
+> **📚 参考**: `.claude/skills/jsvmp-ir-format/SKILL.md` (v1.6) + `.claude/skills/jsvmp-ir-sourcemap/SKILL.md` + `.claude/skills/jsvmp-ir-parser/SKILL.md`
 > **⚠️ 开始此阶段前必须执行**: `readFile(".claude/skills/jsvmp-ir-format/SKILL.md")` + `readFile(".claude/skills/jsvmp-decompiler/SKILL.md")`
 > **目标**: 将字节码转换为低级中间表示 (LIR)，保留显式栈操作
 > **理论基础**: 句法分析将字节码序列解析为指令流，中间代码生成将其转换为三地址码形式
-> **v1.4 格式**: 自包含 `.vmasm` 文件，内嵌常量池、寄存器映射、opcode_transform（用于动态调试）
+> **v1.6 格式**: 自包含 `.vmasm` 文件，内嵌常量池、寄存器映射、opcode_transform（用于动态调试）、**函数行号映射（用于快速导航）**
 - [ ] 🤖 编写反汇编器 (lib/disassembler.js)
   - 输入: raw/bytecode.json + raw/constants.json + NOTE.md (VM 结构信息)
-  - 输出: output/*_disasm.vmasm (LIR v1.5)
-  - **v1.5 格式要求**:
+  - 输出: output/*_disasm.vmasm (LIR v1.6)
+  - **v1.6 格式要求**:
     ```vmasm
-    @format v1.5
+    @format v1.6
     @domain {target-domain}
     @source source/{filename}.js
     @url https://*.{domain}/*/{filename}.js
     @reg ip={ip_var}, sp={sp_var}, stack={stack_var}, bc={bc_var}, storage={storage_var}, const={const_var}, scope={scope_var}
+    
+    ;; ═══════════════════════════════════════════════════════════════════
+    ;; FUNCTION LINE MAP (v1.6 NEW!)
+    ;; Purpose: Enable fast navigation to functions using grep/search tools
+    ;; Format: @func_map <func_id> <start_line> <end_line> <addr_range> <name_hint>
+    ;; Usage: grep "@func_map func_5" → get line range → read_code_smart(start_line, end_line)
+    ;; ═══════════════════════════════════════════════════════════════════
+    @func_map func_0 45 120 0x0000-0x0050 "entry_point"
+    @func_map func_1 122 250 0x0052-0x00F0 "signature_gen"
+    @func_map func_2 252 380 0x00F2-0x0180 "encrypt_data"
+    @func_map func_3 382 450 0x0182-0x01C0 "hash_calc"
+    ;; ... (one line per function, sorted by func_id)
+    
+    ;; Quick Navigation Commands:
+    ;; - Find function: grep "@func_map func_5" output/*.vmasm
+    ;; - List all functions: grep "^@func_map" output/*.vmasm
+    ;; - Find by name hint: grep "@func_map.*signature" output/*.vmasm
+    ;; - Read function: read_code_smart(file, start_line, end_line) using line numbers from @func_map
     
     ;; opcode_transform - 用于动态调试时推断 fn/args/this_val 等
     ;; ⚠️ 必须从原始 JS handler 代码验证每个表达式！
@@ -663,7 +767,14 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
     @section code
     @entry 0x{entry_addr}
     
-    ;; v1.5 注释格式 (显示栈效果，不做静态 scope 推断，用 @opcode_transform 动态调试):
+    ;; ═══════════════════════════════════════════════════════════════════
+    ;; FUNCTION DEFINITIONS
+    ;; Each function starts with @func directive and ends with @endfunc
+    ;; Line numbers in @func_map point to these boundaries
+    ;; ═══════════════════════════════════════════════════════════════════
+    
+    @func func_0 "entry_point" addr=0x0000
+    ;; v1.6 注释格式 (显示栈效果，不做静态 scope 推断，用 @opcode_transform 动态调试):
     0x0000: CREATE_FUNC        1               ; func_1 → stack[sp]
     0x0002: STORE_SCOPE        0 8             ; stack[sp] → scope[0][8]
     0x0005: LOAD_SCOPE         0 8             ; scope[0][8] → stack[sp]
@@ -673,8 +784,15 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
     0x000E: CALL               2               ; fn(2 args) → stack[sp]
     0x0010: NEW                0               ; new(0 args) → stack[sp]
     0x0012: NEW                3               ; new(3 args) → stack[sp]
+    @endfunc func_0
+    
+    @func func_1 "signature_gen" addr=0x0052
+    ;; ... function body ...
+    @endfunc func_1
     ```
-  - **v1.5 注释原则 (STACK EFFECT + NO STATIC INFERENCE)**:
+  - **v1.6 注释原则 (STACK EFFECT + NO STATIC INFERENCE + FUNCTION MARKERS)**:
+    - **函数行号映射 (v1.6 NEW!)**: 文件头部包含 `@func_map` 索引，支持快速导航
+    - **函数边界标记**: 每个函数用 `@func`/`@endfunc` 包裹
     - **栈效果标注**: 使用 `→` 显示数据流方向
       - `→ stack[sp]` = 结果压入栈顶
       - `stack[sp] →` = 从栈顶弹出值
