@@ -65,7 +65,7 @@ read_code_smart({ file_path: "source/main.js" })  // ❌ WILL FAIL
 
 ### ⚠️ MANDATORY FIRST ACTION ON EVERY TURN
 ```
-0. IF this is a new session → readFile("skills/sub_agent.md") + readFile("skills/sub-agent-jsvmp.md")
+0. IF this is a new session → readFile(".claude/skills/sub_agent/SKILL.md") + readFile(".claude/skills/sub-agent-jsvmp/SKILL.md")
 1. Read TODO.md → Find FIRST unchecked [ ] task
 2. Check: Does it have 🤖 prefix?
    - YES → STOP. Call invokeSubAgent(). Do NOT proceed manually.
@@ -141,7 +141,7 @@ fsWrite("raw/data.json", JSON.stringify(hugeArray)); // ❌ Don't embed in code
 | 3️⃣ | Browser savePath | Runtime-generated or encrypted data |
 | 4️⃣ | Browser scope dump | Complex nested objects at breakpoint |
 
-> **📚 Detailed examples**: See `skills/jsvmp-phase-guide.md`
+> **📚 Detailed examples**: See `.claude/skills/jsvmp-phase-guide/SKILL.md`
 
 ---
 
@@ -307,7 +307,7 @@ function parseVmasm(content) {
 // → { format, domain, registers, constants[], instructions[], scopeSlots[], lineToAddr, addrToLine }
 ```
 
-> **📚 详细 AST 结构**: See `skills/jsvmp-ir-parser.md`
+> **📚 详细 AST 结构**: See `.claude/skills/jsvmp-ir-parser/SKILL.md`
 
 ---
 
@@ -489,7 +489,7 @@ search_code_smart({ file_path: "/abs/path/source/main.js", query: "for\\(;;\\)" 
 set_breakpoint({ urlRegex: ".*main.js.*", lineNumber: 1, columnNumber: 15847 })
 ```
 
-> **📚 More techniques**: See `skills/jsvmp-phase-guide.md`
+> **📚 More techniques**: See `.claude/skills/jsvmp-phase-guide/SKILL.md`
 
 ---
 
@@ -548,13 +548,13 @@ invokeSubAgent(
 ## 📚 MANDATORY FIRST STEP (BEFORE ANY OTHER ACTION!)
 **You MUST execute these readFile calls FIRST, before doing anything else:**
 ```
-readFile({ path: "skills/sub_agent.md" })
-readFile({ path: "skills/sub-agent-jsvmp.md" })
+readFile({ path: ".claude/skills/sub_agent/SKILL.md" })
+readFile({ path: ".claude/skills/sub-agent-jsvmp/SKILL.md" })
 ```
 **If task involves IR/decompiler, ALSO read:**
 ```
-readFile({ path: "skills/jsvmp-ir-format.md" })
-readFile({ path: "skills/jsvmp-decompiler.md" })
+readFile({ path: ".claude/skills/jsvmp-ir-format/SKILL.md" })
+readFile({ path: ".claude/skills/jsvmp-decompiler/SKILL.md" })
 ```
 **⛔ DO NOT PROCEED until you have read these files!**
 
@@ -620,7 +620,7 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 - [ ] 应用去混淆: `apply_custom_transform` → output/*_deob.js
 
 ## 阶段 2: VM 结构分析 (⛔ 需要完成阶段 1)
-> **📚 参考**: `skills/jsvmp-decompiler.md` 第 4 节
+> **📚 参考**: `.claude/skills/jsvmp-decompiler/SKILL.md` 第 4 节
 > **⚠️ 核心原则**: 先分析代码逻辑，再提取数据。禁止猜测！
 > **🚀 并行提示**: 前 3 个任务可并行执行，最后 1 个需等待前面完成
 - [ ] 🤖 定位 VM 调度器 (`find_jsvmp_dispatcher`) → NOTE.md  ⚡可并行
@@ -629,8 +629,8 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
 - [ ] 🤖 **根据分析结果**提取/解码字节码和常量池 → raw/bytecode.json, raw/constants.json (⏳依赖上面的分析)
 
 ## 阶段 3: 句法分析 + 中间代码生成 (LIR) - 反汇编器
-> **📚 参考**: `skills/jsvmp-ir-format.md` (v1.4) + `skills/jsvmp-ir-sourcemap.md` + `skills/jsvmp-ir-parser.md`
-> **⚠️ 开始此阶段前必须执行**: `readFile("skills/jsvmp-ir-format.md")` + `readFile("skills/jsvmp-decompiler.md")`
+> **📚 参考**: `.claude/skills/jsvmp-ir-format/SKILL.md` (v1.4) + `.claude/skills/jsvmp-ir-sourcemap/SKILL.md` + `.claude/skills/jsvmp-ir-parser/SKILL.md`
+> **⚠️ 开始此阶段前必须执行**: `readFile(".claude/skills/jsvmp-ir-format/SKILL.md")` + `readFile(".claude/skills/jsvmp-decompiler/SKILL.md")`
 > **目标**: 将字节码转换为低级中间表示 (LIR)，保留显式栈操作
 > **理论基础**: 句法分析将字节码序列解析为指令流，中间代码生成将其转换为三地址码形式
 > **v1.4 格式**: 自包含 `.vmasm` 文件，内嵌常量池、寄存器映射、opcode_transform（用于动态调试）
@@ -728,12 +728,12 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
   - 验证: 常量池索引是否正确
   - 记录验证结果到 NOTE.md
 
-> **⚠️ IR Parsing**: Use Chevrotain for ALL IR parsing (LIR/MIR/HIR). See `skills/jsvmp-ir-parser.md`
+> **⚠️ IR Parsing**: Use Chevrotain for ALL IR parsing (LIR/MIR/HIR). See `.claude/skills/jsvmp-ir-parser/SKILL.md`
 > **📦 Parser Location**: `jsvmp-ir-extension/src/utils/vmasm-*.ts` (Lexer, Parser, Visitor)
 
 ## 阶段 4: 语义分析 + 基本块划分 (MIR) - 栈分析器
-> **📚 参考**: `skills/jsvmp-decompiler.md` 第 5 节
-> **⚠️ 开始此阶段前必须执行**: `readFile("skills/jsvmp-decompiler.md")` + `readFile("skills/jsvmp-ir-parser.md")`
+> **📚 参考**: `.claude/skills/jsvmp-decompiler/SKILL.md` 第 5 节
+> **⚠️ 开始此阶段前必须执行**: `readFile(".claude/skills/jsvmp-decompiler/SKILL.md")` + `readFile(".claude/skills/jsvmp-ir-parser/SKILL.md")`
 > **目标**: 消除栈操作，构建表达式树，划分基本块
 > **⚠️ 输入解析**: 使用 Chevrotain 解析 `.vmasm`，禁止 regex
 - [ ] 🤖 栈分析 + 基本块划分 (lib/stack_analyzer.js)
@@ -742,8 +742,8 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
   - 关键: 消除栈操作，生成 `t0 = a + b` 形式的三地址码
 
 ## 阶段 5: 控制流图生成 + 控制流分析 (HIR) - CFG 分析器
-> **📚 参考**: `skills/jsvmp-decompiler.md` 第 6-7 节
-> **⚠️ 开始此阶段前必须执行**: `readFile("skills/jsvmp-decompiler.md")`
+> **📚 参考**: `.claude/skills/jsvmp-decompiler/SKILL.md` 第 6-7 节
+> **⚠️ 开始此阶段前必须执行**: `readFile(".claude/skills/jsvmp-decompiler/SKILL.md")`
 > **目标**: 构建 CFG，识别循环和条件结构，恢复高级控制流
 > **理论基础** (参考 androguard dad 反编译器):
 >   - **支配树 (Dominator Tree)**: Lengauer-Tarjan 算法，O(n·α(n)) 复杂度
@@ -765,7 +765,7 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
   - 关键: 正确识别循环类型和 follow 节点
 
 ## 阶段 6: 数据流分析 - 变量优化器
-> **📚 参考**: `skills/jsvmp-decompiler.md` 第 8 节
+> **📚 参考**: `.claude/skills/jsvmp-decompiler/SKILL.md` 第 8 节
 > **目标**: 构建 DU/UD 链，进行变量优化，提高代码可读性
 > **理论基础** (参考 androguard dad 反编译器):
 >   - **到达定义分析 (Reaching Definition)**: 数据流方程迭代求解
@@ -788,8 +788,8 @@ read_code_smart({{ file_path: "/Users/xxx/reverse-ai-agent/artifacts/jsvmp/{doma
   - 关键: 正确处理 φ 函数和循环中的变量
 
 ## 阶段 7: 代码生成 (HIR → JS) - 代码生成器
-> **📚 参考**: `skills/jsvmp-codegen.md` ⚠️ **必读**
-> **⚠️ 开始此阶段前必须执行**: `readFile("skills/jsvmp-codegen.md")` + `readFile("skills/jsvmp-decompiler.md")`
+> **📚 参考**: `.claude/skills/jsvmp-codegen/SKILL.md` ⚠️ **必读**
+> **⚠️ 开始此阶段前必须执行**: `readFile(".claude/skills/jsvmp-codegen/SKILL.md")` + `readFile(".claude/skills/jsvmp-decompiler/SKILL.md")`
 > **目标**: 将 HIR 转换为可读的 JavaScript 代码
 > **理论基础**:
 >   - **区域化生成**: 每个控制结构 (if-else, loop) 是独立区域
@@ -971,7 +971,7 @@ evaluate_on_call_frame({ expression: "v.slice(p - 1, p + 1)" })  // args
 | Unknown opcode | Trace handler using `set_breakpoint` at `[Src]` location. |
 | Can't find dispatcher | Use `find_jsvmp_dispatcher` instead of regex. |
 | IR parse error | Use Chevrotain parser from `jsvmp-ir-extension/src/utils/`. NEVER use regex. |
-| Regex breaks on edge case | Migrate to Chevrotain. See `skills/jsvmp-ir-parser.md`. |
+| Regex breaks on edge case | Migrate to Chevrotain. See `.claude/skills/jsvmp-ir-parser/SKILL.md`. |
 
 ---
 

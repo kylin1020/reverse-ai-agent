@@ -36,8 +36,8 @@ read_code_smart({ file_path: "source/main.js" })
 
 | Task Type | Required Reading |
 |-----------|------------------|
-| IR generation | `skills/jsvmp-ir-format.md` |
-| Decompiler | `skills/jsvmp-decompiler.md` |
+| IR generation | `.claude/skills/jsvmp-ir-format/SKILL.md` |
+| Decompiler | `.claude/skills/jsvmp-decompiler/SKILL.md` |
 
 ## Constants Type Rules
 

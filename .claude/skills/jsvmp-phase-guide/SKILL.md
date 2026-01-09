@@ -140,9 +140,9 @@ read_code_smart({ file_path: "/abs/path/source/main.js", start_line: 200, end_li
 | 6 (OPT) | HIR | `_hir_opt.txt` | Data flow analysis (optional) | DU/UD chains, SSA, constant propagation |
 | 7 (JS) | HIR/OPT | `_decompiled.js` | Code generation | Region-based generation, structured output |
 
-**IR Format**: See `skills/jsvmp-ir-format.md`
-**Decompiler Implementation**: See `skills/jsvmp-decompiler.md`
-**Code Generation (HIR→JS)**: See `skills/jsvmp-codegen.md` ⚠️ **CRITICAL**
+**IR Format**: See `.claude/skills/jsvmp-ir-format/SKILL.md`
+**Decompiler Implementation**: See `.claude/skills/jsvmp-decompiler/SKILL.md`
+**Code Generation (HIR→JS)**: See `.claude/skills/jsvmp-codegen/SKILL.md` ⚠️ **CRITICAL**
 
 ### Phase 5 Key Algorithms (CFG + Control Flow Analysis)
 

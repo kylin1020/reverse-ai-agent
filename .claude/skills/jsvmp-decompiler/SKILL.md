@@ -1,7 +1,7 @@
 # JSVMP Decompiler Skill (Babel/Node.js)
 
 **Core Principle**: JSVMP decompilation MUST use Babel AST stack. **Python is prohibited**.
-**IR Format**: v1.1 self-contained format, see `skills/jsvmp-ir-format.md`
+**IR Format**: v1.1 self-contained format, see `.claude/skills/jsvmp-ir-format/SKILL.md`
 
 **Code Generation Warning (Phase 7) - Most Error-Prone Phase!**
 
@@ -11,7 +11,7 @@
 | Incomplete loop body | Empty `while` body | Only processing header block |
 | Flattened nesting | Nested if → sequential if | Wrong merge point |
 
-**Required Reading**: `skills/jsvmp-codegen.md` - Complete control flow recovery algorithm
+**Required Reading**: `.claude/skills/jsvmp-codegen/SKILL.md` - Complete control flow recovery algorithm
 
 **Validation**: `wc -l output/*.vmhir output/*_decompiled.js` (JS lines should be 50%-150% of HIR)
 

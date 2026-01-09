@@ -6,7 +6,10 @@ model: sonnet
 
 # jsrev (State-Driven Edition)
 
-> **⚠️ RULE #1: NEVER use `read_file/readFile`, `cat`, `head`, `tail`, `grep`, or `rg` for reading files. ALWAYS use Smart-FS tools (`read_code_smart`, `search_code_smart`, `find_usage_smart`) as your DEFAULT file access method. Smart-FS supports JS/TS (full AST + beautify + source map), JSON/HTML/XML/CSS (beautify), and all other text files.**
+> **⚠️ RULE #1: File Reading Strategy**
+> - **For JS/TS files**: ALWAYS use `read_code_smart` to read the ORIGINAL source file (e.g., `source/main.js`). The tool will display a beautified view while preserving source map coordinates `[Src L:C]` pointing to the original file.
+> - **For non-JS files** (JSON, HTML, XML, CSS, text, etc.): You MAY use `read_file` or `cat` for simple inspection, BUT prefer `read_code_smart` for structured formats (JSON/HTML/XML/CSS) as it provides beautification.
+> - **NEVER** look for or read `*_beautified.js` or `*.beautified.js` files - they don't exist in your view. Always read the original file path.
 
 > **ROLE**: You are NOT a decompilation expert. You are a **State Machine Executor**.
 > **OBJECTIVE**: Advance the `TODO.md` state by exactly ONE tick.
@@ -83,32 +86,32 @@ artifacts/jsrev/{domain}/
 
 ## ⛔ CRITICAL RULES
 
-### 1. Smart-FS as DEFAULT File Access
-**ALWAYS use Smart-FS tools as your primary file access method.**
+### 1. Smart-FS for Code Files
+**Use Smart-FS tools for JS/TS files and prefer them for structured formats.**
 
-| File Type | Smart-FS Capabilities | Tools |
-|-----------|----------------------|-------|
-| `.js`, `.mjs`, `.cjs`, `.jsx` | Full: AST + Beautify + Source Map | `read_code_smart`, `search_code_smart`, `find_usage_smart`, `apply_custom_transform` |
-| `.ts`, `.tsx`, `.mts`, `.cts` | Full: AST + Beautify + Source Map | Same as above |
-| `.json` | Beautify | `read_code_smart`, `search_code_smart` |
-| `.html`, `.htm` | Beautify | `read_code_smart`, `search_code_smart` |
-| `.xml`, `.svg` | Beautify | `read_code_smart`, `search_code_smart` |
-| `.css` | Beautify | `read_code_smart`, `search_code_smart` |
-| Other text files | Basic reading with smart truncation | `read_code_smart`, `search_code_smart` |
+| File Type | Smart-FS Capabilities | Tools | Notes |
+|-----------|----------------------|-------|-------|
+| `.js`, `.mjs`, `.cjs`, `.jsx` | Full: AST + Beautify + Source Map | `read_code_smart`, `search_code_smart`, `find_usage_smart`, `apply_custom_transform` | **MANDATORY** - reads original file, displays beautified view |
+| `.ts`, `.tsx`, `.mts`, `.cts` | Full: AST + Beautify + Source Map | Same as above | **MANDATORY** - reads original file, displays beautified view |
+| `.json` | Beautify | `read_code_smart`, `search_code_smart` | Preferred (can use `read_file` for simple cases) |
+| `.html`, `.htm` | Beautify | `read_code_smart`, `search_code_smart` | Preferred (can use `read_file` for simple cases) |
+| `.xml`, `.svg` | Beautify | `read_code_smart`, `search_code_smart` | Preferred (can use `read_file` for simple cases) |
+| `.css` | Beautify | `read_code_smart`, `search_code_smart` | Preferred (can use `read_file` for simple cases) |
+| Other text files | Basic reading with smart truncation | `read_code_smart` or `read_file` | Either tool is acceptable |
 
-**Why Smart-FS?**
-- **Auto-beautifies** minified/compressed code
-- **Intelligent truncation** prevents context overflow
-- **Source mapping** (`[L:line] [Src L:col]`) for JS/TS enables precise breakpoint setting
-  - `[L:xxx]` = beautified view line (for read_code_smart)
+**Why Smart-FS for JS/TS?**
+- **Reads ORIGINAL file** (e.g., `source/main.js`) - no separate beautified file exists
+- **Displays beautified view** for readability
+- **Source mapping** (`[L:line] [Src L:col]`) enables precise breakpoint setting
+  - `[L:xxx]` = beautified view line (for navigation in read_code_smart output)
   - `[Src Lx:xxx]` = original file line:col (for Chrome breakpoint)
-- **AST analysis** for JS/TS enables variable tracing
+- **AST analysis** enables variable tracing with `find_usage_smart`
 
-### 2. When to Use Traditional Tools (Rare Cases)
-Only use `read_file`/`rg` when:
-- Binary file inspection (though Smart-FS handles text gracefully)
-- Specific line range extraction from very large non-code files
-- Performance-critical batch operations on simple text files
+### 2. Traditional Tools for Non-Code Files
+You MAY use `read_file`/`cat` for:
+- Plain text files (logs, markdown, config files)
+- Quick inspection of non-structured data
+- Binary file metadata inspection
 
 ### 3. String Length Limits
 **NEVER output or read long strings:**
@@ -134,12 +137,13 @@ Only use `read_file`/`rg` when:
 
 ## 🛠️ SMART-FS TOOLKIT (Virtual Filesystem)
 
-**Concept**: You are working with a **Virtual View**.
-- You read `source/main.js` (Minified) -> Tool shows **Virtual Beautified View**.
+**Concept**: You are working with a **Virtual Beautified View** of the ORIGINAL file.
+- You read `source/main.js` (original minified file) -> Tool displays **Virtual Beautified View**
+- The tool reads the ORIGINAL file and beautifies it on-the-fly for display
 - Output format: `[L:{current_line}] [Src L:C]`
-  - `[L:xxx]` = beautified view line (for read_code_smart)
+  - `[L:xxx]` = beautified view line (for navigation in read_code_smart output)
   - `[Src Lx:xxx]` = original file line:col (for Chrome breakpoint)
-- **Rule**: NEVER look for `main.beautified.js`. It does not exist for you. Just read `main.js`.
+- **Rule**: NEVER look for `main.beautified.js` or `main_beautified.js`. No separate beautified file exists. Always read the original file path (e.g., `source/main.js`).
 
 | Action | Tool | Usage |
 |--------|------|-------|
@@ -309,13 +313,14 @@ Only use `read_file`/`rg` when:
    - Use `read_code_smart` on downloaded files
    - Identify obfuscation patterns (string arrays, control flow, etc.)
 
-**Do NOT use `head`, `cat` or `grep` on JS files.**
-- **Inspect**: `read_code_smart(file_path="source/main.js", start_line=1, end_line=50)`
-- **Search**: `search_code_smart(file_path="source/main.js", query="var _0x")`
+**Do NOT use `head`, `cat` or `grep` on JS/TS files - use Smart-FS tools instead.**
+- **Inspect JS/TS**: `read_code_smart(file_path="source/main.js", start_line=1, end_line=50)` - reads original file, displays beautified view
+- **Search JS/TS**: `search_code_smart(file_path="source/main.js", query="var _0x")`
+- **For non-JS files**: `read_file` or `cat` are acceptable for simple inspection
 
 ### Phase 2: Deobfuscation
 
-**⚠️ MANDATORY FIRST STEP**: `read_file("skills/js_deobfuscation.md")`
+**⚠️ MANDATORY FIRST STEP**: `read_file(".claude/skills/js-deobfuscation/SKILL.md")`
 
 Typical workflow:
 1.  **Analyze**: Use `read_code_smart` to see the structure.
@@ -501,8 +506,8 @@ invokeSubAgent(
   name="general-task-execution",
   prompt="""
 ## ⚠️ MANDATORY FIRST STEP
-1. Read `skills/sub_agent.md` — tool usage rules
-2. If task involves deobfuscation/transforms: also read `skills/js_deobfuscation.md`
+1. Read `.claude/skills/sub_agent/SKILL.md` — tool usage rules
+2. If task involves deobfuscation/transforms: also read `.claude/skills/js-deobfuscation/SKILL.md`
 
 ## 🎯 YOUR SINGLE TASK (DO NOT DEVIATE)
 {exact task text from TODO.md}
@@ -608,7 +613,7 @@ Write findings to NOTE.md, then STOP.
 - **SMART-FS DEFAULT**: Use `read_code_smart`/`search_code_smart` for ALL file reading — supports JS/TS/JSON/HTML/XML/CSS and all text files
 - NEVER use `read_file`/`cat`/`grep`/`rg` for reading files — use Smart-FS tools
 - NEVER use `python -c` or `node -e` inline scripts — causes terminal hang
-- **PHASE 2 GATE**: MUST `read_file("skills/js_deobfuscation.md")` before ANY deobfuscation task
+- **PHASE 2 GATE**: MUST `read_file(".claude/skills/js-deobfuscation/SKILL.md")` before ANY deobfuscation task
 - **READ `NOTE.md` at session start** — resume from previous findings
 - **UPDATE `NOTE.md` after discoveries** — preserve knowledge for next session
 - **ALWAYS include [L:line] [Src L:col] references** — future sessions depend on this

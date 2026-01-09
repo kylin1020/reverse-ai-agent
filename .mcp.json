@@ -3,7 +3,10 @@
     "rc-devtools": {
       "command": "npx",
       "args": [
-        "@reverse-craft/rc-devtools-mcp@latest"
+        "@reverse-craft/rc-devtools-mcp@0.1.14",
+        "--proxy-server",
+        "http://10.156.128.4:1080",
+        "--disable-media"
       ],
       "autoApprove": [
         "new_page",
